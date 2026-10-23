@@ -24,7 +24,9 @@ html, body, #root { height: 100%; }
 body { @apply bg-bg text-ink font-sans antialiased; }
 @media (min-width: 768px) { body { @apply bg-desk; } }
 
-:focus-visible { outline: 3px solid var(--color-g-ink); outline-offset: 2px; }
+@layer base {
+  :focus-visible { outline: 3px solid var(--color-g-ink); outline-offset: 2px; }
+}
 
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }

@@ -1,4 +1,4 @@
-import { ACTIVITY } from '../lib/calc'
+import { ACTIVITY, computeTarget, tdee, weeklyKg } from '../lib/calc'
 import type { Activity, Goal, Profile, Sex } from '../lib/types'
 import { Chip } from './ui'
 
@@ -78,6 +78,11 @@ export function validBody(d: Draft) {
   return d.age >= 14 && d.age <= 100 && d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
 }
 
-export function goalBlurb(g: Goal) {
-  return g === 'lose' ? 'to lose about 0.5 kg a week' : g === 'gain' ? 'to gain about 0.3 kg a week' : 'to keep your current weight'
+/** Goal line based on the deficit or surplus actually used by the suggested target. */
+export function goalBlurb(d: Draft) {
+  if (d.goal === 'keep') return 'to keep your current weight'
+  const delta = computeTarget(d) - tdee(d)
+  const kg = weeklyKg(delta)
+  const verb = d.goal === 'lose' ? 'lose' : 'gain'
+  return kg >= 0.25 ? `to ${verb} about ${kg} kg a week` : `to ${verb} weight gradually`
 }

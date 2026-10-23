@@ -15,9 +15,17 @@ export function bmr(sex: Sex, weightKg: number, heightCm: number, age: number): 
   return 10 * weightKg + 6.25 * heightCm - 5 * age + (sex === 'male' ? 5 : -161)
 }
 
+export function tdee(p: Omit<Profile, 'target'>): number {
+  return bmr(p.sex, p.weightKg, p.heightCm, p.age) * ACTIVITY[p.activity].factor
+}
+
+/** ~7,700 kcal per kg of body weight; rounded to the nearest 0.25 kg a week. */
+export function weeklyKg(dailyDelta: number): number {
+  return Math.round(((Math.abs(dailyDelta) * 7) / 7700) * 4) / 4
+}
+
 export function computeTarget(p: Omit<Profile, 'target'>): number {
-  const tdee = bmr(p.sex, p.weightKg, p.heightCm, p.age) * ACTIVITY[p.activity].factor
-  const raw = tdee + GOAL_ADJUST[p.goal]
+  const raw = tdee(p) + GOAL_ADJUST[p.goal]
   const floor = p.sex === 'male' ? 1500 : 1200
   return Math.round(Math.max(floor, raw) / 10) * 10
 }

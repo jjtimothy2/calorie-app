@@ -8,6 +8,7 @@ import { Ring } from '../components/Ring'
 import { Card } from '../components/ui'
 import { dateKey, entryTotals, fmt, streak, sumEntries } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
+import { formatAmount } from '../lib/amount'
 import { useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry } from '../lib/types'
 
@@ -65,7 +66,7 @@ export default function Home() {
                     {list.map((e) => (
                       <li key={e.id}>
                         <button type="button" onClick={() => setEditing(e)} className="flex w-full justify-between gap-3 border-t border-line py-2.5 text-left text-[15px]" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
-                          <span>{e.name}<span className="text-mute">, {e.qty === 1 ? '' : `${e.qty} × `}{e.servingLabel.replace(/ \(.*\)$/, '')}</span></span>
+                          <span>{e.name}{e.foodId && <span className="text-mute">, {formatAmount(e.servingLabel, e.qty)}</span>}</span>
                           <span className="tabular-nums">{fmt(entryTotals(e).kcal)}</span>
                         </button>
                       </li>

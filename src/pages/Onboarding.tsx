@@ -67,7 +67,7 @@ export default function Onboarding() {
             ) : (
               <div className="text-[56px] font-extrabold tracking-tight text-g-ink" data-testid="target">{fmt(target)}</div>
             )}
-            <div className="text-[15px] text-mute">{custom !== null && custom !== computed ? `Custom target (suggested ${fmt(computed)})` : goalBlurb(d.goal)}</div>
+            <div className="text-[15px] text-mute" data-testid="goal-line">{goalBlurb(d)}</div>
           </Card>
           <Card className="py-0">
             {[['Goal', GOAL_LABEL[d.goal]], ['Current weight', `${d.weightKg} kg`], ['Height', `${d.heightCm} cm`], ['Activity', ACTIVITY_SHORT[d.activity]]].map(([k, v]) => (

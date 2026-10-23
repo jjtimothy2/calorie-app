@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FOOD_BY_ID, servingsFor, type Food } from '../data/foods'
 import { fmt, round1 } from '../lib/calc'
+import { formatAmount } from '../lib/amount'
 import { entryFromFood, useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
 import { Sheet, Stepper } from './Sheet'
@@ -28,8 +29,7 @@ export function FoodSheet(props: Props) {
     [food, mult, qty],
   )
   const fav = state.favourites.includes(food.id)
-  const short = isCustom ? `${Math.max(1, grams)} g` : servings[idx].label.replace(/ \(.*\)$/, '')
-  const qtyLabel = qty === 1 ? short : `${qty} × ${short}`
+  const qtyLabel = formatAmount(servingLabel, qty)
 
   const save = () => {
     const base = entryFromFood(food.id, { meal, date: props.mode === 'add' ? props.date : props.entry.date, mult, qty, servingLabel })

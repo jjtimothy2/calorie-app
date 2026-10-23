@@ -76,7 +76,7 @@ export default function Log() {
           </label>
           <button type="button" onClick={() => setQuick(true)} className="px-1 py-2 text-[15px] font-bold text-g-ink">Quick add</button>
         </header>
-        <div className="flex items-center gap-2.5 rounded-2xl border-2 border-g-ink bg-card px-4 py-3 focus-within:ring-2 focus-within:ring-g">
+        <div className="flex items-center gap-2.5 rounded-2xl border-2 border-line bg-card px-4 py-3 focus-within:border-g-ink">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="text-mute" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input
             autoFocus
@@ -85,7 +85,7 @@ export default function Log() {
             placeholder="Search foods, e.g. tempe"
             value={q}
             onChange={(e) => { setQ(e.target.value); if (e.target.value && tab !== 'all' && !q) setTab('all') }}
-            className="w-full bg-transparent text-[17px] outline-none placeholder:text-mute"
+            className="w-full appearance-none bg-transparent text-[17px] outline-none placeholder:text-mute focus:outline-none focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
           />
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Food list">
