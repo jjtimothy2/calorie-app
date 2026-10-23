@@ -1,8 +1,8 @@
-import { ACTIVITY, computeTarget, tdee, weeklyKg } from '../lib/calc'
-import type { Activity, Goal, Profile, Sex } from '../lib/types'
+import { ACTIVITY, computeTarget, tdee, weeklyKg, type Body } from '../lib/calc'
+import type { Activity, Goal, Sex } from '../lib/types'
 import { Chip } from './ui'
 
-export type Draft = Omit<Profile, 'target'>
+export type Draft = Body
 export const GOAL_LABEL: Record<Goal, string> = { lose: 'Lose weight', keep: 'Keep weight', gain: 'Gain weight' }
 export const ACTIVITY_SHORT: Record<Activity, string> = {
   sedentary: 'Sedentary', light: 'Lightly active', moderate: 'Moderately active', active: 'Active', very: 'Very active',

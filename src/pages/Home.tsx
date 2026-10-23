@@ -1,27 +1,35 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { BalanceRing, Equation } from '../components/BalanceRing'
+import { ExerciseEditSheet, ExerciseQuickSheet, exerciseLine } from '../components/ExerciseForm'
 import { FoodSheet } from '../components/FoodSheet'
 import { MacroCard } from '../components/MacroCard'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { Screen, TabBar } from '../components/Layout'
-import { Ring } from '../components/Ring'
-import { Card } from '../components/ui'
-import { dateKey, entryTotals, fmt, streak, sumEntries } from '../lib/calc'
+import { Button, Card } from '../components/ui'
+import { dayView, entryTotals, fmt, goalMessage, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
 import { useStore } from '../lib/store'
-import { MEALS, MEAL_LABEL, type Entry } from '../lib/types'
+import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry } from '../lib/types'
 
 export default function Home() {
-  const { state } = useStore()
-  const today = dateKey()
+  const { state, dispatch, today } = useStore()
+  const nav = useNavigate()
   const entries = state.entries.filter((e) => e.date === today).sort((a, b) => a.createdAt - b.createdAt)
+  const exercises = state.exercises.filter((e) => e.date === today).sort((a, b) => a.createdAt - b.createdAt)
   const totals = sumEntries(entries)
-  const target = state.profile!.target
+  const day = dayView(state, today)
+  const closed = !!day.closed
+  const profile = state.profile!
   const s = streak(state.entries, today)
   const [editing, setEditing] = useState<Entry | null>(null)
+  const [editingEx, setEditingEx] = useState<ExerciseEntry | null>(null)
   const dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
-  const remainingExcl = (e: Entry) => target - totals.kcal + entryTotals(e).kcal
+  // Food you can still eat today while hitting the daily goal.
+  const left = day.balance - day.goal
+  const remainingExcl = (e: Entry) => left + entryTotals(e).kcal
+  const burned = day.burned
 
   return (
     <>
@@ -41,13 +49,37 @@ export default function Home() {
           </div>
         </header>
         <Card>
-          <Ring eaten={totals.kcal} target={target} />
-          <div className="mt-2 flex justify-around text-sm text-mute">
-            <span>Target <b className="text-ink" data-testid="target">{fmt(target)}</b></span>
-            <span>Eaten <b className="text-ink" data-testid="eaten">{fmt(totals.kcal)}</b></span>
-          </div>
+          {closed && (
+            <div className="mb-1 flex items-center justify-between">
+              <span className="rounded-full bg-g-soft px-3 py-1.5 text-[13px] font-bold text-g-soft-ink" data-testid="closed-pill">Day closed</span>
+              <Link to={`/day/${today}`} className="px-1 py-1 text-[15px] font-bold text-g-ink">View verdict ›</Link>
+            </div>
+          )}
+          <BalanceRing balance={day.balance} goal={day.goal} closed={closed} />
+          <Equation bmr={day.bmr} movement={day.movement} burned={burned} eaten={day.eaten} balance={day.balance} />
+          <p className="mt-2.5 text-center text-[15px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
         </Card>
-        <MacroCard totals={totals} target={target} />
+        <MacroCard totals={totals} target={profile.target} />
+        <Card>
+          <section aria-label="Exercise" data-testid="exercise-card">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[17px] font-bold"><span aria-hidden="true">🏃 </span>Exercise{exercises.length > 0 && ` · ${fmt(burned)}`}</h2>
+              {!closed && <Link to="/log?mode=exercise" className="px-1 py-1 text-[15px] font-bold text-g-ink" aria-label="Add exercise">+ Add</Link>}
+            </div>
+            {exercises.length > 0 && (
+              <ul className="mt-2">
+                {exercises.map((e) => (
+                  <li key={e.id}>
+                    <button type="button" disabled={closed} onClick={() => setEditingEx(e)} className="flex w-full justify-between gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(e.kcal)} kcal burned`}>
+                      <span>{exerciseLine(e)}</span>
+                      <span className="tabular-nums font-semibold text-ex-ink">+{fmt(e.kcal)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </Card>
         {entries.length === 0 && (
           <p className="text-center text-[15px] text-mute" data-testid="empty">Nothing logged yet today. Tap + to add your first meal.</p>
         )}
@@ -59,13 +91,13 @@ export default function Home() {
               <section aria-label={MEAL_LABEL[m]} data-testid={`meal-${m}`}>
                 <div className="flex items-center justify-between">
                   <h2 className="text-[17px] font-bold">{MEAL_LABEL[m]}{list.length > 0 && ` · ${fmt(sum)}`}</h2>
-                  <Link to={`/log?meal=${m}`} className="px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>
+                  {!closed && <Link to={`/log?meal=${m}`} className="px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>}
                 </div>
                 {list.length > 0 && (
                   <ul className="mt-2">
                     {list.map((e) => (
                       <li key={e.id}>
-                        <button type="button" onClick={() => setEditing(e)} className="flex w-full justify-between gap-3 border-t border-line py-2.5 text-left text-[15px]" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
+                        <button type="button" disabled={closed} onClick={() => setEditing(e)} className="flex w-full justify-between gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
                           <span>{e.name}{e.foodId && <span className="text-mute">, {formatAmount(e.servingLabel, e.qty)}</span>}</span>
                           <span className="tabular-nums">{fmt(entryTotals(e).kcal)}</span>
                         </button>
@@ -77,12 +109,25 @@ export default function Home() {
             </Card>
           )
         })}
+        {closed ? (
+          <Button variant="ghost" onClick={() => dispatch({ type: 'reopenDay', date: today })}>Reopen day</Button>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={() => { dispatch({ type: 'closeDay', date: today }); nav(`/day/${today}`) }}>Close day</Button>
+            <p className="-mt-1 text-center text-[13px] text-mute">Locks today as <span data-testid="close-preview">{verdict(day.balance)}</span>. Days close by themselves at midnight.</p>
+          </>
+        )}
       </Screen>
       <TabBar />
       {editing && editing.foodId && FOOD_BY_ID.has(editing.foodId) ? (
         <FoodSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} />
       ) : editing ? (
         <QuickAddSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} />
+      ) : null}
+      {editingEx && editingEx.activityId ? (
+        <ExerciseEditSheet key={editingEx.id} entry={editingEx} onClose={() => setEditingEx(null)} />
+      ) : editingEx ? (
+        <ExerciseQuickSheet key={editingEx.id} date={today} initial={editingEx} onDone={() => setEditingEx(null)} onClose={() => setEditingEx(null)} />
       ) : null}
     </>
   )

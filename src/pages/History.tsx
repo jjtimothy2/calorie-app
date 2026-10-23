@@ -1,33 +1,30 @@
 import { useState } from 'react'
-import { BarChart } from '../components/BarChart'
+import { Link } from 'react-router-dom'
+import { BalanceChart } from '../components/BalanceChart'
 import { Screen, TabBar } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
-import { dateKey, fmt, lastNDays, streak, sumEntries } from '../lib/calc'
+import { dayView, fmt, KCAL_PER_KG, lastNDays, round1, streak } from '../lib/calc'
 import { useStore } from '../lib/store'
 
 const parse = (k: string) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
 
 export default function History() {
-  const { state } = useStore()
+  const { state, today } = useStore()
   const [n, setN] = useState<7 | 30>(7)
-  const today = dateKey()
-  const target = state.profile!.target
-  const days = lastNDays(n, today).map((key) => {
-    const list = state.entries.filter((e) => e.date === key)
-    return { key, kcal: sumEntries(list).kcal, logged: list.length > 0 }
-  })
-  const logged = days.filter((d) => d.logged)
-  const complete = logged.filter((d) => d.key !== today)
-  const avgPool = complete.length ? complete : logged
-  const avg = avgPool.length ? avgPool.reduce((s, d) => s + d.kcal, 0) / avgPool.length : 0
-  const onTarget = logged.filter((d) => d.kcal <= target).length
+  const goal = state.profile!.dailyGoal
+  const days = lastNDays(n, today).map((key) => ({ key, ...dayView(state, key) }))
+  // Only closed days count toward the total. Today counts once it is closed.
+  const closed = days.filter((d) => d.closed)
+  const total = closed.reduce((s, d) => s + d.balance, 0)
+  const kg = -total / KCAL_PER_KG
   const s = streak(state.entries, today)
   const bars = days.map((d) => ({
     key: d.key,
     label: n === 7 ? parse(d.key).toLocaleDateString('en-GB', { weekday: 'short' }) : String(parse(d.key).getDate()),
-    value: d.kcal,
-    partial: d.key === today,
+    value: d.closed || d.logged ? Math.round(d.balance) : null,
+    open: !d.closed,
   }))
+  const tone = total < 0 ? 'text-over-ink' : 'text-g-ink'
 
   return (
     <>
@@ -43,25 +40,44 @@ export default function History() {
           <Chip on={n === 30} onClick={() => setN(30)}>30 days</Chip>
         </div>
         <Card>
-          <div className="flex justify-between">
-            <div><div className="text-[15px] text-mute">Daily average</div><div className="text-[32px] font-extrabold tracking-tight" data-testid="avg">{logged.length ? fmt(avg) : '–'}</div></div>
-            <div className="text-right"><div className="text-[15px] text-mute">On target</div><div className="text-[32px] font-extrabold tracking-tight text-g-ink" data-testid="on-target">{onTarget}/{n}</div></div>
+          <div className="flex justify-between gap-3">
+            <div>
+              <div className="text-[15px] text-mute">{n === 7 ? 'Week balance' : '30-day balance'}</div>
+              <div className={`text-[30px] font-extrabold leading-tight tracking-tight ${tone}`} data-testid="week-total" data-value={Math.round(total)}>
+                {closed.length ? fmt(Math.abs(total)) : '–'}
+              </div>
+              <div className="text-[13px] text-mute">{closed.length ? `kcal ${total < 0 ? 'surplus' : 'deficit'} · ${closed.length} closed day${closed.length === 1 ? '' : 's'}` : 'No closed days yet'}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[15px] text-mute">Est. change</div>
+              <div className="text-[30px] font-extrabold leading-tight tracking-tight" data-testid="est-change">
+                {closed.length ? `${kg > 0 ? '+' : kg < 0 ? '−' : ''}${Math.abs(round1(kg)).toFixed(1)} kg` : '–'}
+              </div>
+              <div className="text-[13px] text-mute">estimate, 7,700 kcal per kg</div>
+            </div>
           </div>
-          <div className="mt-2"><BarChart bars={bars} target={target} /></div>
-          <p className="mt-1.5 text-center text-xs text-mute">Dashed line is your {fmt(target)} target. Orange means over. Today is faded.</p>
+          <div className="mt-3"><BalanceChart bars={bars} goal={goal} /></div>
+          <p className="mt-1.5 text-center text-xs text-mute">Up is deficit (green), down is surplus (orange). Dashed line is your goal. Open days are faded.</p>
         </Card>
         <Card className="py-1">
-          <ul aria-label="Daily totals" data-testid="day-list">
+          <ul aria-label="Daily balance" data-testid="day-list">
             {[...days].reverse().map((d) => {
-              const over = d.kcal > target
+              const b = Math.round(d.balance)
+              const sur = b < 0
+              const has = d.closed || d.logged
               return (
-                <li key={d.key} className="flex items-center justify-between border-b border-line py-3 last:border-0">
-                  <span className="text-base font-semibold">{d.key === today ? 'Today' : parse(d.key).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                  {d.logged ? (
-                    <span className={over ? 'font-semibold text-over-ink' : ''}>{fmt(d.kcal)} <span className="text-[13px] text-mute">kcal{over ? ' · over' : ''}</span></span>
-                  ) : (
-                    <span className="text-[13px] text-mute">No logs</span>
-                  )}
+                <li key={d.key} data-day={d.key} className="border-b border-line last:border-0">
+                  <Link to={`/day/${d.key}`} className="flex items-center justify-between py-3">
+                    <span>
+                      <span className="block text-base font-semibold">{d.key === today ? 'Today' : parse(d.key).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                      <span className="text-[13px] text-mute">{d.closed ? 'Closed' : has ? 'Open, so far' : 'No logs'}</span>
+                    </span>
+                    {has ? (
+                      <span className={`rounded-full px-3 py-1.5 text-[13px] font-bold ${sur ? 'bg-over-soft text-over-soft-ink' : 'bg-g-soft text-g-soft-ink'}`} data-testid="day-pill">
+                        {b === 0 ? 'Even' : `${sur ? 'Surplus' : 'Deficit'} ${fmt(Math.abs(b))}`}
+                      </span>
+                    ) : <span aria-hidden="true" className="text-mute">›</span>}
+                  </Link>
                 </li>
               )
             })}

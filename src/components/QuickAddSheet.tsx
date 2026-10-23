@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { fmt } from '../lib/calc'
 import { newId, useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
 import { AfterThis, DeleteButton } from './FoodSheet'
@@ -77,7 +78,7 @@ export function QuickAddSheet(props: Props) {
         </div>
         <AfterThis remaining={props.remaining - (valid ? k : 0)} />
         <Button type="submit" disabled={!valid}>
-          {props.mode === 'add' ? `Add ${valid ? k : ''} kcal`.replace('  ', ' ') : 'Save'}
+          {props.mode === 'add' ? `Add ${valid ? fmt(k) + ' ' : ''}kcal` : 'Save'}
         </Button>
         {props.mode === 'edit' && <DeleteButton id={props.entry.id} onDone={props.onDone} />}
       </form>

@@ -6,6 +6,7 @@ import Home from './pages/Home'
 import Log from './pages/Log'
 import Onboarding from './pages/Onboarding'
 import Settings from './pages/Settings'
+import Verdict from './pages/Verdict'
 
 export default function App() {
   const { state } = useStore()
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/log" element={guard(<Log />)} />
         <Route path="/history" element={guard(<History />)} />
         <Route path="/settings" element={guard(<Settings />)} />
+        <Route path="/day/:date" element={guard(<Verdict />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PhoneFrame>

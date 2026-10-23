@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { BodyFields, GoalFields, goalBlurb, GOAL_LABEL, ACTIVITY_SHORT, validBody, type Draft } from '../components/ProfileFields'
 import { Screen } from '../components/Layout'
 import { Button, Card, Dots } from '../components/ui'
-import { computeTarget, fmt } from '../lib/calc'
-import { useStore } from '../lib/store'
+import { calcBmr, computeTarget, defaultDailyGoal, fmt, movementKcal } from '../lib/calc'
+import { normaliseProfile, useStore } from '../lib/store'
 
 export default function Onboarding() {
   const { dispatch } = useStore()
@@ -18,7 +18,10 @@ export default function Onboarding() {
   const targetOk = target >= 800 && target <= 6000
 
   const finish = () => {
-    dispatch({ type: 'setProfile', profile: { ...d, target } })
+    // Daily balance goal comes from the goal; a hand-edited target becomes the matching deficit or surplus.
+    const b = calcBmr(d)
+    const dailyGoal = custom == null ? defaultDailyGoal(d.goal) : b + movementKcal({ bmr: b, activity: d.activity, includeMovement: true }) - target
+    dispatch({ type: 'setProfile', profile: normaliseProfile({ ...d, bmr: b, dailyGoal }) })
     nav('/', { replace: true })
   }
 

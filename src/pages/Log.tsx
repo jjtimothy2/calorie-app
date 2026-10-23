@@ -3,22 +3,24 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { Screen } from '../components/Layout'
-import { Chip } from '../components/ui'
+import { Button, Chip } from '../components/ui'
+import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
-import { dateKey, defaultMeal, entryTotals, fmt, sumEntries } from '../lib/calc'
+import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
 import { entryFromFood, useStore } from '../lib/store'
-import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
+import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
 type Tab = 'recent' | 'fav' | 'all'
 
 export default function Log() {
-  const { state, dispatch, recentFoodIds } = useStore()
+  const { state, dispatch, recentFoodIds, today } = useStore()
   const [params, setParams] = useSearchParams()
   const nav = useNavigate()
   const meal = (MEALS as string[]).includes(params.get('meal') ?? '') ? (params.get('meal') as Meal) : defaultMeal()
-  const today = dateKey()
-  const eaten = sumEntries(state.entries.filter((e) => e.date === today)).kcal
-  const remaining = state.profile!.target - eaten
+  const mode = params.get('mode') === 'exercise' ? 'exercise' : 'food'
+  const day = dayView(state, today)
+  const remaining = day.balance - day.goal
+  const [quickEx, setQuickEx] = useState(false)
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<Tab>(recentFoodIds.length ? 'recent' : 'all')
   const [picked, setPicked] = useState<Food | null>(null)
@@ -31,6 +33,19 @@ export default function Log() {
     window.clearTimeout(timer.current)
     setToast({ entry, text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
     timer.current = window.setTimeout(() => setToast(null), 4000)
+  }
+  const [exToast, setExToast] = useState<ExerciseEntry | null>(null)
+  const showExToast = (e: ExerciseEntry) => {
+    window.clearTimeout(timer.current)
+    setToast(null)
+    setExToast(e)
+    timer.current = window.setTimeout(() => setExToast(null), 4000)
+  }
+  const setMode = (m: 'food' | 'exercise') => {
+    const next = new URLSearchParams(params)
+    if (m === 'exercise') next.set('mode', 'exercise')
+    else next.delete('mode')
+    setParams(next, { replace: true })
   }
 
   const list = useMemo(() => {
@@ -63,19 +78,39 @@ export default function Log() {
       <Screen>
         <header className="flex items-center justify-between gap-2">
           <Link to="/" aria-label="Close and go back to Today" className="grid h-11 w-11 place-items-center text-xl text-mute">✕</Link>
-          <label className="flex items-center gap-1 text-xl font-bold">
-            <span>Add to</span>
-            <select
-              aria-label="Meal"
-              value={meal}
-              onChange={(e) => setParams({ meal: e.target.value }, { replace: true })}
-              className="rounded-lg bg-transparent font-bold text-g-ink"
-            >
-              {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
-            </select>
-          </label>
-          <button type="button" onClick={() => setQuick(true)} className="px-1 py-2 text-[15px] font-bold text-g-ink">Quick add</button>
+          {mode === 'food' ? (
+            <label className="flex items-center gap-1 text-xl font-bold">
+              <span>Add to</span>
+              <select
+                aria-label="Meal"
+                value={meal}
+                onChange={(e) => { const n = new URLSearchParams(params); n.set('meal', e.target.value); setParams(n, { replace: true }) }}
+                className="rounded-lg bg-transparent font-bold text-g-ink"
+              >
+                {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
+              </select>
+            </label>
+          ) : (
+            <h1 className="text-xl font-bold">Log exercise</h1>
+          )}
+          <button type="button" disabled={!!day.closed} onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="px-1 py-2 text-[15px] font-bold text-g-ink disabled:opacity-40">Quick add</button>
         </header>
+        <div className="flex gap-2" role="group" aria-label="What to log">
+          <Chip on={mode === 'food'} onClick={() => setMode('food')}><span aria-hidden="true">🍽 </span>Food</Chip>
+          <Chip on={mode === 'exercise'} onClick={() => setMode('exercise')}><span aria-hidden="true">🏃 </span>Exercise</Chip>
+        </div>
+        {day.closed ? (
+          <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-card p-4 text-center" data-testid="day-locked">
+            <p className="text-base font-semibold">Today is closed: {verdict(day.balance)}.</p>
+            <p className="text-[15px] text-mute">Reopen it to log more.</p>
+            <Button variant="ghost" onClick={() => dispatch({ type: 'reopenDay', date: today })}>Reopen day</Button>
+          </div>
+        ) : mode === 'exercise' ? (
+          <>
+            <ExerciseForm date={today} onSaved={showExToast} onQuickAdd={() => setQuickEx(true)} />
+            <p className="mt-auto text-center text-xs text-mute">From a watch? Use Quick add to type the calories. Estimates are illustrative.</p>
+          </>
+        ) : (<>
         <div className="flex items-center gap-2.5 rounded-2xl border-2 border-line bg-card px-4 py-3 focus-within:border-g-ink">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="text-mute" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input
@@ -116,6 +151,7 @@ export default function Log() {
         <p className="mt-auto text-center text-xs text-mute">
           Tap + to add one serving instantly. Tap the row to change the amount.<br />Food values are illustrative.
         </p>
+        </>)}
       </Screen>
       {toast && (
         <div role="status" className="anim-fade absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
@@ -125,6 +161,18 @@ export default function Log() {
             <button type="button" className="font-bold text-g-soft" onClick={() => nav('/')}>Done</button>
           </span>
         </div>
+      )}
+      {exToast && (
+        <div role="status" className="anim-fade absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
+          <span>Added {exToast.name} · {fmt(exToast.kcal)} kcal burned</span>
+          <span className="flex gap-3">
+            <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteExercise', id: exToast.id }); setExToast(null) }}>Undo</button>
+            <button type="button" className="font-bold text-g-soft" onClick={() => nav('/')}>Done</button>
+          </span>
+        </div>
+      )}
+      {quickEx && (
+        <ExerciseQuickSheet date={today} onClose={() => setQuickEx(false)} onDone={(e) => { setQuickEx(false); if (e) showExToast(e) }} />
       )}
       {picked && (
         <FoodSheet key={picked.id} mode="add" food={picked} meal={meal} date={today} remaining={remaining} onClose={() => setPicked(null)} onDone={(e) => { setPicked(null); showToast(e) }} />

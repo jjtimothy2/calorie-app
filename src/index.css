@@ -15,6 +15,10 @@
   --color-g-soft-ink: #146c3b;
   --color-over: #e5704b;      /* over target only (graphics) */
   --color-over-ink: #c2542f;  /* over target text */
+  --color-over-soft: #fce9e2; /* surplus pill background */
+  --color-over-soft-ink: #a3431f;
+  --color-ex: #5b8def;        /* exercise (graphics) */
+  --color-ex-ink: #2f62c9;    /* exercise text, AA on white and bg */
   --color-protein: #d9628f;
   --color-carbs: #e9b53f;
   --color-fat: #5b8def;
