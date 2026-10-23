@@ -51,7 +51,9 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return
   if (req.mode === 'navigate') {
     // SPA: any route is the app shell. Network first so a new deploy shows up, cached shell when offline.
-    e.respondWith(fetch(req).catch(() => caches.match(SHELL, { cacheName: CACHE, ignoreVary: true })))
+    // GitHub Pages answers deep links with 404.html (the app shell, status 404); serve the cached shell as a clean 200 instead.
+    const shell = () => caches.match(SHELL, { cacheName: CACHE, ignoreVary: true })
+    e.respondWith(fetch(req).then((res) => (res.status === 404 ? shell().then((hit) => hit || res) : res)).catch(shell))
     return
   }
   e.respondWith(caches.match(req, { cacheName: CACHE, ignoreVary: true }).then((hit) => hit || fetch(req)))

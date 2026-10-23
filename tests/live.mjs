@@ -1,0 +1,95 @@
+// Live-site check for GitHub Pages. Usage: node tests/live.mjs [url]
+import { chromium } from 'playwright'
+import assert from 'node:assert/strict'
+const BASE = (process.argv[2] ?? 'https://jjtimothy2.github.io/calorie-app').replace(/\/$/, '')
+const OUT = new URL('../screenshots/', import.meta.url).pathname
+const errors = [], results = []
+const step = async (n, fn) => { try { await fn(); results.push('PASS ' + n) } catch (e) { results.push('FAIL ' + n + ': ' + e.message); console.log(results.join('\n')); console.log(errors); process.exit(1) } }
+const watch = (p) => { p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()} @ ${p.url()}`) }); p.on('pageerror', (e) => errors.push('pageerror: ' + e.message)); p.on('requestfailed', (r) => errors.push('requestfailed: ' + r.url())) }
+const top = (p) => p.evaluate(() => { document.querySelectorAll('main, #root > div > div').forEach((el) => { el.scrollTop = 0 }); window.scrollTo(0, 0) })
+const browser = await chromium.launch()
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, reducedMotion: 'reduce' })
+const page = await ctx.newPage(); watch(page)
+await step('loads, redirects to onboarding, onboard to Home', async () => {
+  const r = await page.goto(BASE + '/'); assert.equal(r.status(), 200)
+  await page.waitForURL('**/calorie-app/onboarding')
+  await page.getByRole('button', { name: 'Female' }).click()
+  await page.fill('input[name=age]', '30'); await page.fill('input[name=heightCm]', '165'); await page.fill('input[name=weightKg]', '68')
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Lose weight' }).click()
+  await page.getByLabel(/Light \(exercise/).check()
+  await page.getByRole('button', { name: 'See my target' }).click()
+  await page.getByRole('button', { name: 'Start logging' }).click()
+  await page.waitForURL(BASE + '/')
+  await page.getByTestId('balance').waitFor()
+})
+await step('load demo week (sample data) via Me > Developer', async () => {
+  await page.getByRole('link', { name: 'Me', exact: true }).click()
+  await page.waitForURL(BASE + '/settings')
+  await page.locator('[data-testid=developer] summary').click()
+  await page.getByRole('button', { name: 'Load demo week' }).click()
+  await page.waitForURL(BASE + '/history')
+})
+await step('manifest and service worker', async () => {
+  const href = await page.evaluate(() => document.querySelector('link[rel=manifest]').href)
+  assert.equal(href, BASE + '/manifest.webmanifest')
+  const m = await (await page.request.get(href)).json()
+  assert.equal(new URL(m.start_url, href).href, BASE + '/')
+  assert.equal(new URL(m.scope, href).href, BASE + '/')
+  for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
+  const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
+  assert.equal(sw, BASE + '/sw.js')
+  await page.reload()
+  assert.equal(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL), BASE + '/sw.js')
+  const cdp = await ctx.newCDPSession(page)
+  const inst = await cdp.send('Page.getInstallabilityErrors')
+  assert.deepEqual(inst.installabilityErrors, [])
+})
+await step('data persists on reload', async () => {
+  const before = await page.evaluate(() => localStorage.getItem('calorie-app:v1'))
+  assert.ok(JSON.parse(before).profile && JSON.parse(before).entries.length > 0)
+  await page.reload()
+  assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v1')), before)
+  await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
+})
+const day = await page.evaluate(() => { const d = new Date(Date.now() - 86400000); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` })
+const routes = [['/', 'balance'], ['/log', null], ['/log?mode=exercise', null], ['/history', 'chart'], ['/nutrition', 'protein-progress'], ['/settings', 'developer'], [`/day/${day}`, 'verdict-number']]
+const cold = []
+await step('cold visit (no SW yet): every route deep-link loads and survives refresh', async () => {
+  const state = await ctx.storageState()
+  const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: state })
+  const p2 = await c2.newPage()
+  p2.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') cold.push(`${m.type()}: ${m.text()} @ ${p2.url()}`) })
+  p2.on('pageerror', (e) => cold.push('pageerror: ' + e.message))
+  for (const [r, tid] of routes) {
+    const res = await p2.goto(BASE + r)
+    assert.ok([200, 404].includes(res.status()), r + ' ' + res.status()) // GitHub Pages serves 404.html (the app shell) for deep links
+    await p2.waitForURL(BASE + r)
+    if (tid) await p2.getByTestId(tid).waitFor({ timeout: 10000 })
+    await p2.reload(); await p2.waitForURL(BASE + r)
+    if (tid) await p2.getByTestId(tid).waitFor({ timeout: 10000 })
+    results.push(`  ${r} -> HTTP ${res.status()}, rendered`)
+  }
+  await c2.close()
+  results.push(`  cold console: ${cold.length} (${cold.filter((e) => !/status of 404/.test(e)).length} other than GitHub Pages' 404 status on deep links)`)
+  assert.deepEqual(cold.filter((e) => !/status of 404/.test(e)), [])
+})
+await step('installed/returning (SW controls): every route deep-link + refresh, zero console errors', async () => {
+  for (const [r, tid] of routes) {
+    const res = await page.goto(BASE + r)
+    assert.equal(res.status(), 200, r)
+    if (tid) await page.getByTestId(tid).waitFor({ timeout: 10000 })
+    await page.reload(); if (tid) await page.getByTestId(tid).waitFor({ timeout: 10000 })
+  }
+})
+await step('mobile screenshot', async () => { await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor(); await page.waitForTimeout(500); await top(page); await page.screenshot({ path: OUT + 'live-mobile.png' }) })
+await step('desktop screenshot', async () => {
+  const d = await browser.newContext({ viewport: { width: 1440, height: 900 }, storageState: await ctx.storageState(), reducedMotion: 'reduce' })
+  const dp = await d.newPage(); watch(dp)
+  await dp.goto(BASE + '/'); await dp.getByTestId('balance').waitFor(); await dp.waitForTimeout(500); await top(dp)
+  await dp.screenshot({ path: OUT + 'live-desktop.png' }); await d.close()
+})
+if (errors.length) results.push(...errors.map((e) => '  ' + e))
+await step('no console errors or warnings (onboarding, demo data, SW-controlled routes, screenshots)', async () => assert.deepEqual(errors, []))
+console.log(results.join('\n'))
+await browser.close()
