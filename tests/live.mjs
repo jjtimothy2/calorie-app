@@ -82,6 +82,18 @@ await step('installed/returning (SW controls): every route deep-link + refresh, 
     await page.reload(); if (tid) await page.getByTestId(tid).waitFor({ timeout: 10000 })
   }
 })
+await step('sample meals and exercise for today', async () => {
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('calorie-app:v1'))
+    const p = (n) => String(n).padStart(2, '0'); const d = new Date(); const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; const t = Date.now()
+    const e = (id, meal, name, servingLabel, kcal, protein, carbs, fat) => ({ id, date, meal, foodId: null, name, servingLabel, servingMult: 1, qty: 1, kcal, protein, carbs, fat, createdAt: t })
+    s.entries.push(e('live1', 'breakfast', 'Greek yoghurt with berries', '1 bowl', 260, 20, 30, 6), e('live2', 'lunch', 'Chicken rice', '1 plate', 610, 38, 72, 16), e('live3', 'snack', 'Banana', '1 medium', 105, 1, 27, 0))
+    s.exercises.push({ id: 'livex', date, activityId: null, name: 'Badminton', minutes: 45, intensity: 'moderate', kcal: 330, createdAt: t })
+    localStorage.setItem('calorie-app:v1', JSON.stringify(s))
+  })
+  await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
+  await page.getByText('Chicken rice').first().waitFor()
+})
 await step('mobile screenshot', async () => { await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor(); await page.waitForTimeout(500); await top(page); await page.screenshot({ path: OUT + 'live-mobile.png' }) })
 await step('desktop screenshot', async () => {
   const d = await browser.newContext({ viewport: { width: 1440, height: 900 }, storageState: await ctx.storageState(), reducedMotion: 'reduce' })
