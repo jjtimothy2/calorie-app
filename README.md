@@ -8,7 +8,7 @@ Vite + React + TypeScript + Tailwind v4 + React Router. All data in localStorage
 - `npm run dev` (dev server) or `npm run build && npx vite preview --port 4174`
 - `npm run test:unit`, `npm run test:e2e` (e2e needs the preview server on :4174; writes screenshots to `screenshots/`)
 - `node tests/compare.mjs v2 home-protein,nutrition,history-protein` builds a mockup vs build sheet
-- `npm run build:single` writes one self-contained HTML file (hash routing) to `dist-single/calorie-app-prototype-v2.html`
+- `npm run build:single` writes one self-contained HTML file (hash routing) to `dist-single/calorie-app-prototype-v2.html`; `npm run test:single` checks it from file:// (routes, reload persistence, console)
 
 ## v1 Daily balance
 - Balance = BMR + daily movement + exercise - food. Positive is a deficit (green), negative a surplus (orange).

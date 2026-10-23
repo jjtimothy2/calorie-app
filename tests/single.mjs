@@ -1,0 +1,76 @@
+// Checks the single-file build from file://: onboarding, v1 balance, v2 protein, hash routes, persistence across reload.
+// Usage: npm run build:single && node tests/single.mjs
+import { chromium } from 'playwright'
+import assert from 'node:assert/strict'
+import { resolve } from 'node:path'
+
+const FILE = 'file://' + resolve('dist-single/calorie-app-prototype-v2.html')
+const errors = []
+const results = []
+const step = async (name, fn) => {
+  const t = Date.now()
+  try { await fn(); results.push(`PASS ${name} (${Date.now() - t} ms)`) } catch (e) { results.push(`FAIL ${name}: ${e.message}`); throw e }
+}
+const num = async (loc) => Number((await loc.innerText()).replace(/[^0-9]/g, ''))
+const browser = await chromium.launch()
+try {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  const page = await ctx.newPage()
+  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`) })
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('requestfailed', (r) => errors.push(`requestfailed: ${r.url()}`))
+  page.on('dialog', (d) => d.accept())
+
+  await step('loads from file:// and routes with the hash', async () => {
+    await page.goto(FILE)
+    await page.waitForURL('**#/onboarding')
+    await page.getByRole('button', { name: 'Female' }).click()
+    await page.fill('input[name=age]', '30')
+    await page.fill('input[name=heightCm]', '165')
+    await page.fill('input[name=weightKg]', '68')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Lose weight' }).click()
+    await page.getByLabel(/Light \(exercise/).check()
+    await page.getByRole('button', { name: 'See my target' }).click()
+    await page.getByRole('button', { name: 'Start logging' }).click()
+    await page.waitForURL('**#/')
+    assert.equal(await num(page.getByTestId('eq-bmr')), 1400)
+  })
+  await step('v2: 110 g target, 75 g logged', async () => {
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
+    await page.waitForURL('**#/settings')
+    await page.fill('input[name=macro-protein]', '110')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await page.getByText('Saved.').waitFor()
+    await page.getByRole('link', { name: 'Today', exact: true }).click()
+    await page.getByRole('link', { name: 'Add to Lunch' }).click()
+    await page.getByRole('button', { name: 'Quick add', exact: true }).click()
+    const dlg = page.getByRole('dialog')
+    await dlg.locator('input[name=kcal]').fill('700')
+    await dlg.locator('input[name=name]').fill('Chicken rice')
+    await dlg.getByLabel('Protein').fill('75')
+    await dlg.getByRole('button', { name: 'Add 700 kcal' }).click()
+    await page.getByRole('link', { name: /Close and go back/ }).click()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
+  })
+  await step('data persists across reload, deep hash links work', async () => {
+    await page.reload()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
+    await page.goto(FILE + '#/nutrition')
+    assert.equal(await page.getByTestId('protein-progress').innerText(), '75 of 110 g')
+    await page.reload()
+    assert.equal(await page.getByTestId('protein-progress').innerText(), '75 of 110 g')
+    await page.goto(FILE + '#/settings')
+    await page.getByRole('button', { name: 'Load demo week' }).click()
+    await page.goto(FILE + '#/history')
+    assert.ok((await page.locator('[data-bar]').count()) >= 7)
+    await page.getByRole('button', { name: 'Protein' }).click()
+    assert.match(await page.getByTestId('protein-hit').innerText(), /^\d \/ 7$/)
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v1')))
+    assert.equal(stored.profile.macros.protein, 110)
+  })
+  await step('no console errors, warnings or failed requests', async () => { assert.deepEqual(errors, []) })
+} finally {
+  console.log(results.join('\n'))
+  await browser.close()
+}
