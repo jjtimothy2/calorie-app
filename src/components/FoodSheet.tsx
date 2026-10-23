@@ -106,7 +106,7 @@ export function AfterThis({ remaining }: { remaining: number }) {
   return (
     <div className="flex justify-between text-base">
       <span className="text-mute">After this</span>
-      <b className={over ? 'text-over-ink' : ''}>{fmt(Math.abs(remaining))} kcal {over ? 'over' : 'left'}</b>
+      <b>{fmt(Math.abs(remaining))} kcal {over ? 'past your goal' : 'left'}</b>
     </div>
   )
 }

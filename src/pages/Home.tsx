@@ -3,11 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BalanceRing, Equation } from '../components/BalanceRing'
 import { ExerciseEditSheet, ExerciseQuickSheet, exerciseLine } from '../components/ExerciseForm'
 import { FoodSheet } from '../components/FoodSheet'
-import { MacroCard } from '../components/MacroCard'
+import { ProteinCard } from '../components/ProteinCard'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
-import { dayView, entryTotals, fmt, goalMessage, streak, sumEntries, verdict } from '../lib/calc'
+import { dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
 import { useStore } from '../lib/store'
@@ -43,9 +43,6 @@ export default function Home() {
             <span className="rounded-full border border-line bg-card px-3.5 py-2.5 text-[15px] font-semibold" data-testid="streak">
               <span aria-hidden="true">🔥 </span>{s} {s === 1 ? 'day' : 'days'}<span className="sr-only"> streak</span>
             </span>
-            <Link to="/settings" aria-label="Settings" className="grid h-11 w-11 place-items-center rounded-full border border-line bg-card text-mute">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
-            </Link>
           </div>
         </header>
         <Card>
@@ -59,7 +56,7 @@ export default function Home() {
           <Equation bmr={day.bmr} movement={day.movement} burned={burned} eaten={day.eaten} balance={day.balance} />
           <p className="mt-2.5 text-center text-[15px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
         </Card>
-        <MacroCard totals={totals} target={profile.target} />
+        <ProteinCard totals={totals} targets={macroTargets(profile)} />
         <Card>
           <section aria-label="Exercise" data-testid="exercise-card">
             <div className="flex items-center justify-between">

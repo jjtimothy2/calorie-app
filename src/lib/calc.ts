@@ -93,12 +93,18 @@ export function defaultMeal(hour = new Date().getHours()) {
 
 export const round1 = (n: number) => Math.round(n * 10) / 10
 
-/** Simple macro split for display: 25% protein, 45% carbs, 30% fat. */
-export function macroTargets(target: number) {
+export const PROTEIN_PER_KG = 1.6
+export const CARB_SHARE = 0.6 // of the calories left after protein; fat gets the rest
+
+/** Macro targets with user overrides applied. Overriding protein re-splits the default carbs and fat. */
+export function macroTargets(p: Profile) {
+  const budget = foodBudget(p)
+  const protein = p.macros.protein ?? Math.round(PROTEIN_PER_KG * p.weightKg)
+  const rest = Math.max(0, budget - protein * 4)
   return {
-    protein: Math.round((target * 0.25) / 4),
-    carbs: Math.round((target * 0.45) / 4),
-    fat: Math.round((target * 0.3) / 9),
+    protein,
+    carbs: p.macros.carbs ?? Math.round((rest * CARB_SHARE) / 4),
+    fat: p.macros.fat ?? Math.round((rest * (1 - CARB_SHARE)) / 9),
   }
 }
 

@@ -7,6 +7,7 @@ import Log from './pages/Log'
 import Onboarding from './pages/Onboarding'
 import Settings from './pages/Settings'
 import Verdict from './pages/Verdict'
+import Nutrition from './pages/Nutrition'
 
 export default function App() {
   const { state } = useStore()
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/history" element={guard(<History />)} />
         <Route path="/settings" element={guard(<Settings />)} />
         <Route path="/day/:date" element={guard(<Verdict />)} />
+        <Route path="/nutrition" element={guard(<Nutrition />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PhoneFrame>

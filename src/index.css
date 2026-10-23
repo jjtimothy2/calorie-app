@@ -19,7 +19,11 @@
   --color-over-soft-ink: #a3431f;
   --color-ex: #5b8def;        /* exercise (graphics) */
   --color-ex-ink: #2f62c9;    /* exercise text, AA on white and bg */
-  --color-protein: #d9628f;
+  --color-protein: #d9467a;    /* protein (graphics), pink everywhere */
+  --color-protein-ink: #c2336a; /* protein text, AA on white and bg */
+  --color-protein-soft: #fbe6ee;
+  --color-protein-line: #d9467a33;
+  --color-danger: #b42318;     /* destructive actions (orange is reserved for surplus) */
   --color-carbs: #e9b53f;
   --color-fat: #5b8def;
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { BodyFields, GoalFields, validBody, type Draft } from '../components/ProfileFields'
-import { Screen } from '../components/Layout'
+import { Screen, TabBar } from '../components/Layout'
 import { Button, Card, Chip } from '../components/ui'
-import { calcBmr, defaultDailyGoal, fmt, foodBudget, movementKcal } from '../lib/calc'
+import { calcBmr, defaultDailyGoal, fmt, foodBudget, macroTargets, movementKcal, PROTEIN_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
 
 type Dir = 'deficit' | 'even' | 'surplus'
@@ -20,6 +20,7 @@ export default function Settings() {
   const [dir, setDir] = useState<Dir>(p.dailyGoal > 0 ? 'deficit' : p.dailyGoal < 0 ? 'surplus' : 'even')
   const [amount, setAmount] = useState(Math.abs(p.dailyGoal) || 500)
   const [msg, setMsg] = useState('')
+  const [mac, setMac] = useState({ protein: p.macros.protein?.toString() ?? '', carbs: p.macros.carbs?.toString() ?? '', fat: p.macros.fat?.toString() ?? '' })
   const calculated = validBody(d) ? calcBmr(d) : 0
 
   // Body changes (weight, height, age, sex) recalculate BMR. Goal changes reset the daily goal.
@@ -36,19 +37,36 @@ export default function Settings() {
   const dailyGoal = dir === 'even' ? 0 : dir === 'deficit' ? amount : -amount
   const movement = movementKcal({ bmr, activity: d.activity, includeMovement })
   const budget = foodBudget({ bmr, activity: d.activity, includeMovement, dailyGoal })
-  const ok = validBody(d) && bmr >= 800 && bmr <= 4000 && (dir === 'even' || (amount > 0 && amount <= 1500))
+  const toG = (v: string) => (v.trim() === '' ? null : Math.round(Number(v)))
+  const macros = { protein: toG(mac.protein), carbs: toG(mac.carbs), fat: toG(mac.fat) }
+  const macOk = Object.values(macros).every((v) => v == null || (Number.isFinite(v) && v > 0 && v < 1000))
+  const draftProfile = { ...p, ...d, bmr, bmrCustom, includeMovement, dailyGoal, target: budget }
+  const auto = macroTargets({ ...draftProfile, macros: { protein: macros.protein, carbs: null, fat: null } })
+  const autoProtein = Math.round(PROTEIN_PER_KG * d.weightKg)
+  const ok = validBody(d) && bmr >= 800 && bmr <= 4000 && (dir === 'even' || (amount > 0 && amount <= 1500)) && macOk
 
   const save = () => {
     if (!ok) return
-    dispatch({ type: 'setProfile', profile: { ...p, ...d, bmr, bmrCustom, includeMovement, dailyGoal, target: budget } })
+    dispatch({ type: 'setProfile', profile: { ...draftProfile, macros } })
     setMsg('Saved.')
   }
 
+  const macroRow = (k: 'protein' | 'carbs' | 'fat', label: string, hint: string) => (
+    <label className="flex items-center justify-between gap-3 text-base font-semibold">
+      <span>
+        {label} (g)
+        <span className="block text-[13px] font-normal text-mute">{mac[k] ? 'Custom' : `Auto: ${hint}`}</span>
+      </span>
+      <input type="number" name={`macro-${k}`} inputMode="numeric" min={1} max={999} placeholder={String(auto[k])} value={mac[k]} onChange={(e) => setMac({ ...mac, [k]: e.target.value })} className={numInput} />
+    </label>
+  )
+
   return (
+    <>
     <Screen>
-      <header className="flex items-center gap-2">
-        <Link to="/" aria-label="Back to Today" className="grid h-11 w-11 place-items-center text-xl text-mute">←</Link>
-        <h1 className="text-[28px] font-bold tracking-tight">Settings</h1>
+      <header>
+        <h1 className="text-[28px] font-bold tracking-tight">Me</h1>
+        <p className="text-[15px] text-mute">Your body, goal and daily targets.</p>
       </header>
       <form className="flex flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); save() }}>
         <BodyFields d={d} set={setD} />
@@ -89,6 +107,16 @@ export default function Settings() {
             BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''} means you can eat about <b className="text-ink">{fmt(budget)} kcal</b> on a rest day, plus whatever you burn exercising.
           </p>
         </Card>
+        <Card className="flex flex-col gap-3">
+          <h2 className="text-[17px] font-bold">Macro targets</h2>
+          {macroRow('protein', 'Protein', `${autoProtein} g (${PROTEIN_PER_KG} g per kg)`)}
+          {macroRow('carbs', 'Carbs', `${auto.carbs} g`)}
+          {macroRow('fat', 'Fat', `${auto.fat} g`)}
+          <div className="flex items-center justify-between border-t border-line pt-3 text-[13px] text-mute">
+            <span>Carbs and fat split the food budget left after protein (60/40 by calories). Leave a box empty for auto.</span>
+            <button type="button" className="shrink-0 px-1 font-bold text-g-ink" onClick={() => setMac({ protein: '', carbs: '', fat: '' })}>Use auto</button>
+          </div>
+        </Card>
         <Button type="submit" disabled={!ok}>Save changes</Button>
         <p role="status" className="text-center text-[15px] text-g-ink">{msg}</p>
       </form>
@@ -98,7 +126,9 @@ export default function Settings() {
         <Button variant="ghost" onClick={() => { dispatch({ type: 'loadDemoWeek' }); nav('/history') }}>Load demo week</Button>
         <Button variant="danger" onClick={() => { if (confirm('Delete all data on this device?')) { dispatch({ type: 'reset' }); nav('/onboarding', { replace: true }) } }}>Reset all data</Button>
       </Card>
-      <p className="text-center text-xs text-mute">Prototype v1. Everything is stored on this device only. Food and exercise values are illustrative.</p>
+      <p className="text-center text-xs text-mute">Prototype v2. Everything is stored on this device only. Food and exercise values are illustrative.</p>
     </Screen>
+    <TabBar />
+    </>
   )
 }

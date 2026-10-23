@@ -20,7 +20,6 @@ const num = async (loc) => Number((await loc.innerText()).replace(/[^0-9]/g, '')
 const color = (loc) => loc.evaluate((el) => getComputedStyle(el).color)
 const GREEN = 'rgb(23, 128, 70)'
 const ORANGE = 'rgb(194, 84, 47)'
-const PINK = process.env.PINK ?? null
 const pad = (n) => String(n).padStart(2, '0')
 const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const TODAY = key(new Date())
@@ -56,7 +55,7 @@ try {
     assert.equal(await num(page.getByTestId('balance')), 1925)
   })
   await step('settings: weight change recalculates BMR, custom BMR, movement toggle', async () => {
-    await page.getByRole('link', { name: 'Settings' }).click()
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
     await page.fill('input[name=weightKg]', '70')
     assert.equal(await page.inputValue('input[name=bmr]'), '1420')
     await page.fill('input[name=weightKg]', '68')
@@ -66,7 +65,7 @@ try {
     assert.match(await page.getByTestId('budget-line').innerText(), /1,100 kcal/) // 1600 - 500 goal
     await page.getByRole('button', { name: 'Save changes' }).click()
     await page.getByText('Saved.').waitFor()
-    await page.getByRole('link', { name: 'Back to Today' }).click()
+    await goHome()
     assert.equal(await num(page.getByTestId('eq-bmr')), 1600)
     assert.equal(await page.getByTestId('eq-movement').count(), 0)
   })
@@ -197,8 +196,7 @@ try {
     assert.equal(await todayRow.getByTestId('day-pill').innerText(), 'Deficit 500')
   })
   await step('demo week: up/down bars, weekly total and weight estimate', async () => {
-    await goHome()
-    await page.getByRole('link', { name: 'Settings' }).click()
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
     await page.getByRole('button', { name: 'Load demo week' }).click()
     await page.waitForURL('**/history')
     const bars = await page.locator('[data-bar]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), k: e.getAttribute('data-kind') })))
@@ -247,6 +245,82 @@ try {
     const tag = await page.evaluate(() => document.activeElement?.tagName)
     assert.ok(['A', 'BUTTON'].includes(tag), 'focused ' + tag)
   })
+  // ---------- v2 macros ----------
+  const PINK = 'rgb(194, 51, 106)'
+  const addOne = async (q, name) => {
+    await page.getByLabel('Search foods').fill(q)
+    await page.getByRole('button', { name: new RegExp('Add one serving of ' + name) }).click()
+    await page.getByTestId('toast').waitFor()
+  }
+  await step('v2: default protein 1.6 g/kg, carbs and fat split the rest', async () => {
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
+    assert.equal(await page.locator('input[name=macro-protein]').getAttribute('placeholder'), '109') // 68 kg x 1.6 = 108.8
+    // budget 1,100 - 109 x 4 = 664 kcal -> carbs 60% / 4 = 100 g, fat 40% / 9 = 30 g
+    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '100')
+    assert.equal(await page.locator('input[name=macro-fat]').getAttribute('placeholder'), '30')
+    await goHome()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '109 g left')
+  })
+  await step('v2 acceptance: 110 g target, 75 g logged -> 35 g left and 75 of 110 g', async () => {
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
+    await page.fill('input[name=macro-protein]', '110')
+    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '99') // re-split after protein
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await page.getByText('Saved.').waitFor()
+    await goHome()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '110 g left')
+    await page.getByRole('link', { name: 'Add to Dinner' }).click()
+    await addOne('ayam bakar', 'Ayam bakar') // 27 g
+    await addOne('tempe', 'Tempe goreng') // 5 g
+    await addOne('tempe', 'Tempe goreng') // 5 g
+    await addOne('boiled egg', 'Boiled egg') // 6 g
+    await page.getByRole('link', { name: /Close and go back/ }).click()
+    await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
+    const dlg = page.getByRole('dialog')
+    await dlg.getByLabel('Protein').fill('32')
+    await dlg.getByLabel('Carbs').fill('60')
+    await dlg.getByLabel('Fat').fill('12')
+    await dlg.getByRole('button', { name: 'Save' }).click()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
+    assert.equal(await color(page.getByTestId('protein-left')), PINK)
+    await top(page)
+    await page.screenshot({ path: OUT + 'v2-mobile-home-protein.png' })
+    await page.getByTestId('protein-card').click()
+    await page.waitForURL('**/nutrition')
+    assert.equal(await page.getByTestId('protein-progress').innerText(), '75 of 110 g')
+    assert.match(await page.locator('main').innerText(), /35 g to go/)
+    const src = await page.getByTestId('protein-sources').locator('li').allInnerTexts()
+    assert.match(src[0], /Big lunch\s+32 g/)
+    assert.match(src[1], /Ayam bakar, 1 thigh\s+27 g/)
+    assert.ok(src.some((t) => /Tempe goreng, 2 pieces\s+10 g/.test(t)), src.join('|'))
+    assert.equal(await color(page.getByTestId('protein-sources').locator('b').first()), PINK)
+    await page.screenshot({ path: OUT + 'v2-mobile-nutrition.png' })
+    await page.getByRole('button', { name: 'This week' }).click()
+    assert.match(await page.getByTestId('protein-progress').innerText(), /of 110 g/)
+    await page.reload()
+    assert.equal(await page.getByTestId('protein-progress').innerText(), '75 of 110 g')
+  })
+  await step('v2: History protein view, target line, X of 7 days, daily average', async () => {
+    await page.getByRole('link', { name: 'History', exact: true }).click()
+    await page.getByRole('button', { name: 'Protein' }).click()
+    const bars = await page.locator('[data-pbar]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), hit: e.getAttribute('data-hit') })))
+    assert.equal(bars.length, 7)
+    assert.equal(bars[6].v, 75)
+    const hits = bars.filter((b) => b.hit === 'yes').length
+    assert.equal(bars.filter((b) => b.v >= 110).length, hits)
+    assert.ok(hits >= 1 && hits <= 6, 'demo week should mix hit and missed days')
+    assert.equal(await page.getByTestId('protein-hit').innerText(), `${hits} / 7`)
+    const avg = Math.round(bars.reduce((s, b) => s + b.v, 0) / 7)
+    assert.ok(Math.abs(Number((await page.getByTestId('protein-avg').innerText()).replace(/\D/g, '')) - avg) <= 1)
+    assert.equal(await color(page.getByTestId('protein-hit')), PINK)
+    await page.screenshot({ path: OUT + 'v2-mobile-history-protein.png' })
+    await page.getByRole('button', { name: 'Balance' }).click()
+    await page.getByTestId('chart').waitFor()
+  })
+  await step('v2: orange only means surplus (no orange outside surplus)', async () => {
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
+    assert.notEqual(await color(page.getByRole('button', { name: 'Reset all data' })), ORANGE)
+  })
   const storage = await ctx.storageState()
 
   // ---------- Desktop 1440 (phone frame) ----------
@@ -267,6 +341,18 @@ try {
     await dp.goto(BASE + '/history')
     await dp.getByTestId('chart').waitFor()
     await dp.screenshot({ path: OUT + 'v1-desktop-history.png' })
+  })
+  await step('desktop v2 screenshots in phone frame', async () => {
+    await dp.goto(BASE + '/')
+    await dp.getByTestId('protein-card').waitFor()
+    await dp.screenshot({ path: OUT + 'v2-desktop-home-protein.png' })
+    await dp.goto(BASE + '/nutrition')
+    await dp.getByTestId('protein-progress').waitFor()
+    await dp.screenshot({ path: OUT + 'v2-desktop-nutrition.png' })
+    await dp.goto(BASE + '/history')
+    await dp.getByRole('button', { name: 'Protein' }).click()
+    await dp.getByTestId('protein-chart').waitFor()
+    await dp.screenshot({ path: OUT + 'v2-desktop-history-protein.png' })
   })
   await step('no console errors or warnings', async () => {
     assert.deepEqual(errors, [])

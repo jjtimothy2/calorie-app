@@ -27,24 +27,32 @@ function Ico({ d }: { d: string }) {
 export function TabBar() {
   const nav = useNavigate()
   const tab = ({ isActive }: { isActive: boolean }) =>
-    `flex flex-col items-center gap-1 px-4 py-1 ${isActive ? 'font-bold text-g-ink' : 'text-mute'}`
+    `flex min-w-[60px] flex-col items-center gap-1 px-1 py-1 ${isActive ? 'font-bold text-g-ink' : 'text-mute'}`
   return (
-    <nav aria-label="Main" className="flex h-[78px] shrink-0 items-center justify-around border-t border-line bg-card pb-3.5 text-xs">
+    <nav aria-label="Main" className="flex h-[78px] shrink-0 items-center justify-around border-t border-line bg-card px-1 pb-3.5 text-xs">
       <NavLink to="/" end className={tab}>
         <Ico d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
         Today
+      </NavLink>
+      <NavLink to="/nutrition" className={tab}>
+        <Ico d="M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 5V2M12 13l3-3" />
+        Nutrition
       </NavLink>
       <button
         type="button"
         aria-label="Log food"
         onClick={() => nav('/log')}
-        className="-mt-6 grid h-14 w-14 place-items-center rounded-full bg-g-ink text-3xl text-white shadow-[0_6px_16px_rgba(31,157,85,.4)]"
+        className="-mt-6 grid h-14 w-14 shrink-0 place-items-center rounded-full bg-g-ink text-3xl text-white shadow-[0_6px_16px_rgba(31,157,85,.4)]"
       >
         +
       </button>
       <NavLink to="/history" className={tab}>
         <Ico d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
         History
+      </NavLink>
+      <NavLink to="/settings" className={tab}>
+        <Ico d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" />
+        Me
       </NavLink>
     </nav>
   )

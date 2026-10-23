@@ -120,12 +120,22 @@ function demoWeek(state: State, dayKcal: number[]): Entry[] {
     [['nasi-uduk', 'breakfast', 1], ['bakso-meatball-soup', 'lunch', 1], ['tempe-goreng', 'dinner', 3], ['nasi-putih-white-rice', 'dinner', 1]],
     [['greek-yogurt-plain', 'breakfast', 1], ['caesar-salad-with-chicken', 'lunch', 1], ['rendang-daging', 'dinner', 1], ['nasi-putih-white-rice', 'dinner', 1], ['almonds', 'snacks', 1]],
   ]
+  // Protein-forward extras at a fixed serving, so some demo days hit the protein target.
+  const extras: [string, 'breakfast' | 'lunch' | 'dinner' | 'snacks'][][] = [
+    [['chicken-breast-grilled', 'lunch'], ['whey-protein-shake', 'snacks']], [], [['whey-protein-shake', 'snacks'], ['chicken-breast-grilled', 'lunch'], ['tuna-canned-in-water', 'dinner']],
+    [['chicken-breast-grilled', 'dinner'], ['whey-protein-shake', 'snacks'], ['tuna-canned-in-water', 'lunch']], [], [['whey-protein-shake', 'snacks']],
+  ]
   const out: Entry[] = []
   plan.forEach((day, i) => {
     const date = addDays(today, i - 6)
     const items = day.filter(([id]) => FOOD_BY_ID.has(id))
+    const fixed = extras[i].filter(([id]) => FOOD_BY_ID.has(id))
+    const fixedKcal = fixed.reduce((s, [id]) => s + FOOD_BY_ID.get(id)!.kcal, 0)
+    fixed.forEach(([foodId, meal], j) => {
+      out.push({ ...entryFromFood(foodId, { meal, date, qty: 1 }), createdAt: Date.now() - (6 - i) * 86400000 + 50 + j })
+    })
     const base = items.reduce((s, [id, , q]) => s + FOOD_BY_ID.get(id)!.kcal * q, 0)
-    const scale = dayKcal[i] / base
+    const scale = Math.max(0.2, dayKcal[i] - fixedKcal) / base
     items.forEach(([foodId, meal, qty], j) => {
       const q = Math.max(0.5, Math.round(qty * scale * 2) / 2)
       out.push({ ...entryFromFood(foodId, { meal, date, qty: q }), createdAt: Date.now() - (6 - i) * 86400000 + j })

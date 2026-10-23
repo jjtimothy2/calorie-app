@@ -11,7 +11,7 @@ export function Button({ variant = 'primary', className = '', ...rest }: BtnProp
       ? 'bg-g-ink text-white'
       : variant === 'ghost'
         ? 'bg-g-soft text-g-soft-ink'
-        : 'bg-card text-over-ink border border-line'
+        : 'bg-card text-danger border border-line'
   return (
     <button
       type="button"
