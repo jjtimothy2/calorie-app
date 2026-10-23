@@ -1,4 +1,4 @@
-// Illustrative data: approximate values per typical serving, for prototype use only.
+// Illustrative data: approximate values per typical serving, not medical advice.
 export type Serving = { label: string; mult: number }
 export type Food = {
   id: string

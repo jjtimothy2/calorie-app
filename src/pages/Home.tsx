@@ -11,6 +11,7 @@ import { dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntrie
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
 import { useStore } from '../lib/store'
+import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry } from '../lib/types'
 
 export default function Home() {
@@ -30,6 +31,8 @@ export default function Home() {
   const left = day.balance - day.goal
   const remainingExcl = (e: Entry) => left + entryTotals(e).kcal
   const burned = day.burned
+  const [remind, setRemind] = useState(() => shouldRemind(state, readMeta()))
+  const dismiss = () => { writeMeta({ dismissedAt: Date.now() }); setRemind(false) }
 
   return (
     <>
@@ -45,6 +48,12 @@ export default function Home() {
             </span>
           </div>
         </header>
+        {remind && (
+          <div role="note" className="flex items-center gap-3 rounded-2xl bg-g-soft px-4 py-3 text-[15px] text-g-soft-ink" data-testid="backup-reminder">
+            <span className="flex-1">No backup for a week. Your data lives only on this device. <Link to="/settings" className="font-bold underline">Back up now</Link></span>
+            <button type="button" onClick={dismiss} aria-label="Dismiss backup reminder" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl font-bold">×</button>
+          </div>
+        )}
         <Card>
           {closed && (
             <div className="mb-1 flex items-center justify-between">

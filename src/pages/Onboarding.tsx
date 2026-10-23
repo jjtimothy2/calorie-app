@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { BodyFields, GoalFields, goalBlurb, GOAL_LABEL, ACTIVITY_SHORT, validBody, type Draft } from '../components/ProfileFields'
 import { Screen } from '../components/Layout'
 import { Button, Card, Dots } from '../components/ui'
+import { RestoreLink } from '../components/Backup'
 import { calcBmr, computeTarget, defaultDailyGoal, fmt, movementKcal } from '../lib/calc'
 import { normaliseProfile, useStore } from '../lib/store'
 
@@ -35,6 +36,7 @@ export default function Onboarding() {
           <BodyFields d={d} set={setD} />
           <div className="flex-1" />
           <Button type="submit" disabled={!validBody(d)}>Next</Button>
+          <RestoreLink />
         </form>
       )}
       {step === 1 && (

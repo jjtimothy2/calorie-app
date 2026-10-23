@@ -1,14 +1,33 @@
-# Calorie counter prototype v2
+# Calorie counter
 
-Mobile-first web prototype. v0 food logging, v1 daily balance (BMR + exercise - food), v2 macros with a protein focus.
+Mobile-first personal web app (installable PWA, data stays on the device). v0 food logging, v1 daily balance (BMR + exercise - food), v2 macros with a protein focus.
 Mockups: `/workspace/proto-bot/builds/calorie-v0`, `calorie-v1`, `calorie-v2`.
 Vite + React + TypeScript + Tailwind v4 + React Router. All data in localStorage (`calorie-app:v1`). Food and MET values are illustrative.
 
 - `npm install`
 - `npm run dev` (dev server) or `npm run build && npx vite preview --port 4174`
-- `npm run test:unit`, `npm run test:e2e` (e2e needs the preview server on :4174; writes screenshots to `screenshots/`)
+- `npm run test:unit`, `npm run test:e2e`, `npm run test:pwa` (e2e and pwa need the preview server on :4174; screenshots go to `screenshots/`)
 - `node tests/compare.mjs v2 home-protein,nutrition,history-protein` builds a mockup vs build sheet
-- `npm run build:single` writes one self-contained HTML file (hash routing) to `dist-single/calorie-app-prototype-v2.html`; `npm run test:single` checks it from file:// (routes, reload persistence, console)
+- `npm run build:single` writes one self-contained HTML file (hash routing) to `dist-single/calorie-app-prototype-v2.html`; `npm run test:single` checks it from file:// (routes, reload persistence, console). No PWA bits in this build.
+
+## Deploy (static hosting)
+
+`npm run build` produces `dist/`, a plain static site. Any static host works; nothing server-side, no accounts in the app.
+- Vercel: `vercel.json` (build `npm run build`, output `dist`, SPA rewrite to `index.html`, no-cache for `sw.js`).
+- Netlify: `netlify.toml` plus `public/_redirects` (`/* /index.html 200`) and `public/_headers` (copied into `dist/`).
+- Elsewhere: serve `dist/` and send unknown paths to `/index.html` (BrowserRouter). Serve at the domain root (manifest, SW and icons use `/` paths). HTTPS is required for install and offline.
+
+## PWA
+
+- `public/manifest.webmanifest`: "Calorie counter" / "Calories", standalone, portrait, theme `#f7f5f0`.
+- Icons: `npm run icons` renders `public/icons/*.png` (192, 512, maskable 192/512, apple-touch 180) and `favicon.svg` from one SVG mark in `scripts/icons.mjs`.
+- Service worker: `scripts/sw-plugin.ts` writes `dist/sw.js` after each build, precaching every built file under a content-hashed cache name. Navigations are network first with the cached shell as offline fallback; assets are cache first. Old caches are dropped on activate. Registered in `src/main.tsx` for production builds only.
+- iOS: apple-mobile-web-app-capable, status bar style `default`, apple-touch-icon (injected by `vite.config.ts`, hosted build only).
+- Layout: phone frame only in a wide browser tab (`framed:` variant = min-width 768px and display-mode browser); installed or on a phone it is full-bleed. Safe-area insets pad the top, the tab bar, sheets and toasts.
+
+## Backup
+
+Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie-counter", schema: 1, exportedAt, data: { every calorie-app:* key } }`. Import validates the file (app id, schema, state shape), shows a summary and asks before replacing anything; bad files get a friendly error and nothing changes. Restore also works from the first onboarding screen (new phone). "Last backup: X days ago" sits under the buttons; Home shows a dismissible reminder after 7 days without one. Backup bookkeeping lives in `calorie-app:backup` and is not exported. Load demo week is under Me > Developer.
 
 ## v1 Daily balance
 - Balance = BMR + daily movement + exercise - food. Positive is a deficit (green), negative a surplus (orange).

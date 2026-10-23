@@ -28,7 +28,7 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        className="anim-sheet absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col gap-4 overflow-y-auto rounded-t-[28px] bg-card px-5 pb-8 pt-3.5"
+        className="anim-sheet absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col gap-4 overflow-y-auto rounded-t-[28px] bg-card px-5 pb-safe-sheet pt-3.5"
       >
         <div className="mx-auto h-[5px] w-10 shrink-0 rounded-full bg-line" />
         {children}

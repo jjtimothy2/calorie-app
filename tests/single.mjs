@@ -61,6 +61,7 @@ try {
     await page.reload()
     assert.equal(await page.getByTestId('protein-progress').innerText(), '75 of 110 g')
     await page.goto(FILE + '#/settings')
+    await page.locator('[data-testid=developer] summary').click()
     await page.getByRole('button', { name: 'Load demo week' }).click()
     await page.goto(FILE + '#/history')
     assert.ok((await page.locator('[data-bar]').count()) >= 7)

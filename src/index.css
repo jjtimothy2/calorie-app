@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Phone frame only on a wide screen in a normal browser tab. Installed (standalone) the app is always full-bleed. */
+@custom-variant framed (@media (min-width: 768px) and (display-mode: browser));
+
 /* Design tokens (from PM mockup calorie-v0). Swap here to restyle. */
 @theme {
   --font-sans: -apple-system, "Inter", "Segoe UI", Roboto, sans-serif;
@@ -35,7 +38,15 @@
 
 html, body, #root { height: 100%; }
 body { @apply bg-bg text-ink font-sans antialiased; }
-@media (min-width: 768px) { body { @apply bg-desk; } }
+@media (min-width: 768px) and (display-mode: browser) { body { @apply bg-desk; } }
+
+/* Safe areas (iPhone notch and home indicator, viewport-fit=cover). The tab bar pads itself;
+   screens without a tab bar (Log, Verdict, Onboarding) pad their own bottom. */
+main { padding-top: max(1.25rem, env(safe-area-inset-top)); }
+main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+.pb-safe-bar { padding-bottom: max(0.875rem, env(safe-area-inset-bottom)); }
+.pb-safe-sheet { padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1rem)); }
+.bottom-safe { bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem)); }
 
 @layer base {
   :focus-visible { outline: 3px solid var(--color-g-ink); outline-offset: 2px; }

@@ -1,4 +1,4 @@
-// Illustrative data: approximate MET values (Compendium of Physical Activities style), prototype use only.
+// Illustrative data: approximate MET values (Compendium of Physical Activities style), not medical advice.
 import type { Intensity } from '../lib/types'
 
 export type ActivityDef = { id: string; name: string; met: Record<Intensity, number> }

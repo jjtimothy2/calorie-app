@@ -62,6 +62,7 @@ type Action =
   | { type: 'autoClose'; today: string }
   | { type: 'loadDemoWeek' }
   | { type: 'reset' }
+  | { type: 'restore'; state: State }
 
 export const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -209,6 +210,11 @@ function reducer(state: State, a: Action): State {
     }
     case 'reset':
       return empty
+    case 'restore': {
+      // Already validated by parseBackup; fill defaults the same way load() does.
+      const s: State = { ...empty, ...a.state, version: 1, profile: a.state.profile ? normaliseProfile(a.state.profile) : null }
+      return autoClose(s)
+    }
   }
 }
 

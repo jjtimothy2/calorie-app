@@ -210,6 +210,7 @@ try {
   })
   await step('demo week: up/down bars, weekly total and weight estimate', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
+    await page.locator('[data-testid=developer] summary').click()
     await page.getByRole('button', { name: 'Load demo week' }).click()
     await page.waitForURL('**/history')
     const bars = await page.locator('[data-bar]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), k: e.getAttribute('data-kind') })))

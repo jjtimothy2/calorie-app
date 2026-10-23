@@ -154,7 +154,7 @@ export default function Log() {
         </>)}
       </Screen>
       {toast && (
-        <div role="status" className="anim-fade absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
+        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
           <span>{toast.text}</span>
           <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteEntry', id: toast.entry.id }); setToast(null) }}>Undo</button>
@@ -163,7 +163,7 @@ export default function Log() {
         </div>
       )}
       {exToast && (
-        <div role="status" className="anim-fade absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
+        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
           <span>Added {exToast.name} · {fmt(exToast.kcal)} kcal burned</span>
           <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteExercise', id: exToast.id }); setExToast(null) }}>Undo</button>

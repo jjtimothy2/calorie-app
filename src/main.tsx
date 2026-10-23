@@ -17,3 +17,10 @@ createRoot(document.getElementById('root')!).render(
     </Router>
   </StrictMode>,
 )
+
+// Offline support for the hosted build (not in dev, not in the file:// single-file build).
+if (import.meta.env.PROD && !import.meta.env.VITE_HASH && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* offline support is optional */ })
+  })
+}

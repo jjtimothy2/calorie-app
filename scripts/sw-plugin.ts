@@ -1,0 +1,56 @@
+// Tiny service worker generator: after `vite build`, writes dist/sw.js that precaches every built file.
+// The cache name is a hash of the file list + contents, so each deploy gets a fresh cache and old ones are dropped.
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import type { Plugin } from 'vite'
+
+const walk = (dir: string): string[] =>
+  readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))
+
+const SKIP = new Set(['sw.js', '_redirects', '_headers'])
+
+export function serviceWorker(): Plugin {
+  let outDir = 'dist'
+  let base = '/'
+  return {
+    name: 'calorie-sw',
+    apply: 'build',
+    configResolved(c) { outDir = c.build.outDir; base = c.base },
+    closeBundle() {
+      const files = walk(outDir).map((f) => relative(outDir, f).split('\\').join('/')).filter((f) => !SKIP.has(f)).sort()
+      const hash = createHash('sha256')
+      for (const f of files) hash.update(f).update(readFileSync(join(outDir, f)))
+      const version = hash.digest('hex').slice(0, 12)
+      const urls = files.map((f) => base + (f === 'index.html' ? '' : f))
+      writeFileSync(join(outDir, 'sw.js'), SW(version, urls, base))
+    },
+  }
+}
+
+const SW = (version: string, urls: string[], base: string) => `// Generated at build time by scripts/sw-plugin.ts. Offline cache for the app shell.
+const CACHE = 'calorie-${version}'
+const PRECACHE = ${JSON.stringify(urls)}
+const SHELL = ${JSON.stringify(base)}
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()))
+})
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('calorie-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  )
+})
+self.addEventListener('fetch', (e) => {
+  const req = e.request
+  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return
+  if (req.mode === 'navigate') {
+    // SPA: any route is the app shell. Network first so a new deploy shows up, cached shell when offline.
+    e.respondWith(fetch(req).catch(() => caches.match(SHELL, { cacheName: CACHE, ignoreVary: true })))
+    return
+  }
+  e.respondWith(caches.match(req, { cacheName: CACHE, ignoreVary: true }).then((hit) => hit || fetch(req)))
+})
+`

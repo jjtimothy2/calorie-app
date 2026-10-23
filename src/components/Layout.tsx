@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 
-/** Mobile: full screen. Desktop (md+): app shown inside a 390x844 phone frame, as in the mockup. */
+/** Phone or installed app: full-bleed. Desktop browser tab (framed): a 390x844 phone frame, as in the mockup. */
 export function PhoneFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-dvh justify-center md:items-center md:py-6">
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-bg md:h-[844px] md:max-h-full md:w-[390px] md:rounded-[44px] md:shadow-[0_20px_50px_rgba(0,0,0,.18)]">
+    <div className="flex h-dvh justify-center framed:items-center framed:py-6">
+      <div className="relative flex h-full w-full flex-col overflow-hidden bg-bg framed:h-[844px] framed:max-h-full framed:w-[390px] framed:rounded-[44px] framed:shadow-[0_20px_50px_rgba(0,0,0,.18)]">
         {children}
       </div>
     </div>
@@ -13,7 +13,7 @@ export function PhoneFrame({ children }: { children: ReactNode }) {
 }
 
 export function Screen({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <main className={`flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 pt-5 ${className}`}>{children}</main>
+  return <main className={`flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 ${className}`}>{children}</main>
 }
 
 function Ico({ d }: { d: string }) {
@@ -29,7 +29,7 @@ export function TabBar() {
   const tab = ({ isActive }: { isActive: boolean }) =>
     `flex min-w-[60px] flex-col items-center gap-1 px-1 py-1 ${isActive ? 'font-bold text-g-ink' : 'text-mute'}`
   return (
-    <nav aria-label="Main" className="flex h-[78px] shrink-0 items-center justify-around border-t border-line bg-card px-1 pb-3.5 text-xs">
+    <nav aria-label="Main" className="pb-safe-bar flex min-h-[78px] shrink-0 items-center justify-around border-t border-line bg-card px-1 pt-2 text-xs">
       <NavLink to="/" end className={tab}>
         <Ico d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
         Today

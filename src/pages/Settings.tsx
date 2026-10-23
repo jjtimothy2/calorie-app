@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { BodyFields, GoalFields, validBody, type Draft } from '../components/ProfileFields'
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card, Chip } from '../components/ui'
+import { BackupCard } from '../components/Backup'
 import { calcBmr, defaultDailyGoal, fmt, foodBudget, macroTargets, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
 
@@ -122,13 +123,19 @@ export default function Settings() {
         <Button type="submit" disabled={!ok}>Save changes</Button>
         <p role="status" className="text-center text-[15px] text-g-ink">{msg}</p>
       </form>
+      <BackupCard />
       <Card className="flex flex-col gap-3">
-        <h2 className="text-[17px] font-bold">Demo tools</h2>
-        <p className="text-[15px] text-mute">Fill the last 6 days with sample meals and workouts so History can be demoed. Today stays as it is.</p>
-        <Button variant="ghost" onClick={() => { dispatch({ type: 'loadDemoWeek' }); nav('/history') }}>Load demo week</Button>
-        <Button variant="danger" onClick={() => { if (confirm('Delete all data on this device?')) { dispatch({ type: 'reset' }); nav('/onboarding', { replace: true }) } }}>Reset all data</Button>
+        <h2 className="text-[17px] font-bold">Data</h2>
+        <Button variant="danger" onClick={() => { if (confirm('Delete all data on this device? Export a backup first if you want to keep it.')) { dispatch({ type: 'reset' }); nav('/onboarding', { replace: true }) } }}>Reset all data</Button>
       </Card>
-      <p className="text-center text-xs text-mute">Prototype v2. Everything is stored on this device only. Food and exercise values are illustrative.</p>
+      <details className="rounded-[20px] border border-line bg-card p-4 text-[15px]" data-testid="developer">
+        <summary className="cursor-pointer font-bold">Developer</summary>
+        <div className="mt-3 flex flex-col gap-3">
+          <p className="text-mute">Replace the last 6 days with sample meals and workouts. Today stays as it is.</p>
+          <Button variant="ghost" onClick={() => { dispatch({ type: 'loadDemoWeek' }); nav('/history') }}>Load demo week</Button>
+        </div>
+      </details>
+      <p className="text-center text-xs text-mute">Everything is stored on this device only. Food and exercise values are illustrative.</p>
     </Screen>
     <TabBar />
     </>

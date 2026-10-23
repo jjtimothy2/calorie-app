@@ -10,7 +10,9 @@
     "test:unit": "node tests/amount.mjs && node tests/macros.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "build:single": "tsc -b && vite build --mode single && node scripts/inline.mjs",
-    "test:single": "node tests/single.mjs"
+    "test:single": "node tests/single.mjs",
+    "test:pwa": "node tests/pwa.mjs",
+    "icons": "node scripts/icons.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",
