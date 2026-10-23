@@ -1,14 +1,14 @@
 // Tiny service worker generator: after `vite build`, writes dist/sw.js that precaches every built file.
 // The cache name is a hash of the file list + contents, so each deploy gets a fresh cache and old ones are dropped.
 import { createHash } from 'node:crypto'
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Plugin } from 'vite'
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))
 
-const SKIP = new Set(['sw.js', '_redirects', '_headers'])
+const SKIP = new Set(['sw.js', '_redirects', '_headers', '404.html', '.nojekyll'])
 
 export function serviceWorker(): Plugin {
   let outDir = 'dist'
@@ -18,6 +18,9 @@ export function serviceWorker(): Plugin {
     apply: 'build',
     configResolved(c) { outDir = c.build.outDir; base = c.base },
     closeBundle() {
+      // GitHub Pages SPA fallback: unknown paths serve 404.html, which is the app shell, so deep links work on refresh.
+      copyFileSync(join(outDir, 'index.html'), join(outDir, '404.html'))
+      writeFileSync(join(outDir, '.nojekyll'), '')
       const files = walk(outDir).map((f) => relative(outDir, f).split('\\').join('/')).filter((f) => !SKIP.has(f)).sort()
       const hash = createHash('sha256')
       for (const f of files) hash.update(f).update(readFileSync(join(outDir, f)))

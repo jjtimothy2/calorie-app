@@ -2,7 +2,8 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
-const BASE = process.env.BASE_URL ?? 'http://localhost:4174'
+// The app is served under the GitHub Pages base path /calorie-app/ (see vite.config.ts).
+const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const OUT = new URL('../screenshots/', import.meta.url).pathname
 const errors = []
 const results = []

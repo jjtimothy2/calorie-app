@@ -5,17 +5,21 @@ Mockups: `/workspace/proto-bot/builds/calorie-v0`, `calorie-v1`, `calorie-v2`.
 Vite + React + TypeScript + Tailwind v4 + React Router. All data in localStorage (`calorie-app:v1`). Food and MET values are illustrative.
 
 - `npm install`
-- `npm run dev` (dev server) or `npm run build && npx vite preview --port 4174`
+- `npm run dev` (dev server at http://localhost:5173/calorie-app/) or `npm run build && npx vite preview --port 4174` (http://localhost:4174/calorie-app/)
 - `npm run test:unit`, `npm run test:e2e`, `npm run test:pwa` (e2e and pwa need the preview server on :4174; screenshots go to `screenshots/`)
 - `node tests/compare.mjs v2 home-protein,nutrition,history-protein` builds a mockup vs build sheet
 - `npm run build:single` writes one self-contained HTML file (hash routing) to `dist-single/calorie-app-prototype-v2.html`; `npm run test:single` checks it from file:// (routes, reload persistence, console). No PWA bits in this build.
 
 ## Deploy (static hosting)
 
+Live: https://jjtimothy2.github.io/calorie-app/ (GitHub Pages). `.github/workflows/deploy.yml` builds and deploys on every push to `main`.
+
+The app is built for the base path `/calorie-app/` (`base` in `vite.config.ts`). Router basename, SW registration and precache list, and the PWA head tags all follow `import.meta.env.BASE_URL`; the manifest uses relative URLs. The build also writes `dist/404.html` (a copy of `index.html`) so GitHub Pages serves the app for deep links on refresh. For a host at the domain root set `BASE_PATH=/` (the Vercel and Netlify configs already do).
+
 `npm run build` produces `dist/`, a plain static site. Any static host works; nothing server-side, no accounts in the app.
 - Vercel: `vercel.json` (build `npm run build`, output `dist`, SPA rewrite to `index.html`, no-cache for `sw.js`).
 - Netlify: `netlify.toml` plus `public/_redirects` (`/* /index.html 200`) and `public/_headers` (copied into `dist/`).
-- Elsewhere: serve `dist/` and send unknown paths to `/index.html` (BrowserRouter). Serve at the domain root (manifest, SW and icons use `/` paths). HTTPS is required for install and offline.
+- Elsewhere: serve `dist/` and send unknown paths to `/index.html` (BrowserRouter). Build with `BASE_PATH` matching where it is served. HTTPS is required for install and offline.
 
 ## PWA
 

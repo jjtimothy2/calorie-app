@@ -4,7 +4,9 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const BASE = process.env.BASE_URL ?? 'http://localhost:4174'
+// The app is served under the GitHub Pages base path /calorie-app/ (see vite.config.ts).
+const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
+const PATH = new URL(BASE).pathname
 const OUT = new URL('../screenshots/', import.meta.url).pathname
 const errors = []
 const results = []
@@ -54,17 +56,17 @@ try {
       viewport: document.querySelector('meta[name=viewport]')?.getAttribute('content'),
       title: document.title,
     }))
-    assert.equal(head.manifest, '/manifest.webmanifest')
+    assert.equal(head.manifest, PATH + '/manifest.webmanifest')
     assert.equal(head.capable, 'yes')
     assert.equal(head.bar, 'default')
     assert.match(head.viewport, /viewport-fit=cover/)
     assert.equal(head.title, 'Calorie counter')
-    const m = await (await page.request.get(BASE + head.manifest)).json()
+    const m = await (await page.request.get(new URL(head.manifest, page.url()).href)).json()
     assert.equal(m.name, 'Calorie counter')
     assert.ok(m.short_name && m.short_name.length <= 12)
     assert.equal(m.display, 'standalone')
     assert.equal(m.orientation, 'portrait')
-    assert.equal(m.start_url, '/')
+    assert.equal(new URL(m.start_url, BASE + '/manifest.webmanifest').href, BASE + '/')
     assert.equal(m.theme_color.toLowerCase(), head.theme.toLowerCase())
     const want = [['192x192', 'any'], ['512x512', 'any'], ['512x512', 'maskable']]
     for (const [sizes, purpose] of want) assert.ok(m.icons.some((i) => i.sizes === sizes && i.purpose === purpose), `${sizes} ${purpose} icon`)
@@ -91,8 +93,8 @@ try {
     await page.reload()
     assert.equal(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL), BASE + '/sw.js')
     const cached = await page.evaluate(async () => { const k = (await caches.keys()).find((x) => x.startsWith('calorie-')); return (await (await caches.open(k)).keys()).map((r) => new URL(r.url).pathname) })
-    for (const p of ['/', '/manifest.webmanifest', '/icons/icon-192.png']) assert.ok(cached.includes(p), p)
-    assert.ok(cached.some((p) => /^\/assets\/index-.*\.js$/.test(p)))
+    for (const p of ['/', '/manifest.webmanifest', '/icons/icon-192.png']) assert.ok(cached.includes(PATH + p), PATH + p)
+    assert.ok(cached.some((p) => p.startsWith(PATH + '/assets/index-') && p.endsWith('.js')))
   })
 
   await step('offline: reload and deep links still work', async () => {

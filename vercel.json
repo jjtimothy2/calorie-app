@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
+  "buildCommand": "BASE_PATH=/ npm run build",
   "outputDirectory": "dist",
   "rewrites": [{ "source": "/((?!assets/|icons/|sw\\.js|manifest\\.webmanifest|favicon\\.svg).*)", "destination": "/index.html" }],
   "headers": [
