@@ -20,6 +20,7 @@ const num = async (loc) => Number((await loc.innerText()).replace(/[^0-9]/g, '')
 const color = (loc) => loc.evaluate((el) => getComputedStyle(el).color)
 const GREEN = 'rgb(23, 128, 70)'
 const ORANGE = 'rgb(194, 84, 47)'
+const FAT_INK = 'rgb(47, 98, 201)'
 const pad = (n) => String(n).padStart(2, '0')
 const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const TODAY = key(new Date())
@@ -32,6 +33,7 @@ try {
   // ---------- Mobile 390 ----------
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, reducedMotion: 'reduce' })
   const page = await ctx.newPage(); watch(page)
+  const terms = () => page.locator('[data-testid=equation] [data-term]').evaluateAll((els) => els.map((e) => e.getAttribute('data-term')))
   const goHome = async () => { await page.getByRole('link', { name: 'Today', exact: true }).click(); await page.waitForURL(BASE + '/') }
 
   await step('onboarding: Mifflin-St Jeor target, BMR becomes the daily start', async () => {
@@ -51,6 +53,7 @@ try {
     await page.waitForURL(BASE + '/')
     assert.equal(await num(page.getByTestId('eq-bmr')), 1400)
     assert.equal(await num(page.getByTestId('eq-movement')), 525) // 1400 x 0.375, movement default ON
+    assert.deepEqual(await terms(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Balance'])
     assert.match(await page.getByTestId('ring-goal').innerText(), /goal 500/) // lose -> 500 deficit
     assert.equal(await num(page.getByTestId('balance')), 1925)
   })
@@ -67,7 +70,8 @@ try {
     await page.getByText('Saved.').waitFor()
     await goHome()
     assert.equal(await num(page.getByTestId('eq-bmr')), 1600)
-    assert.equal(await page.getByTestId('eq-movement').count(), 0)
+    assert.equal(await page.getByTestId('eq-movement').count(), 0) // hidden only because the toggle is off
+    assert.deepEqual(await terms(), ['BMR', 'Exercise', 'Eaten', 'Balance'])
   })
   await step('acceptance: BMR 1600 + 300 exercise - 1500 food = 400 deficit', async () => {
     await page.getByRole('link', { name: 'Add exercise' }).click()
@@ -163,11 +167,20 @@ try {
     await page.getByRole('button', { name: 'Add exercise' }).click()
     await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')
+    // Daily movement back on (the default) for the rest of the run and the screenshots.
+    await page.getByRole('link', { name: 'Me', exact: true }).click()
+    await page.getByRole('switch', { name: /Include daily movement/ }).check()
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await page.getByText('Saved.').waitFor()
+    await goHome()
+    assert.equal(await num(page.getByTestId('eq-movement')), 600) // 1600 x 0.375
+    assert.deepEqual(await terms(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Balance'])
     await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
-    await page.fill('input[name=kcal]', '1381')
+    await page.fill('input[name=kcal]', '1981')
     await page.getByRole('button', { name: 'Save' }).click()
-    // 1600 + 281 - 1381 = 500
+    // 1600 + 600 + 281 - 1981 = 500
     assert.equal(await num(page.getByTestId('balance')), 500)
+    assert.match(await page.getByTestId('equation').getAttribute('aria-label'), /BMR 1,600 plus movement 600 plus exercise 281 minus eaten 1,981 equals balance 500 deficit/)
     await top(page)
     await page.screenshot({ path: OUT + 'v1-mobile-home.png' })
   })
@@ -252,19 +265,29 @@ try {
     await page.getByRole('button', { name: new RegExp('Add one serving of ' + name) }).click()
     await page.getByTestId('toast').waitFor()
   }
-  await step('v2: default protein 1.6 g/kg, carbs and fat split the rest', async () => {
+  await step('v2: protein 1.6 g/kg, fat 40% of the rest with a 0.6 g/kg floor, carbs take the rest', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
-    assert.equal(await page.locator('input[name=macro-protein]').getAttribute('placeholder'), '109') // 68 kg x 1.6 = 108.8
-    // budget 1,100 - 109 x 4 = 664 kcal -> carbs 60% / 4 = 100 g, fat 40% / 9 = 30 g
-    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '100')
-    assert.equal(await page.locator('input[name=macro-fat]').getAttribute('placeholder'), '30')
+    const ph = (k) => page.locator(`input[name=macro-${k}]`).getAttribute('placeholder')
+    assert.equal(await ph('protein'), '109') // 68 kg x 1.6 = 108.8
+    // budget 1600 + 600 - 500 = 1700; rest 1700 - 436 = 1264; fat max(41, 1264 x 0.4 / 9 = 56) = 56; carbs (1264 - 504) / 4 = 190
+    assert.equal(await ph('fat'), '56')
+    assert.equal(await ph('carbs'), '190')
+    // Movement off (not saved): budget 1100, rest 664, 40% is only 30 g so the 41 g floor wins; carbs (664 - 369) / 4 = 74
+    await page.getByRole('switch', { name: /Include daily movement/ }).uncheck()
+    assert.equal(await ph('fat'), '41')
+    assert.equal(await ph('carbs'), '74')
+    // A fat override feeds carbs: (1264 - 70 x 9) / 4 = 158.5 -> 159
+    await page.getByRole('switch', { name: /Include daily movement/ }).check()
+    await page.fill('input[name=macro-fat]', '70')
+    assert.equal(await ph('carbs'), '159')
+    await page.fill('input[name=macro-fat]', '')
     await goHome()
     assert.equal(await page.getByTestId('protein-left').innerText(), '109 g left')
   })
   await step('v2 acceptance: 110 g target, 75 g logged -> 35 g left and 75 of 110 g', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     await page.fill('input[name=macro-protein]', '110')
-    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '99') // re-split after protein
+    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '189') // re-split after protein
     await page.getByRole('button', { name: 'Save changes' }).click()
     await page.getByText('Saved.').waitFor()
     await goHome()
@@ -277,11 +300,18 @@ try {
     await page.getByRole('link', { name: /Close and go back/ }).click()
     await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
     const dlg = page.getByRole('dialog')
+    await dlg.locator('input[name=kcal]').fill('1500') // keeps today in a deficit for the screenshot
     await dlg.getByLabel('Protein').fill('32')
     await dlg.getByLabel('Carbs').fill('60')
-    await dlg.getByLabel('Fat').fill('12')
+    await dlg.getByLabel('Fat').fill('39') // fat total 39 + 14 + 2 x 6 + 5 = 70 g vs 56 g target
     await dlg.getByRole('button', { name: 'Save' }).click()
     assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
+    // Macro overage: text, not just a full bar, and never orange.
+    assert.equal(await page.getByTestId('protein-sub-fat').innerText(), 'Fat 70 g, +14 g over')
+    assert.equal(await page.getByTestId('protein-sub-carbs').innerText(), 'Carbs 73 / 189 g')
+    const fatOver = page.getByTestId('protein-sub-fat').locator('b')
+    assert.equal(await color(fatOver), FAT_INK)
+    assert.notEqual(await color(fatOver), ORANGE)
     assert.equal(await color(page.getByTestId('protein-left')), PINK)
     await top(page)
     await page.screenshot({ path: OUT + 'v2-mobile-home-protein.png' })
@@ -294,6 +324,12 @@ try {
     assert.match(src[1], /Ayam bakar, 1 thigh\s+27 g/)
     assert.ok(src.some((t) => /Tempe goreng, 2 pieces\s+10 g/.test(t)), src.join('|'))
     assert.equal(await color(page.getByTestId('protein-sources').locator('b').first()), PINK)
+    assert.equal(await page.getByTestId('nutri-fat-over').innerText(), '+14 g over')
+    assert.equal(await page.getByTestId('nutri-fat').getAttribute('data-over'), '14')
+    assert.equal(await color(page.getByTestId('nutri-fat-over')), FAT_INK)
+    assert.match(await page.getByTestId('nutri-fat').getByRole('progressbar').getAttribute('aria-label'), /14 grams over/)
+    assert.equal(await page.getByTestId('nutri-carbs-over').count(), 0)
+    assert.equal(await page.getByTestId('protein-over').count(), 0)
     await page.screenshot({ path: OUT + 'v2-mobile-nutrition.png' })
     await page.getByRole('button', { name: 'This week' }).click()
     assert.match(await page.getByTestId('protein-progress').innerText(), /of 110 g/)
@@ -320,6 +356,23 @@ try {
   await step('v2: orange only means surplus (no orange outside surplus)', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     assert.notEqual(await color(page.getByRole('button', { name: 'Reset all data' })), ORANGE)
+  })
+  await step('v2: protein over target says how far over, in darker pink', async () => {
+    await goHome()
+    await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
+    await page.getByRole('dialog').getByLabel('Protein').fill('72') // 115 g total
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '+5 g over')
+    assert.match(await page.getByTestId('protein-card').innerText(), /Protein target hit/)
+    assert.notEqual(await color(page.getByTestId('protein-left')), ORANGE)
+    await page.getByTestId('protein-card').click()
+    assert.equal(await page.getByTestId('protein-over').innerText(), '+5 g over')
+    assert.equal(await page.getByTestId('protein-ring-over').count(), 1)
+    await goHome()
+    await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
+    await page.getByRole('dialog').getByLabel('Protein').fill('32')
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
   })
   const storage = await ctx.storageState()
 

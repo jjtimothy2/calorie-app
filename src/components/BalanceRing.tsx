@@ -45,22 +45,22 @@ export function BalanceRing({ balance, goal, size = 190, stroke = 17, closed = f
   )
 }
 
-/** BMR (+ Move) + Burned - Eaten = Balance */
-export function Equation({ bmr, movement, burned, eaten, balance }: { bmr: number; movement: number; burned: number; eaten: number; balance: number }) {
+/** BMR + Movement + Exercise - Eaten = Balance. Movement is null when the daily movement setting is off. */
+export function Equation({ bmr, movement, burned, eaten, balance }: { bmr: number; movement: number | null; burned: number; eaten: number; balance: number }) {
   const surplus = Math.round(balance) < 0
   const item = (label: string, v: string, id: string, cls = 'text-ink') => (
-    <div className="text-center">
+    <div className="text-center" data-term={label}>
       {label}
-      <b className={`block text-[17px] tabular-nums ${cls}`} data-testid={id}>{v}</b>
+      <b className={`block text-[16px] tabular-nums ${cls}`} data-testid={id}>{v}</b>
     </div>
   )
-  const op = (s: string) => <span className="text-[18px] text-mute" aria-hidden="true">{s}</span>
+  const op = (s: string) => <span className="text-[16px] text-mute" aria-hidden="true">{s}</span>
   return (
-    <div className="mt-2.5 flex items-center justify-between text-[13px] text-mute" data-testid="equation" aria-label={`BMR ${fmt(bmr)}${movement ? ` plus daily movement ${fmt(movement)}` : ''} plus burned ${fmt(burned)} minus eaten ${fmt(eaten)} equals balance ${fmt(Math.abs(balance))} ${surplus ? 'surplus' : 'deficit'}`} role="group">
+    <div className="mt-2.5 flex items-center justify-between text-[12px] text-mute" data-testid="equation" aria-label={`BMR ${fmt(bmr)}${movement != null ? ` plus movement ${fmt(movement)}` : ''} plus exercise ${fmt(burned)} minus eaten ${fmt(eaten)} equals balance ${fmt(Math.abs(balance))} ${surplus ? 'surplus' : 'deficit'}`} role="group">
       {item('BMR', fmt(bmr), 'eq-bmr')}
-      {movement > 0 && <>{op('+')}{item('Move', fmt(movement), 'eq-movement')}</>}
+      {movement != null && <>{op('+')}{item('Movement', fmt(movement), 'eq-movement')}</>}
       {op('+')}
-      {item('Burned', fmt(burned), 'eq-burned', 'text-ex-ink')}
+      {item('Exercise', fmt(burned), 'eq-burned', 'text-ex-ink')}
       {op('−')}
       {item('Eaten', fmt(eaten), 'eaten')}
       {op('=')}

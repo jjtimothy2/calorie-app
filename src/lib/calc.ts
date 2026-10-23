@@ -94,19 +94,28 @@ export function defaultMeal(hour = new Date().getHours()) {
 export const round1 = (n: number) => Math.round(n * 10) / 10
 
 export const PROTEIN_PER_KG = 1.6
-export const CARB_SHARE = 0.6 // of the calories left after protein; fat gets the rest
+export const FAT_SHARE = 0.4 // of the calories left after protein
+export const FAT_FLOOR_PER_KG = 0.6 // fat never defaults below this
 
-/** Macro targets with user overrides applied. Overriding protein re-splits the default carbs and fat. */
-export function macroTargets(p: Profile) {
-  const budget = foodBudget(p)
-  const protein = p.macros.protein ?? Math.round(PROTEIN_PER_KG * p.weightKg)
+/**
+ * Macro targets with user overrides applied (pure, for unit tests).
+ * Protein 1.6 g/kg. Fat = the larger of 0.6 g/kg and 40% of the calories left after protein.
+ * Carbs take whatever calories are left after protein and fat.
+ */
+export function splitMacros(budget: number, weightKg: number, o: { protein: number | null; carbs: number | null; fat: number | null }) {
+  const protein = o.protein ?? Math.round(PROTEIN_PER_KG * weightKg)
   const rest = Math.max(0, budget - protein * 4)
-  return {
-    protein,
-    carbs: p.macros.carbs ?? Math.round((rest * CARB_SHARE) / 4),
-    fat: p.macros.fat ?? Math.round((rest * (1 - CARB_SHARE)) / 9),
-  }
+  const fat = o.fat ?? Math.max(Math.round(FAT_FLOOR_PER_KG * weightKg), Math.round((rest * FAT_SHARE) / 9))
+  const carbs = o.carbs ?? Math.max(0, Math.round((rest - fat * 9) / 4))
+  return { protein, carbs, fat }
 }
+
+export function macroTargets(p: Profile) {
+  return splitMacros(foodBudget(p), p.weightKg, p.macros)
+}
+
+/** Grams over target, or 0. Ignores rounding noise under half a gram. */
+export const overBy = (value: number, target: number) => (target > 0 && value - target >= 0.5 ? Math.round(value - target) : 0)
 
 export const fmt = (n: number) => Math.round(n).toLocaleString('en-US')
 

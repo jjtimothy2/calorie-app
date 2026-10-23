@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { BodyFields, GoalFields, validBody, type Draft } from '../components/ProfileFields'
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card, Chip } from '../components/ui'
-import { calcBmr, defaultDailyGoal, fmt, foodBudget, macroTargets, movementKcal, PROTEIN_PER_KG } from '../lib/calc'
+import { calcBmr, defaultDailyGoal, fmt, foodBudget, macroTargets, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
 
 type Dir = 'deficit' | 'even' | 'surplus'
@@ -41,7 +41,9 @@ export default function Settings() {
   const macros = { protein: toG(mac.protein), carbs: toG(mac.carbs), fat: toG(mac.fat) }
   const macOk = Object.values(macros).every((v) => v == null || (Number.isFinite(v) && v > 0 && v < 1000))
   const draftProfile = { ...p, ...d, bmr, bmrCustom, includeMovement, dailyGoal, target: budget }
-  const auto = macroTargets({ ...draftProfile, macros: { protein: macros.protein, carbs: null, fat: null } })
+  // Placeholders show what "auto" would be given the other boxes: fat follows protein, carbs follow protein and fat.
+  const autoFat = macroTargets({ ...draftProfile, macros: { protein: macros.protein, carbs: null, fat: null } }).fat
+  const auto = { ...macroTargets({ ...draftProfile, macros: { protein: macros.protein, carbs: null, fat: macros.fat } }), fat: autoFat }
   const autoProtein = Math.round(PROTEIN_PER_KG * d.weightKg)
   const ok = validBody(d) && bmr >= 800 && bmr <= 4000 && (dir === 'even' || (amount > 0 && amount <= 1500)) && macOk
 
@@ -113,7 +115,7 @@ export default function Settings() {
           {macroRow('carbs', 'Carbs', `${auto.carbs} g`)}
           {macroRow('fat', 'Fat', `${auto.fat} g`)}
           <div className="flex items-center justify-between border-t border-line pt-3 text-[13px] text-mute">
-            <span>Carbs and fat split the food budget left after protein (60/40 by calories). Leave a box empty for auto.</span>
+            <span>Fat gets 40% of the calories left after protein, never under {FAT_FLOOR_PER_KG} g per kg. Carbs take the rest. Leave a box empty for auto.</span>
             <button type="button" className="shrink-0 px-1 font-bold text-g-ink" onClick={() => setMac({ protein: '', carbs: '', fat: '' })}>Use auto</button>
           </div>
         </Card>

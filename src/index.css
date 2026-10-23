@@ -25,7 +25,12 @@
   --color-protein-line: #d9467a33;
   --color-danger: #b42318;     /* destructive actions (orange is reserved for surplus) */
   --color-carbs: #e9b53f;
+  --color-carbs-deep: #a8790f; /* carbs over target (graphics) */
+  --color-carbs-ink: #8a5f00;  /* carbs text, AA */
   --color-fat: #5b8def;
+  --color-fat-deep: #2a4f9e;   /* fat over target (graphics) */
+  --color-fat-ink: #2f62c9;    /* fat text, AA */
+  --color-protein-deep: #9b1f52; /* protein over target (graphics) */
 }
 
 html, body, #root { height: 100%; }

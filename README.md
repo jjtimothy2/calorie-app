@@ -19,9 +19,11 @@ Vite + React + TypeScript + Tailwind v4 + React Router. All data in localStorage
   weekly total (closed days) and an estimated kg change at 7,700 kcal per kg.
 
 ## v2 Macros
-- Protein target defaults to 1.6 g per kg. Carbs (60%) and fat (40%) split the remaining food budget. All three editable in Me.
+- Protein target defaults to 1.6 g per kg. Fat gets 40% of the calories left after protein, never under 0.6 g per kg. Carbs take the rest. All three editable in Me (a fat override re-splits carbs).
 - Home "Protein left today" card links to the Nutrition tab (protein ring, carbs and fat bars, top protein sources).
 - History Balance/Protein toggle: protein bars vs a dashed target line, solid when hit, "X / 7 days" and daily average.
 - Protein is pink everywhere; orange only means surplus.
+- Over a macro target the UI says so ("Fat 70 g, +14 g over") with a darker shade of that macro colour, never orange.
+- Home equation reads BMR + Movement + Exercise − Eaten = Balance; Movement is hidden only when the daily movement setting is off.
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
