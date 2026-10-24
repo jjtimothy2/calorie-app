@@ -4,7 +4,7 @@ import { BodyFields, GoalFields, goalBlurb, goalWeightOf, PACE_LABEL, validBody,
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
-import { calcBmr, CARB_FLOOR, dailyPlan, fmt, macroPlan, movementKcal, NO_MOVEMENT_FACTOR, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
+import { calcBmr, CARB_FLOOR, dailyPlan, fmt, macroPlan, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
 
 const numInput = 'w-28 rounded-xl border border-line bg-bg px-3 py-2 text-right text-[17px]'
@@ -90,9 +90,9 @@ export default function Settings() {
             <input type="checkbox" role="switch" name="movement" checked={includeMovement} onChange={(e) => setIncludeMovement(e.target.checked)} className="h-6 w-6 shrink-0 accent-g-ink" />
           </label>
           <p className="border-t border-line pt-3 text-[15px] text-mute" data-testid="budget-line">
-            BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ` × ${NO_MOVEMENT_FACTOR} = ${fmt(plan.planBase)}`}
+            BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
             {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} ${plan.floored ? 'to the minimum' : 'surplus'}` : ''} = <b className="text-ink">{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
-            <span className="mt-1 block" data-testid="pace-line">{d.goal === 'keep' ? 'Keep weight: no deficit.' : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : `With movement off the plan starts from BMR × ${NO_MOVEMENT_FACTOR}. `}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</span>
+            <span className="mt-1 block" data-testid="pace-line">{d.goal === 'keep' ? 'Keep weight: no deficit.' : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</span>
           </p>
         </Card>
         <Card className="flex flex-col gap-3">

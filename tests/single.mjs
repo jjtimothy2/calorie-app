@@ -34,7 +34,8 @@ try {
     await page.getByRole('button', { name: 'See my target' }).click()
     await page.getByRole('button', { name: 'Start logging' }).click()
     await page.waitForURL('**#/')
-    assert.equal(await num(page.getByTestId('eq-base')), 1680) // v1.2.1: movement off counts the base burn 1400 x 1.2
+    assert.equal(await num(page.getByTestId('eq-bmr')), 1400) // v1.3.1: movement off counts plain BMR
+    assert.equal(await page.getByTestId('eq-base').count(), 0)
   })
   await step('v2: 110 g target, 75 g logged', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()

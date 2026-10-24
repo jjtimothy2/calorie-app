@@ -4,7 +4,7 @@ import { BodyFields, GoalFields, goalBlurb, goalWeightOf, GOAL_LABEL, ACTIVITY_S
 import { Screen } from '../components/Layout'
 import { Button, Card, Dots } from '../components/ui'
 import { RestoreLink } from '../components/Backup'
-import { calcBmr, dailyPlan, fmt, movementKcal, NO_MOVEMENT_FACTOR } from '../lib/calc'
+import { calcBmr, dailyPlan, fmt, movementKcal } from '../lib/calc'
 import { normaliseProfile, useStore } from '../lib/store'
 
 export default function Onboarding() {
@@ -60,7 +60,7 @@ export default function Onboarding() {
           </Card>
           {plan && (
             <p className="text-[15px] text-mute" data-testid="onboard-macros">
-              Protein {plan.protein} g, carbs {plan.carbs} g, fat {plan.fat} g. Daily movement is off, so this starts from your BMR × {NO_MOVEMENT_FACTOR} ({fmt(plan.bmr)} × {NO_MOVEMENT_FACTOR} = {fmt(plan.planBase)}){d.goal === 'keep' ? '' : `, ${d.goal === 'gain' ? 'plus' : 'minus'} your pace`}, and never goes under {fmt(plan.floor)} kcal. Turn it on in Me to add about {fmt(movementKcal({ bmr: plan.bmr, activity: d.activity, includeMovement: true }))} kcal from your activity level.
+              Protein {plan.protein} g, carbs {plan.carbs} g, fat {plan.fat} g. Daily movement is off, so this starts from your BMR ({fmt(plan.bmr)}){d.goal === 'keep' ? '' : `, ${d.goal === 'gain' ? 'plus' : 'minus'} your pace`}, and never goes under {fmt(plan.floor)} kcal. Turn it on in Me to add about {fmt(movementKcal({ bmr: plan.bmr, activity: d.activity, includeMovement: true }))} kcal from your activity level.
             </p>
           )}
           <div className="flex-1" />

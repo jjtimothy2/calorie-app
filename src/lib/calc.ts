@@ -92,7 +92,7 @@ export const PROTEIN_MIN_PER_KG = 1.2 // protein is lowered towards this before 
 export const FAT_SHARE = 0.25 // of the daily target
 export const FAT_FLOOR_PER_KG = 0.6 // of goal weight; fat never defaults below this
 export const CARB_FLOOR = 100 // g
-export const DEFICIT_CAP = 0.2 // of BMR + movement
+export const DEFICIT_CAP = 0.2 // of the plan base (BMR + movement, or BMR with Movement off)
 
 export const PACE: Record<Pace, { label: string; kg: number }> = {
   gentle: { label: 'Gentle', kg: 0.25 },
@@ -143,9 +143,6 @@ export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovem
 /** Pace in kcal a day before the cap (7,700 kcal per kg). */
 export const paceKcal = (pace: Pace) => (PACE[pace].kg * KCAL_PER_KG) / 7
 
-/** v1.2: with Movement off, plan from BMR x 1.2 (a light everyday allowance) instead of bare BMR. */
-export const NO_MOVEMENT_FACTOR = 1.2
-
 /**
  * v1.2 lowest daily target: 1,500 kcal for men, 1,200 for women. Any other or missing value gets the lower
  * 1,200 (the app only offers male and female today; this keeps older or hand-edited data safe).
@@ -154,19 +151,19 @@ export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 
 
 /**
  * Daily target.
- * Plan base: BMR + movement when Movement is on, BMR x 1.2 when it is off (v1.2).
+ * Plan base: BMR + movement when Movement is on, plain BMR when it is off (v1.3.1; v1.2 to v1.3 used BMR x 1.2).
  * Lose: base - pace kcal, the deficit capped at 20% of the plan base. Gain: the same pace as a surplus, capped at 20%.
  * Keep: the plan base.
  * Floor (v1.2): never under 1,500 kcal (men) / 1,200 (women). With Movement on the v1.1 BMR floor is kept as well,
  * so nothing changes there. The macro carb floor can still raise the target.
  * planDeficit is what the plan takes off its base (base - target, negative for a surplus).
- * dailyGoal is the balance goal against what Home counts as the burn (homeBase): since v1.2.1 Home counts the plan
- * base too (BMR x 1.2 "base burn" with Movement off), so dailyGoal = planDeficit. Keep = 0, Lose = the deficit.
+ * dailyGoal is the balance goal against what Home counts as the burn (homeBase), which is the plan base
+ * (BMR with Movement off), so dailyGoal = planDeficit. Keep = 0, Lose = the deficit, Gain = minus the surplus.
  */
 export function dailyPlan(p: PlanInput) {
   const movement = movementKcal(p)
   const base = p.bmr + movement
-  const planBase = p.includeMovement ? base : p.bmr * NO_MOVEMENT_FACTOR
+  const planBase = p.includeMovement ? base : p.bmr
   const want = paceKcal(p.pace)
   const cap = DEFICIT_CAP * planBase
   const floor = p.includeMovement ? Math.max(p.bmr, targetFloor(p.sex)) : targetFloor(p.sex)
@@ -206,16 +203,16 @@ export function movementKcal(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovem
 export const foodBudget = (p: PlanInput): number => dailyPlan(p).target
 
 /**
- * v1.2.1: what Home counts as the day's burn before exercise. Movement on: BMR + movement. Movement off: the
- * "base burn" BMR x 1.2, the same base the food target is planned from, so Home and the target agree.
+ * What Home counts as the day's burn before exercise, the same base the food target is planned from:
+ * Movement on: BMR + movement. Movement off (v1.3.1): plain BMR (v1.2.1 to v1.3 used a BMR x 1.2 "base burn").
  */
 export function homeBase(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovement'>): number {
-  return p.includeMovement ? p.bmr + movementKcal(p) : Math.round(p.bmr * NO_MOVEMENT_FACTOR)
+  return p.includeMovement ? p.bmr + movementKcal(p) : p.bmr
 }
 
 /**
- * baseBurn is set (BMR x 1.2) on days counted with Movement off since v1.2.1; it replaces BMR + movement in the
- * balance. Days closed before v1.2.1 have no baseBurn and keep the BMR (+ movement) numbers they were closed with.
+ * baseBurn (BMR x 1.2) is only on days closed with Movement off by v1.2.1 to v1.3; it replaces BMR + movement in
+ * their balance. Those closed days keep the numbers they were closed with. v1.3.1 never sets it (Movement off = BMR).
  */
 export type DayBalance = { bmr: number; movement: number; baseBurn?: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean }
 
@@ -226,7 +223,7 @@ export function sumExercise(list: ExerciseEntry[]): number {
   return list.reduce((s, e) => s + e.kcal, 0)
 }
 
-/** Live balance for a date from the current profile: home base (BMR + movement, or base burn) + burned - eaten. */
+/** Live balance for a date from the current profile: home base (BMR + movement, or BMR) + burned - eaten. */
 export function liveDay(state: Pick<State, 'entries' | 'exercises'>, profile: Profile, date: string): DayBalance {
   const entries = state.entries.filter((e) => e.date === date)
   const ex = state.exercises.filter((e) => e.date === date)
@@ -235,7 +232,7 @@ export function liveDay(state: Pick<State, 'entries' | 'exercises'>, profile: Pr
   const movement = movementKcal(profile)
   const base = homeBase(profile)
   return {
-    bmr: profile.bmr, movement, ...(profile.includeMovement ? {} : { baseBurn: base }), burned, eaten: m.kcal, protein: m.protein,
+    bmr: profile.bmr, movement, burned, eaten: m.kcal, protein: m.protein,
     balance: base + burned - m.kcal, goal: profile.dailyGoal,
     logged: entries.length + ex.length > 0,
   }

@@ -25,14 +25,14 @@ export type Profile = {
   weightKg: number
   activity: Activity
   goal: Goal
-  /** Daily food target on a rest day (kcal), derived by dailyPlan(): plan base (BMR + movement, or BMR x 1.2 with movement off) minus the pace deficit (or plus surplus), never under the sex floor. */
+  /** Daily food target on a rest day (kcal), derived by dailyPlan(): plan base (BMR + movement, or plain BMR with movement off) minus the pace deficit (or plus surplus), never under the sex floor. */
   target: number
   /** Daily starting budget. Mifflin-St Jeor unless the user typed their own. */
   bmr: number
   bmrCustom: boolean
   /** Add NEAT (BMR x (activity factor - 1)) to the daily budget. */
   includeMovement: boolean
-  /** Daily balance goal in kcal, derived: home base (BMR + movement, or BMR x 1.2 with movement off) - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
+  /** Daily balance goal in kcal, derived: home base (BMR + movement, or BMR with movement off) - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
   dailyGoal: number
   /** v1.1: goal weight (kg) used for protein and the fat floor. Defaults to the current weight. */
   goalWeightKg: number
@@ -71,7 +71,7 @@ export type ExerciseEntry = {
 export type DaySummary = {
   bmr: number
   movement: number
-  /** v1.2.1: BMR x 1.2 when the day was counted with Movement off. Absent on older days (they used BMR + movement). */
+  /** BMR x 1.2 on days closed with Movement off by v1.2.1 to v1.3 (kept as closed). Absent on other days, and never set since v1.3.1. */
   baseBurn?: number
   burned: number
   eaten: number

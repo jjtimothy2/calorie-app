@@ -73,7 +73,7 @@ export default function Verdict() {
       <Card className="rise-late mt-4 w-full py-1 text-left">
         <div className="eyebrow pt-2.5">How it adds up</div>
         {d.baseBurn != null ? (
-          <div className={row}><span>Base burn <span className="text-mute">(BMR {fmt(d.bmr)} × 1.2)</span></span><b className="num font-semibold" data-testid="verdict-base">{fmt(d.baseBurn)}</b></div>
+          <div className={row}><span>Burn <span className="text-mute">(BMR {fmt(d.bmr)} × 1.2, as closed)</span></span><b className="num font-semibold" data-testid="verdict-base">{fmt(d.baseBurn)}</b></div>
         ) : <div className={row}><span>BMR</span><b className="num font-semibold" data-testid="verdict-bmr">{fmt(d.bmr)}</b></div>}
         {d.baseBurn == null && d.movement > 0 && <div className={row}><span>Daily movement</span><b className="num font-semibold">+ {fmt(d.movement)}</b></div>}
         <div className={row}><span>Exercise burned</span><b className="num font-semibold text-ex-ink">+ {fmt(d.burned)}</b></div>
