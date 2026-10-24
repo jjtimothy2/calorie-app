@@ -28,25 +28,6 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /calorie-app/
-      # v1.3 preview: build the v1.3-preview branch under /calorie-app/preview/ next to the live app.
-      # The live (root) build above is unchanged; its sw.js is generated before the preview is copied in,
-      # so the live service worker never precaches preview files. The preview has its own SW scoped to /preview/.
-      - uses: actions/checkout@v5
-        with:
-          ref: v1.3-preview
-          path: preview-src
-      - run: npm ci
-        working-directory: preview-src
-      - run: npm run build
-        working-directory: preview-src
-        env:
-          BASE_PATH: /calorie-app/preview/
-      - run: |
-          rm -rf dist/preview
-          cp -r preview-src/dist dist/preview
-          # GitHub Pages only has the live app's 404.html; give the preview's tab routes their own shell so a refresh stays in the preview.
-          for r in nutrition log history settings onboarding; do mkdir -p dist/preview/$r && cp dist/preview/index.html dist/preview/$r/index.html; done
-          test -f dist/preview/index.html && test -f dist/preview/sw.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

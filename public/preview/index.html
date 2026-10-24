@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="refresh" content="1; url=../" />
+<title>Calorie counter</title>
+<script>
+  // The v1.3 preview is now the live app. Retire the old preview service worker and its cache, then go to the app.
+  ;(async () => {
+    try {
+      for (const r of (await navigator.serviceWorker?.getRegistrations?.()) ?? []) if (r.scope.endsWith('/preview/')) await r.unregister()
+      for (const k of (await caches?.keys?.()) ?? []) if (k.startsWith('calorie-preview-')) await caches.delete(k)
+    } catch {}
+    location.replace('../')
+  })()
+</script>
+</head>
+<body style="background:#f6f1e7;font-family:system-ui;color:#2a2420"><p style="padding:24px">Moved. Opening the app…</p></body>
+</html>

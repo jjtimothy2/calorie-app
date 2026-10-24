@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import type { Plugin } from 'vite'
 
 // Bumped per release (v1.1: new storage key and formulas). The content hash below changes on every build anyway.
-export const APP_VERSION = 'v1.3-preview'
+export const APP_VERSION = 'v1.3'
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))
@@ -24,7 +24,7 @@ export function serviceWorker(): Plugin {
       // GitHub Pages SPA fallback: unknown paths serve 404.html, which is the app shell, so deep links work on refresh.
       copyFileSync(join(outDir, 'index.html'), join(outDir, '404.html'))
       writeFileSync(join(outDir, '.nojekyll'), '')
-      const files = walk(outDir).map((f) => relative(outDir, f).split('\\').join('/')).filter((f) => !SKIP.has(f)).sort()
+      const files = walk(outDir).map((f) => relative(outDir, f).split('\\').join('/')).filter((f) => !SKIP.has(f) && !f.startsWith('preview/')).sort()
       const hash = createHash('sha256')
       for (const f of files) hash.update(f).update(readFileSync(join(outDir, f)))
       const version = `${APP_VERSION}-${hash.digest('hex').slice(0, 12)}`
@@ -35,8 +35,8 @@ export function serviceWorker(): Plugin {
 }
 
 const SW = (version: string, urls: string[], base: string) => `// Generated at build time by scripts/sw-plugin.ts. Offline cache for the app shell.
-// v1.3 preview: a build served under /preview/ keeps its own cache prefix and only ever deletes its own old caches,
-// so it never wipes the live app's cache (and the live app keeps working exactly as before).
+// A build served under /preview/ keeps its own cache prefix and only deletes its own old caches.
+// The live app (prefix calorie-) deletes every other calorie- cache, including the retired v1.3 preview's.
 const PREFIX = ${JSON.stringify(base.includes('/preview/') ? 'calorie-preview-' : 'calorie-')}
 const CACHE = PREFIX + '${version}'
 const PRECACHE = ${JSON.stringify(urls)}
@@ -48,7 +48,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE && (PREFIX !== 'calorie-' || !k.startsWith('calorie-preview-'))).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   )
 })
