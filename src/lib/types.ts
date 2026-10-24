@@ -32,7 +32,7 @@ export type Profile = {
   bmrCustom: boolean
   /** Add NEAT (BMR x (activity factor - 1)) to the daily budget. */
   includeMovement: boolean
-  /** Daily balance goal in kcal, derived: BMR + movement - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
+  /** Daily balance goal in kcal, derived: home base (BMR + movement, or BMR x 1.2 with movement off) - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
   dailyGoal: number
   /** v1.1: goal weight (kg) used for protein and the fat floor. Defaults to the current weight. */
   goalWeightKg: number
@@ -71,6 +71,8 @@ export type ExerciseEntry = {
 export type DaySummary = {
   bmr: number
   movement: number
+  /** v1.2.1: BMR x 1.2 when the day was counted with Movement off. Absent on older days (they used BMR + movement). */
+  baseBurn?: number
   burned: number
   eaten: number
   balance: number // positive = deficit

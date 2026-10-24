@@ -159,8 +159,9 @@ export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 
  * Keep: the plan base.
  * Floor (v1.2): never under 1,500 kcal (men) / 1,200 (women). With Movement on the v1.1 BMR floor is kept as well,
  * so nothing changes there. The macro carb floor can still raise the target.
- * dailyGoal is the balance goal against what Home counts (BMR + movement): BMR + movement - target.
  * planDeficit is what the plan takes off its base (base - target, negative for a surplus).
+ * dailyGoal is the balance goal against what Home counts as the burn (homeBase): since v1.2.1 Home counts the plan
+ * base too (BMR x 1.2 "base burn" with Movement off), so dailyGoal = planDeficit. Keep = 0, Lose = the deficit.
  */
 export function dailyPlan(p: PlanInput) {
   const movement = movementKcal(p)
@@ -177,7 +178,7 @@ export function dailyPlan(p: PlanInput) {
   const m = macroPlan(target, p.goalWeightKg, p.macros)
   return {
     bmr: p.bmr, movement, base, planBase: Math.round(planBase), planDeficit: Math.round(planBase) - m.target, floor, floored,
-    target: m.target, dailyGoal: base - m.target, protein: m.protein, carbs: m.carbs, fat: m.fat, adjusted: m.adjusted,
+    target: m.target, dailyGoal: Math.round(planBase) - m.target, protein: m.protein, carbs: m.carbs, fat: m.fat, adjusted: m.adjusted,
     capped: p.goal !== 'keep' && want > cap,
   }
 }
@@ -204,22 +205,38 @@ export function movementKcal(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovem
 /** Food target on a rest day (v1.1: from the pace, see dailyPlan). */
 export const foodBudget = (p: PlanInput): number => dailyPlan(p).target
 
-export type DayBalance = { bmr: number; movement: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean }
+/**
+ * v1.2.1: what Home counts as the day's burn before exercise. Movement on: BMR + movement. Movement off: the
+ * "base burn" BMR x 1.2, the same base the food target is planned from, so Home and the target agree.
+ */
+export function homeBase(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovement'>): number {
+  return p.includeMovement ? p.bmr + movementKcal(p) : Math.round(p.bmr * NO_MOVEMENT_FACTOR)
+}
+
+/**
+ * baseBurn is set (BMR x 1.2) on days counted with Movement off since v1.2.1; it replaces BMR + movement in the
+ * balance. Days closed before v1.2.1 have no baseBurn and keep the BMR (+ movement) numbers they were closed with.
+ */
+export type DayBalance = { bmr: number; movement: number; baseBurn?: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean }
+
+/** Burn before exercise for a day: the base burn when set, else BMR + movement. */
+export const dayBase = (d: Pick<DayBalance, 'bmr' | 'movement' | 'baseBurn'>) => d.baseBurn ?? d.bmr + d.movement
 
 export function sumExercise(list: ExerciseEntry[]): number {
   return list.reduce((s, e) => s + e.kcal, 0)
 }
 
-/** Live balance for a date from the current profile: BMR + movement + burned - eaten. */
+/** Live balance for a date from the current profile: home base (BMR + movement, or base burn) + burned - eaten. */
 export function liveDay(state: Pick<State, 'entries' | 'exercises'>, profile: Profile, date: string): DayBalance {
   const entries = state.entries.filter((e) => e.date === date)
   const ex = state.exercises.filter((e) => e.date === date)
   const m = sumEntries(entries)
   const burned = sumExercise(ex)
   const movement = movementKcal(profile)
+  const base = homeBase(profile)
   return {
-    bmr: profile.bmr, movement, burned, eaten: m.kcal, protein: m.protein,
-    balance: profile.bmr + movement + burned - m.kcal, goal: profile.dailyGoal,
+    bmr: profile.bmr, movement, ...(profile.includeMovement ? {} : { baseBurn: base }), burned, eaten: m.kcal, protein: m.protein,
+    balance: base + burned - m.kcal, goal: profile.dailyGoal,
     logged: entries.length + ex.length > 0,
   }
 }
@@ -232,8 +249,8 @@ export function dayView(state: State, date: string): DayBalance & { closed: DayS
 }
 
 export function summarise(d: DayBalance, auto: boolean): DaySummary {
-  const { bmr, movement, burned, eaten, balance, goal, protein } = d
-  return { bmr, movement, burned, eaten, balance, goal, protein, closedAt: Date.now(), auto }
+  const { bmr, movement, baseBurn, burned, eaten, balance, goal, protein } = d
+  return { bmr, movement, ...(baseBurn != null ? { baseBurn } : {}), burned, eaten, balance, goal, protein, closedAt: Date.now(), auto }
 }
 
 /** "Deficit 420 kcal" / "Surplus 180 kcal" / "Even" */

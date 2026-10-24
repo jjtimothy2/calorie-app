@@ -25,7 +25,7 @@ function ProteinRing({ value, target, size = 180, stroke = 18 }: { value: number
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
         <div className="text-[40px] font-extrabold leading-tight tracking-tight">{fmt(value)} g</div>
-        <div className="text-[15px] text-mute">of {fmt(target)} g protein</div>
+        <div className="text-[15px] text-mute" data-testid="protein-ring-label">of {fmt(target)} g, {pctOf(value, target)}%</div>
       </div>
     </div>
   )
@@ -39,7 +39,7 @@ const TONE: Record<MacroTone, { bar: string; deep: string; ink: string }> = {
 }
 
 /**
- * Macro row: "Carbs 75 of 109 g, 69%". Over target the bar rescales to the total: the part past the target is a
+ * Macro row (carbs, fat): "Carbs 75 of 109 g, 69%". Over target the bar rescales to the total: the part past the target is a
  * darker shade, with a tick at the target, and the row adds "+X g over".
  */
 function Bar({ label, value, target, tone, id }: { label: string; value: number; target: number; tone: MacroTone; id: string }) {
@@ -191,6 +191,7 @@ export default function Nutrition() {
         </div>
         <CaloriesCard eaten={per.kcal} target={t.target + Math.round(burned)} exercise={Math.round(burned)} week={range === 'week'} />
         <Card className="flex flex-col items-center gap-3 py-5 text-center">
+          {/* v1.2.1: protein lives in the ring only (no macro row); its label carries the % ("75 of 109 g, 69%"). */}
           <ProteinRing value={p} target={t.protein} />
           <p className="text-[15px] text-mute">
             <span className="font-semibold text-ink" data-testid="protein-progress">{fmt(p)} of {fmt(t.protein)} g, {pctP}%</span>
@@ -199,7 +200,6 @@ export default function Nutrition() {
           </p>
         </Card>
         <Card className="flex flex-col gap-3.5">
-          <Bar label="Protein" value={p} target={t.protein} tone="protein" id="nutri-protein" />
           <Bar label="Carbs" value={per.carbs} target={t.carbs} tone="carbs" id="nutri-carbs" />
           <Bar label="Fat" value={per.fat} target={t.fat} tone="fat" id="nutri-fat" />
           <SplitBar grams={{ protein: per.protein, carbs: per.carbs, fat: per.fat }} targets={t} />

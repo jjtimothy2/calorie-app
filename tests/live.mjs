@@ -25,6 +25,9 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.waitForURL(BASE + '/')
   await page.getByTestId('balance').waitFor()
   assert.equal(await page.getByTestId('eq-movement').count(), 0)
+  // v1.2.1: Home counts the base burn BMR x 1.2 with movement off, so the goal is the 336 plan deficit.
+  assert.equal(Number((await page.getByTestId('eq-base').innerText()).replace(/\D/g, '')), 1680)
+  assert.match(await page.getByTestId('ring-goal').innerText(), /goal 336/)
   const st = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
   assert.deepEqual([st.version, st.profile.includeMovement, st.profile.pace, st.profile.goalWeightKg], [2, false, 'standard', 68])
 })
@@ -42,7 +45,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /calorie-v1\.2-[0-9a-f]{12}/) // v1.2 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /calorie-v1\.2\.1-[0-9a-f]{12}/) // v1.2.1 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()
@@ -103,7 +106,9 @@ await step('sample meals and exercise for today', async () => {
 await step('v1.2 Nutrition: calories card, macro %, split bar', async () => {
   await page.goto(BASE + '/nutrition'); await page.getByTestId('cal-card').waitFor()
   assert.match(await page.getByTestId('cal-text').innerText(), /^Eaten [\d,]+ of [\d,]+ kcal, \d+%/)
-  assert.match(await page.getByTestId('nutri-protein-text').innerText(), /^\d+ of \d+ g, \d+%/)
+  assert.equal(await page.getByTestId('nutri-protein').count(), 0) // v1.2.1: protein only in the ring
+  assert.match(await page.getByTestId('protein-ring-label').innerText(), /^of \d+ g, \d+%$/)
+  assert.match(await page.getByTestId('protein-progress').innerText(), /^\d+ of \d+ g, \d+%$/)
   const sp = (await page.getByTestId('split').getAttribute('data-split')).split('/').map(Number)
   assert.equal(sp[0] + sp[1] + sp[2], 100)
 })

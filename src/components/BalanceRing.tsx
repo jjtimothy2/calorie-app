@@ -45,8 +45,11 @@ export function BalanceRing({ balance, goal, size = 190, stroke = 17, closed = f
   )
 }
 
-/** BMR + Movement + Exercise - Eaten = Balance. Movement is null when the daily movement setting is off. */
-export function Equation({ bmr, movement, burned, eaten, balance }: { bmr: number; movement: number | null; burned: number; eaten: number; balance: number }) {
+/**
+ * BMR + Movement + Exercise - Eaten = Balance. Movement is null when the daily movement setting is off.
+ * v1.2.1: with baseBurn (Movement off) the first term is "Base burn" (BMR x 1.2) instead of BMR, so the numbers add up.
+ */
+export function Equation({ bmr, movement, baseBurn, burned, eaten, balance }: { bmr: number; movement: number | null; baseBurn?: number; burned: number; eaten: number; balance: number }) {
   const surplus = Math.round(balance) < 0
   const item = (label: string, v: string, id: string, cls = 'text-ink') => (
     <div className="text-center" data-term={label}>
@@ -56,9 +59,9 @@ export function Equation({ bmr, movement, burned, eaten, balance }: { bmr: numbe
   )
   const op = (s: string) => <span className="text-[16px] text-mute" aria-hidden="true">{s}</span>
   return (
-    <div className="mt-2.5 flex items-center justify-between text-[12px] text-mute" data-testid="equation" aria-label={`BMR ${fmt(bmr)}${movement != null ? ` plus movement ${fmt(movement)}` : ''} plus exercise ${fmt(burned)} minus eaten ${fmt(eaten)} equals balance ${fmt(Math.abs(balance))} ${surplus ? 'surplus' : 'deficit'}`} role="group">
-      {item('BMR', fmt(bmr), 'eq-bmr')}
-      {movement != null && <>{op('+')}{item('Movement', fmt(movement), 'eq-movement')}</>}
+    <div className="mt-2.5 flex items-center justify-between text-[12px] text-mute" data-testid="equation" aria-label={`${baseBurn != null ? `Base burn ${fmt(baseBurn)}, BMR ${fmt(bmr)} times 1.2,` : `BMR ${fmt(bmr)}`}${baseBurn == null && movement != null ? ` plus movement ${fmt(movement)}` : ''} plus exercise ${fmt(burned)} minus eaten ${fmt(eaten)} equals balance ${fmt(Math.abs(balance))} ${surplus ? 'surplus' : 'deficit'}`} role="group">
+      {baseBurn != null ? item('Base burn', fmt(baseBurn), 'eq-base') : item('BMR', fmt(bmr), 'eq-bmr')}
+      {baseBurn == null && movement != null && <>{op('+')}{item('Movement', fmt(movement), 'eq-movement')}</>}
       {op('+')}
       {item('Exercise', fmt(burned), 'eq-burned', 'text-ex-ink')}
       {op('−')}

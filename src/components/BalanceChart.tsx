@@ -18,7 +18,7 @@ export function BalanceChart({ bars, goal, height = 220 }: { bars: BalanceBar[];
   const half = plotH / 2
   const zero = top + half
   const vals = bars.flatMap((b) => (b.value == null ? [] : [b.value]))
-  // An open day starts at the full BMR + movement and shrinks as food is logged, so it would inflate the scale
+  // An open day starts at the full burn (BMR + movement, or the base burn) and shrinks as food is logged, so it would inflate the scale
   // every morning. Scale from closed days when there are any; an open bar past the scale is clipped like a spike.
   const closed = bars.flatMap((b) => (b.value == null || b.open ? [] : [b.value]))
   const S = balanceScale(closed.length ? closed : vals, goal)

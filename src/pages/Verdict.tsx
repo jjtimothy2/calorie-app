@@ -30,8 +30,10 @@ export default function Verdict() {
       <div className="text-xl font-bold" data-testid="verdict-text" aria-hidden="true">{b === 0 ? 'kcal, even' : `kcal ${surplus ? 'surplus' : 'deficit'}`}</div>
       <p className="max-w-[280px] text-[15px] text-mute" data-testid="verdict-message">{goalMessage(d.balance, d.goal, true)}</p>
       <Card className="w-full py-0 text-left">
-        <div className={row}><span>BMR</span><b className="font-semibold tabular-nums">{fmt(d.bmr)}</b></div>
-        {d.movement > 0 && <div className={row}><span>Daily movement</span><b className="font-semibold tabular-nums">+ {fmt(d.movement)}</b></div>}
+        {d.baseBurn != null ? (
+          <div className={row}><span>Base burn <span className="text-mute">(BMR {fmt(d.bmr)} × 1.2)</span></span><b className="font-semibold tabular-nums" data-testid="verdict-base">{fmt(d.baseBurn)}</b></div>
+        ) : <div className={row}><span>BMR</span><b className="font-semibold tabular-nums" data-testid="verdict-bmr">{fmt(d.bmr)}</b></div>}
+        {d.baseBurn == null && d.movement > 0 && <div className={row}><span>Daily movement</span><b className="font-semibold tabular-nums">+ {fmt(d.movement)}</b></div>}
         <div className={row}><span>Exercise burned</span><b className="font-semibold tabular-nums text-ex-ink">+ {fmt(d.burned)}</b></div>
         <div className={row}><span>Food eaten</span><b className="font-semibold tabular-nums">− {fmt(d.eaten)}</b></div>
         <div className={row}><b>Balance</b><b className={`tabular-nums ${tone}`} data-testid="verdict-balance">{b === 0 ? 'even' : `${fmt(Math.abs(b))} ${surplus ? 'surplus' : 'deficit'}`}</b></div>

@@ -62,7 +62,7 @@ export default function Home() {
             </div>
           )}
           <BalanceRing balance={day.balance} goal={day.goal} closed={closed} />
-          <Equation bmr={day.bmr} movement={profile.includeMovement ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} />
+          <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} />
           <p className="mt-2.5 text-center text-[15px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
         </Card>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />
