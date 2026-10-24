@@ -5,7 +5,9 @@ import { ExerciseEditSheet, ExerciseQuickSheet, exerciseLine } from '../componen
 import { FoodSheet } from '../components/FoodSheet'
 import { ProteinCard } from '../components/ProteinCard'
 import { QuickAddSheet } from '../components/QuickAddSheet'
-import { Screen, TabBar } from '../components/Layout'
+import { Screen, TabBar, Title } from '../components/Layout'
+import { useNewRows } from '../components/motion'
+import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
 import { dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
@@ -32,18 +34,16 @@ export default function Home() {
   const remainingExcl = (e: Entry) => left + entryTotals(e).kcal
   const burned = day.burned
   const [remind, setRemind] = useState(() => shouldRemind(state, readMeta()))
+  const fresh = useNewRows([...entries.map((e) => e.id), ...exercises.map((e) => e.id)])
   const dismiss = () => { writeMeta({ dismissedAt: Date.now() }); setRemind(false) }
 
   return (
     <>
       <Screen className="gap-3">
-        <header className="flex items-center justify-between">
-          <div>
-            <div className="text-[15px] text-mute">{dateLabel}</div>
-            <h1 className="text-[28px] font-bold tracking-tight">Today</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-line bg-card px-3.5 py-2.5 text-[15px] font-semibold" data-testid="streak">
+        <header className="flex items-end justify-between">
+          <Title eyebrow={dateLabel}>Today</Title>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="rounded-full border border-line bg-card px-3 py-2 text-[15px] font-semibold" data-testid="streak">
               <span aria-hidden="true">🔥 </span>{s} {s === 1 ? 'day' : 'days'}<span className="sr-only"> streak</span>
             </span>
           </div>
@@ -54,7 +54,7 @@ export default function Home() {
             <button type="button" onClick={dismiss} aria-label="Dismiss backup reminder" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl font-bold">×</button>
           </div>
         )}
-        <Card>
+        <section aria-label="Balance" className="flex flex-col gap-2.5">
           {closed && (
             <div className="mb-1 flex items-center justify-between">
               <span className="rounded-full bg-g-soft px-3 py-1.5 text-[13px] font-bold text-g-soft-ink" data-testid="closed-pill">Day closed</span>
@@ -62,23 +62,26 @@ export default function Home() {
             </div>
           )}
           <BalanceRing balance={day.balance} goal={day.goal} closed={closed} />
+          <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} />
-          <p className="mt-2.5 text-center text-[15px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
-        </Card>
+          <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
+          </Card>
+        </section>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />
         <Card>
           <section aria-label="Exercise" data-testid="exercise-card">
             <div className="flex items-center justify-between">
-              <h2 className="text-[17px] font-bold"><span aria-hidden="true">🏃 </span>Exercise{exercises.length > 0 && ` · ${fmt(burned)}`}</h2>
-              {!closed && <Link to="/log?mode=exercise" className="px-1 py-1 text-[15px] font-bold text-g-ink" aria-label="Add exercise">+ Add</Link>}
+              <h2 className="eyebrow text-[15px] font-semibold text-ink">Exercise{exercises.length > 0 && <span className="text-mute"> · {fmt(burned)} kcal</span>}</h2>
+              {!closed && <Link to="/log?mode=exercise" className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label="Add exercise">+ Add</Link>}
             </div>
             {exercises.length > 0 && (
               <ul className="mt-2">
                 {exercises.map((e) => (
-                  <li key={e.id}>
-                    <button type="button" disabled={closed} onClick={() => setEditingEx(e)} className="flex w-full justify-between gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(e.kcal)} kcal burned`}>
-                      <span>{exerciseLine(e)}</span>
-                      <span className="tabular-nums font-semibold text-ex-ink">+{fmt(e.kcal)}</span>
+                  <li key={e.id} className={fresh.has(e.id) ? 'row-in' : ''}>
+                    <button type="button" disabled={closed} onClick={() => setEditingEx(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(e.kcal)} kcal burned`}>
+                      <span className="tile" aria-hidden="true">🏃</span>
+                      <span className="flex-1">{exerciseLine(e)}</span>
+                      <span className="num text-[18px] text-ex-ink">+{fmt(e.kcal)}</span>
                     </button>
                   </li>
                 ))}
@@ -96,16 +99,20 @@ export default function Home() {
             <Card key={m}>
               <section aria-label={MEAL_LABEL[m]} data-testid={`meal-${m}`}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-[17px] font-bold">{MEAL_LABEL[m]}{list.length > 0 && ` · ${fmt(sum)}`}</h2>
-                  {!closed && <Link to={`/log?meal=${m}`} className="px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>}
+                  <h2 className="eyebrow text-[15px] font-semibold text-ink">{MEAL_LABEL[m]}{list.length > 0 && <span className="text-mute"> · {fmt(sum)} kcal</span>}</h2>
+                  {!closed && <Link to={`/log?meal=${m}`} className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>}
                 </div>
                 {list.length > 0 && (
                   <ul className="mt-2">
                     {list.map((e) => (
-                      <li key={e.id}>
-                        <button type="button" disabled={closed} onClick={() => setEditing(e)} className="flex w-full justify-between gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
-                          <span>{e.name}{e.foodId && <span className="text-mute">, {formatAmount(e.servingLabel, e.qty)}</span>}</span>
-                          <span className="tabular-nums">{fmt(entryTotals(e).kcal)}</span>
+                      <li key={e.id} className={fresh.has(e.id) ? 'row-in' : ''}>
+                        <button type="button" disabled={closed} onClick={() => setEditing(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
+                          <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[16px] font-semibold leading-snug">{e.name}</span>
+                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : ' · quick add'}</span>
+                          </span>
+                          <span className="num text-[18px]">{fmt(entryTotals(e).kcal)}</span>
                         </button>
                       </li>
                     ))}

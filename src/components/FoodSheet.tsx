@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { FOOD_BY_ID, servingsFor, type Food } from '../data/foods'
+import { foodEmoji } from '../data/foodEmoji'
 import { fmt, round1 } from '../lib/calc'
 import { formatAmount } from '../lib/amount'
 import { entryFromFood, useStore } from '../lib/store'
@@ -44,9 +45,10 @@ export function FoodSheet(props: Props) {
 
   return (
     <Sheet label={props.mode === 'add' ? `Add ${food.name}` : `Edit ${food.name}`} onClose={props.onClose}>
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-xl font-bold">{food.name}</h2>
+      <div className="flex items-start justify-between gap-3">
+        <span className="tile h-12 w-12 text-[26px]" aria-hidden="true">{foodEmoji(food.name)}</span>
+        <div className="min-w-0 flex-1">
+          <h2 className="title text-[24px] leading-tight">{food.name}</h2>
           <div className="text-[15px] text-mute">{food.category}</div>
         </div>
         <button
@@ -86,7 +88,7 @@ export function FoodSheet(props: Props) {
           ))}
         </div>
       )}
-      <div className="grid grid-cols-3 gap-2.5 rounded-[20px] border border-line bg-bg p-4">
+      <div className="grid grid-cols-3 gap-2.5 rounded-[22px] border border-line bg-bg p-4">
         <div><small className="text-[13px] text-mute">Protein</small><b className="block text-[15px]">{round1(totals.p)}g</b></div>
         <div><small className="text-[13px] text-mute">Carbs</small><b className="block text-[15px]">{round1(totals.c)}g</b></div>
         <div><small className="text-[13px] text-mute">Fat</small><b className="block text-[15px]">{round1(totals.f)}g</b></div>

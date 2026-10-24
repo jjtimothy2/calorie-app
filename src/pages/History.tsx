@@ -37,7 +37,7 @@ export default function History() {
     <>
       <Screen>
         <header className="flex items-center justify-between">
-          <h1 className="text-[28px] font-bold tracking-tight">History</h1>
+          <h1 className="title text-[32px] leading-tight">History</h1>
           <span className="rounded-full border border-line bg-card px-3.5 py-2.5 text-[15px] font-semibold" data-testid="streak">
             <span aria-hidden="true">🔥 </span>{s} day streak
           </span>
@@ -56,13 +56,13 @@ export default function History() {
         <Card>
           <div className="flex justify-between gap-3">
             <div>
-              <div className="text-[15px] text-mute">Hit protein</div>
-              <div className="text-[30px] font-extrabold leading-tight tracking-tight text-protein-ink" data-testid="protein-hit">{hit} / {n}</div>
+              <div className="eyebrow">Hit protein</div>
+              <div className="num text-[32px] leading-tight text-protein-ink" data-testid="protein-hit">{hit} / {n}</div>
               <div className="text-[13px] text-mute">days {n === 7 ? 'this week' : 'in 30 days'}</div>
             </div>
             <div className="text-right">
-              <div className="text-[15px] text-mute">Daily average</div>
-              <div className="text-[30px] font-extrabold leading-tight tracking-tight" data-testid="protein-avg">{pDays.length ? `${fmt(pAvg)} g` : '–'}</div>
+              <div className="eyebrow">Daily average</div>
+              <div className="num text-[32px] leading-tight" data-testid="protein-avg">{pDays.length ? `${fmt(pAvg)} g` : '–'}</div>
               <div className="text-[13px] text-mute">target {fmt(pTarget)} g</div>
             </div>
           </div>
@@ -91,15 +91,15 @@ export default function History() {
         <Card>
           <div className="flex justify-between gap-3">
             <div>
-              <div className="text-[15px] text-mute">{n === 7 ? 'Week balance' : '30-day balance'}</div>
-              <div className={`text-[30px] font-extrabold leading-tight tracking-tight ${tone}`} data-testid="week-total" data-value={Math.round(total)}>
+              <div className="eyebrow">{n === 7 ? 'Week balance' : '30-day balance'}</div>
+              <div className={`num text-[32px] leading-tight ${tone}`} data-testid="week-total" data-value={Math.round(total)}>
                 {closed.length ? fmt(Math.abs(total)) : '–'}
               </div>
               <div className="text-[13px] text-mute">{closed.length ? `kcal ${total < 0 ? 'surplus' : 'deficit'} · ${closed.length} closed day${closed.length === 1 ? '' : 's'}` : 'No closed days yet'}</div>
             </div>
             <div className="text-right">
-              <div className="text-[15px] text-mute">Est. change</div>
-              <div className="text-[30px] font-extrabold leading-tight tracking-tight" data-testid="est-change">
+              <div className="eyebrow">Est. change</div>
+              <div className="num text-[32px] leading-tight" data-testid="est-change">
                 {closed.length ? `${kg > 0 ? '+' : kg < 0 ? '−' : ''}${Math.abs(round1(kg)).toFixed(1)} kg` : '–'}
               </div>
               <div className="text-[13px] text-mute">estimate, 7,700 kcal per kg</div>

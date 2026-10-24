@@ -52,7 +52,7 @@ export function QuickAddSheet(props: Props) {
 
   return (
     <Sheet label={props.mode === 'add' ? 'Quick add calories' : 'Edit quick add'} onClose={props.onClose}>
-      <h2 className="text-xl font-bold">{props.mode === 'add' ? 'Quick add' : 'Edit quick add'}</h2>
+      <h2 className="title text-[24px] leading-tight">{props.mode === 'add' ? 'Quick add' : 'Edit quick add'}</h2>
       <form className="flex flex-col gap-3" onSubmit={(ev) => { ev.preventDefault(); save() }}>
         <label className="flex flex-col gap-1 text-[15px] font-semibold">
           Calories (kcal)

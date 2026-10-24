@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useFirstVisit } from './motion'
 
 /**
  * Phone or installed app: full-bleed. Desktop browser tab (framed): a 390x844 phone frame, as in the mockup.
@@ -16,8 +17,20 @@ export function PhoneFrame({ children }: { children: ReactNode }) {
   )
 }
 
-export function Screen({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <main className={`flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 ${className}`}>{children}</main>
+/** v1.3: every screen crossfades in with a slight slide; its cards rise in, 60 ms apart, on the first visit only. */
+export function Screen({ children, className = '', stagger = true }: { children: ReactNode; className?: string; stagger?: boolean }) {
+  const first = useFirstVisit(useLocation().pathname)
+  return <main className={`page-in flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 ${first && stagger ? 'stagger' : ''} ${className}`}>{children}</main>
+}
+
+/** Small-caps date line over a Fraunces screen title. */
+export function Title({ eyebrow, children, id }: { eyebrow?: ReactNode; children: ReactNode; id?: string }) {
+  return (
+    <div>
+      {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+      <h1 className="title text-[32px] leading-tight" id={id}>{children}</h1>
+    </div>
+  )
 }
 
 function Ico({ d }: { d: string }) {
@@ -31,7 +44,7 @@ function Ico({ d }: { d: string }) {
 export function TabBar() {
   const nav = useNavigate()
   const tab = ({ isActive }: { isActive: boolean }) =>
-    `flex min-w-[60px] flex-col items-center gap-1 px-1 py-1 ${isActive ? 'font-bold text-g-ink' : 'text-mute'}`
+    `tap flex min-w-[60px] flex-col items-center gap-1 px-1 py-1 ${isActive ? 'font-bold text-ink' : 'text-mute'}`
   return (
     // The + sits in the bar's own row (lifted 20px over the content above) and the bar pads the home indicator
     // with env(safe-area-inset-bottom), so the button never reaches into the safe area or gets clipped.
@@ -49,9 +62,9 @@ export function TabBar() {
         aria-label="Log food"
         onClick={() => nav('/log')}
         data-testid="plus"
-        className="-mt-5 grid h-14 w-14 shrink-0 place-items-center rounded-full bg-g-ink text-3xl text-white shadow-[0_6px_16px_rgba(31,157,85,.4)]"
+        className="fab -mt-6 grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-ink text-bg shadow-[0_8px_20px_rgba(42,36,32,.28)]"
       >
-        +
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
       </button>
       <NavLink to="/history" className={tab}>
         <Ico d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
