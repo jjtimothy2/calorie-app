@@ -1,4 +1,4 @@
-// Unit checks for v1.1: daily target from pace (20% cap, BMR floor), macros (protein 1.6 g/kg goal weight,
+// Unit checks for v1.1/v1.2: daily target from pace (20% cap; v1.2 BMR x 1.2 base with movement off and a 1,500 / 1,200 kcal floor), macros (protein 1.6 g/kg goal weight,
 // fat 25% with a 0.6 g/kg floor, carbs the rest with a 100 g floor), chart scales, storage + backup migration.
 import { execSync } from 'node:child_process'
 import { readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
@@ -12,7 +12,7 @@ for (const f of readdirSync(out).filter((f) => f.endsWith('.js'))) {
   writeFileSync(`${out}/${f.replace(/\.js$/, '.mjs')}`, src)
 }
 const load = (m) => import(new URL(`../${out}/${m}.mjs`, import.meta.url))
-const { dailyPlan, macroPlan, splitMacros, overBy, movementKcal, balanceScale, proteinScale, calcBmr } = await load('calc')
+const { dailyPlan, macroPlan, macroSplit, pctOf, targetFloor, splitMacros, overBy, movementKcal, balanceScale, proteinScale, calcBmr } = await load('calc')
 const { migrateState, normaliseProfile } = await load('migrate')
 globalThis.localStorage = { length: 0, key: () => null, getItem: () => null, setItem() {} }
 const { parseBackup, BACKUP_SCHEMA, STATE_KEY, LEGACY_STATE_KEY } = await load('backup')
@@ -21,7 +21,7 @@ const results = []
 const t = (name, fn) => { fn(); results.push('PASS ' + name) }
 
 // ---------- Acceptance (Reed's CR4) ----------
-const reed = { bmr: 1600, activity: 'light', includeMovement: true, goal: 'lose', pace: 'standard', goalWeightKg: 68, macros: auto }
+const reed = { sex: 'female', bmr: 1600, activity: 'light', includeMovement: true, goal: 'lose', pace: 'standard', goalWeightKg: 68, macros: auto }
 t('acceptance: 68 kg, BMR 1600 + movement 600, Standard -> 1760 / P109 F49 C221', () => {
   // Movement 600 comes from the activity factor in the app; force it with a BMR whose light movement is 600.
   const p = { ...reed, bmr: 1600 }
@@ -32,27 +32,57 @@ t('acceptance: 68 kg, BMR 1600 + movement 600, Standard -> 1760 / P109 F49 C221'
   assert.equal(plan.dailyGoal, 440)
   assert.equal(plan.capped, true)
 })
-t('acceptance: same profile, Movement off -> 1600 / P109 F44 C191', () => {
+t('v1.2 acceptance: same profile, Movement off -> 1536 / P109 F43 C179', () => {
   const plan = dailyPlan({ ...reed, includeMovement: false })
-  assert.equal(plan.target, 1600) // 1600 - 320 = 1280 is under BMR, so BMR
-  assert.deepEqual([plan.protein, plan.fat, plan.carbs], [109, 44, 191])
-  assert.equal(plan.dailyGoal, 0)
+  assert.equal(plan.planBase, 1920) // BMR 1600 x 1.2
+  assert.equal(plan.target, 1536) // 1920 - min(550, 20% = 384)
+  assert.equal(plan.planDeficit, 384)
+  assert.equal(plan.capped, true)
+  assert.equal(plan.floored, false)
+  // Fat max(25% = 384, 0.6 x 68 x 9 = 367.2) = 384 kcal = 42.7 -> 43 g; carbs (1536 - 436 - 384) / 4 = 179 exactly.
+  assert.deepEqual([plan.protein, plan.fat, plan.carbs], [109, 43, 179])
+  assert.equal(plan.dailyGoal, 64) // balance goal against BMR only (what Home counts with movement off)
+})
+t('v1.2: Movement on is unchanged (1760 / P109 F49 C221 for women and men)', () => {
+  for (const sex of ['female', 'male']) {
+    const plan = dailyPlan({ ...reed, sex })
+    assert.deepEqual([plan.target, plan.protein, plan.fat, plan.carbs, plan.dailyGoal], [1760, 109, 49, 221, 440])
+  }
+})
+t('v1.2 floor: 1,500 kcal for men, 1,200 for women; anything else gets 1,200', () => {
+  assert.equal(targetFloor('male'), 1500)
+  assert.equal(targetFloor('female'), 1200)
+  assert.equal(targetFloor(undefined), 1200)
+  assert.equal(targetFloor('other'), 1200)
+  const small = { ...reed, bmr: 1200, includeMovement: false } // 1440 - 288 = 1152
+  const f = dailyPlan(small)
+  assert.equal(f.target, 1200)
+  assert.equal(f.floored, true)
+  assert.equal(f.planDeficit, 240) // 1440 - 1200
+  const m = dailyPlan({ ...small, sex: 'male' }) // 1152 < 1500
+  assert.equal(m.target, 1500)
+  assert.equal(m.planDeficit, -60) // the floor sits above the plan base
+  assert.equal(m.dailyGoal, -300) // and above BMR, so the balance goal is a small surplus
+  // Keep and gain with movement off also start from BMR x 1.2.
+  assert.equal(dailyPlan({ ...reed, includeMovement: false, goal: 'keep' }).target, 1920)
+  assert.equal(dailyPlan({ ...reed, includeMovement: false, goal: 'gain' }).target, 2304) // + min(550, 384)
 })
 t('macroPlan matches the acceptance numbers directly', () => {
   assert.deepEqual(macroPlan(1760, 68, auto), { target: 1760, protein: 109, fat: 49, carbs: 221, adjusted: false })
-  assert.deepEqual(macroPlan(1600, 68, auto), { target: 1600, protein: 109, fat: 44, carbs: 191, adjusted: false })
+  assert.deepEqual(macroPlan(1536, 68, auto), { target: 1536, protein: 109, fat: 43, carbs: 179, adjusted: false })
   assert.deepEqual(splitMacros(1760, 68, auto), { protein: 109, carbs: 221, fat: 49 })
 })
 
 // ---------- Target rules ----------
-t('pace: Gentle 275, Standard 550, Faster 825 kcal, capped at 20% of BMR + movement, never under BMR', () => {
+t('pace: Gentle 275, Standard 550, Faster 825 kcal, capped at 20% of BMR + movement, movement on never under BMR', () => {
   const big = { ...reed, bmr: 2000, activity: 'active' } // movement 1450, base 3450, cap 690
   assert.equal(dailyPlan({ ...big, pace: 'gentle' }).target, 3450 - 275)
   assert.equal(dailyPlan({ ...big, pace: 'standard' }).target, 3450 - 550)
   assert.equal(dailyPlan({ ...big, pace: 'faster' }).target, 3450 - 690)
   assert.equal(dailyPlan({ ...big, pace: 'faster' }).capped, true)
   const sed = { ...reed, bmr: 1500, activity: 'sedentary' } // base 1800, 20% = 360 -> 1440 < BMR
-  assert.equal(dailyPlan(sed).target, 1500)
+  assert.equal(dailyPlan(sed).target, 1500) // movement on keeps the v1.1 BMR floor
+  assert.equal(dailyPlan({ ...sed, includeMovement: false }).target, 1440) // off: 1800 - 360, above the 1,200 floor
   assert.equal(dailyPlan({ ...reed, goal: 'keep' }).target, 2200)
   assert.equal(dailyPlan({ ...reed, goal: 'keep' }).dailyGoal, 0)
   assert.equal(dailyPlan({ ...reed, goal: 'gain', pace: 'gentle' }).target, 2475)
@@ -70,15 +100,18 @@ t('goal weight drives protein and the fat floor, not the target', () => {
 t('carbs never under 100 g for any profile (sweep of 30-200 kg, BMR 800-3000, every pace and goal, movement on/off)', () => {
   let n = 0, adjusted = 0
   for (const kg of [30, 45, 60, 68, 80, 100, 130, 160, 200]) for (const bmr of [800, 950, 1100, 1300, 1600, 2000, 2500, 3000])
-    for (const goal of ['lose', 'keep', 'gain']) for (const pace of ['gentle', 'standard', 'faster']) for (const includeMovement of [true, false]) for (const activity of ['sedentary', 'very']) {
-      const p = dailyPlan({ bmr, activity, includeMovement, goal, pace, goalWeightKg: kg, macros: auto })
+    for (const goal of ['lose', 'keep', 'gain']) for (const pace of ['gentle', 'standard', 'faster']) for (const includeMovement of [true, false]) for (const activity of ['sedentary', 'light', 'very']) {
+      for (const sex of ['female', 'male']) {
+      const p = dailyPlan({ sex, bmr, activity, includeMovement, goal, pace, goalWeightKg: kg, macros: auto })
       n++
       assert.ok(p.carbs >= 100, `carbs ${p.carbs} for ${kg} kg / BMR ${bmr} / ${goal} ${pace} ${includeMovement}`)
-      assert.ok(p.target >= bmr, 'target under BMR')
+      assert.ok(p.target >= (sex === 'male' ? 1500 : 1200), `target ${p.target} under the ${sex} floor`)
+      if (includeMovement) assert.ok(p.target >= bmr, 'movement on: target under BMR')
       assert.ok(p.protein >= Math.round(1.2 * kg) && p.protein <= Math.round(1.6 * kg), 'protein range')
       assert.ok(p.fat >= Math.round(0.6 * kg), 'fat floor')
       assert.ok(Math.abs(p.protein * 4 + p.carbs * 4 + p.fat * 9 - p.target) <= 8, `kcal add up: ${p.target}`)
       if (p.adjusted) adjusted++
+      }
     }
   results.push(`  (${n} profiles, ${adjusted} needed protein lowered or the target raised)`)
 })
@@ -90,13 +123,19 @@ t('carb floor order: protein drops first (to 1.2 g/kg), then the target rises wi
   assert.equal(b.protein, 82)
   assert.equal(b.carbs, 100)
   assert.equal(b.target, 82 * 4 + 400 + Math.ceil(0.6 * 68 * 9)) // fat floor wins over 25%: ceil(728 + 367.2) = 1096
-  assert.equal(dailyPlan({ ...reed, bmr: 900, includeMovement: false }).dailyGoal, 900 - b.target) // balance goal follows
+  // v1.2: the 1,200 floor now sits above this, so the plan target is 1,200 and the balance goal follows (900 - 1200).
+  const low = dailyPlan({ ...reed, bmr: 900, includeMovement: false })
+  assert.equal(low.target, 1200)
+  assert.equal(low.dailyGoal, 900 - 1200)
+  assert.ok(low.carbs >= 100)
   // A typed protein is kept; the target rises instead.
   assert.deepEqual(macroPlan(1100, 68, { ...auto, protein: 109 }), { target: 1204, protein: 109, fat: 41, carbs: 100, adjusted: true })
 })
 t('overrides are used as typed', () => {
   assert.deepEqual(macroPlan(1760, 68, { protein: 120, carbs: null, fat: 60 }), { target: 1760, protein: 120, fat: 60, carbs: 185, adjusted: false })
   assert.equal(macroPlan(1760, 68, { ...auto, carbs: 250 }).carbs, 250)
+  assert.equal(macroPlan(1760, 68, { ...auto, carbs: 60 }).carbs, 60) // v1.2 A3: a typed value under 100 g is kept (the UI only hints)
+  assert.equal(dailyPlan({ ...reed, macros: { ...auto, carbs: 60 } }).carbs, 60)
 })
 
 // ---------- Chart scales (CR1) ----------
@@ -140,7 +179,7 @@ t('migration v1 -> v2: Movement kept, goal weight = current weight, pace Standar
   assert.equal(JSON.stringify(v1), snapshot) // input not mutated
   const off = migrateState({ ...v1, profile: { ...v1Profile, includeMovement: false } })
   assert.equal(off.profile.includeMovement, false)
-  assert.equal(off.profile.target, 1600)
+  assert.equal(off.profile.target, 1536) // v1.2: re-derived on load from BMR x 1.2, no storage change
   // v0 profile without the movement field keeps the old behaviour (movement counted).
   const { includeMovement, bmr, bmrCustom, dailyGoal, ...v0 } = v1Profile
   const m0 = migrateState({ ...v1, profile: v0 })
@@ -159,7 +198,39 @@ t('normaliseProfile: a new profile can start with movement off; goal weight and 
   assert.equal(p.includeMovement, false)
   assert.equal(p.goalWeightKg, 62)
   assert.equal(p.pace, 'gentle')
-  assert.equal(p.target, p.bmr)
+  assert.equal(p.bmr, 1400)
+  assert.equal(p.target, 1405) // v1.2: 1400 x 1.2 = 1680 - 275 gentle
+})
+
+// ---------- Nutrition (v1.2) ----------
+t('split: 100 g P, 100 g C, 89 g F -> 25/25/50 (4/4/9 kcal per g)', () => {
+  assert.deepEqual(macroSplit({ protein: 100, carbs: 100, fat: 89 }), { protein: 25, carbs: 25, fat: 50 })
+})
+t('split edge cases: always sums to 100, gap goes to the largest, empty is null', () => {
+  assert.equal(macroSplit({ protein: 0, carbs: 0, fat: 0 }), null)
+  assert.deepEqual(macroSplit({ protein: 30, carbs: 0, fat: 0 }), { protein: 100, carbs: 0, fat: 0 })
+  assert.deepEqual(macroSplit({ protein: 0, carbs: 0, fat: 5 }), { protein: 0, carbs: 0, fat: 100 })
+  // Thirds: 33.3 x 3 rounds to 99 -> +1 on the first largest (protein, tie order P, C, F).
+  assert.deepEqual(macroSplit({ protein: 9, carbs: 9, fat: 4 }), { protein: 34, carbs: 33, fat: 33 })
+  // Rounds up to 101: 4 + 4 + 9 kcal = 23.5, 23.5, 52.9 -> 24 + 24 + 53, so the largest (fat) gives 1 back.
+  assert.deepEqual(macroSplit({ protein: 1, carbs: 1, fat: 1 }), { protein: 24, carbs: 24, fat: 52 })
+  assert.deepEqual(macroSplit({ protein: 59, carbs: 129, fat: 22 }), { protein: 25, carbs: 54, fat: 21 }) // fixture day
+  assert.deepEqual(macroSplit({ protein: 109, carbs: 179, fat: 43 }), { protein: 28, carbs: 47, fat: 25 }) // target split, movement-off example
+  let n = 0
+  for (let p = 0; p <= 60; p += 3) for (let c = 0; c <= 60; c += 4) for (let f = 0; f <= 30; f += 1.5) {
+    const s = macroSplit({ protein: p, carbs: c, fat: f })
+    if (!s) continue
+    n++
+    assert.equal(s.protein + s.carbs + s.fat, 100, `${p}/${c}/${f}`)
+    for (const v of Object.values(s)) assert.ok(v >= 0 && v <= 100)
+  }
+  results.push(`  (${n} split combinations sum to 100)`)
+})
+t('pctOf: whole percent, 0 without a target', () => {
+  assert.equal(pctOf(75, 109), 69)
+  assert.equal(pctOf(70, 49), 143)
+  assert.equal(pctOf(975, 1760), 55)
+  assert.equal(pctOf(10, 0), 0)
 })
 
 // ---------- Backup compatibility ----------

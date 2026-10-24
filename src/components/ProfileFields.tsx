@@ -114,12 +114,14 @@ export function validBody(d: Body) {
 /** Goal weight is optional; when typed it must be 30 to 300 kg. */
 export const validGoalWeight = (d: Pick<Draft, 'goalWeightKg'>) => Number.isNaN(d.goalWeightKg) || (d.goalWeightKg >= 30 && d.goalWeightKg <= 300)
 
-/** Goal line from the balance goal the plan actually uses (after the 20% cap and the BMR floor). */
-export function goalBlurb(goal: Goal, dailyGoal: number, capped: boolean) {
+/** Goal line from what the plan takes off (or adds to) its base, after the 20% cap and the v1.2 floor. */
+export function goalBlurb(goal: Goal, plan: { planDeficit: number; capped: boolean; floored: boolean; floor: number }) {
   if (goal === 'keep') return 'to keep your current weight'
-  const kcal = Math.abs(dailyGoal)
-  if (goal === 'lose' && dailyGoal <= 0) return 'at your BMR, the lowest target we suggest'
+  const kcal = Math.abs(plan.planDeficit)
+  const min = `the ${fmt(plan.floor)} kcal minimum`
+  if (goal === 'lose' && plan.planDeficit <= 0) return `at ${min}, the lowest target we suggest`
   const kg = Math.round(((kcal * 7) / KCAL_PER_KG) * 20) / 20
   const verb = goal === 'lose' ? 'lose' : 'gain'
-  return `${fmt(kcal)} kcal a day ${goal === 'lose' ? 'deficit' : 'surplus'}, to ${verb} about ${kg} kg a week${capped ? ' (capped at 20%)' : ''}`
+  const note = plan.floored ? ` (held at ${min})` : plan.capped ? ' (capped at 20%)' : ''
+  return `${fmt(kcal)} kcal a day ${goal === 'lose' ? 'deficit' : 'surplus'}, to ${verb} about ${kg} kg a week${note}`
 }

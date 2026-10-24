@@ -34,6 +34,12 @@
   --color-fat-deep: #2a4f9e;   /* fat over target (graphics) */
   --color-fat-ink: #2f62c9;    /* fat text, AA */
   --color-protein-deep: #9b1f52; /* protein over target (graphics) */
+  /* v1.2 Nutrition */
+  --color-split-carbs: #b8860b; /* carbs segment in the split bar, 3.2:1 on white (non-text AA) */
+  --color-split-fat: #4a7fe6;   /* fat segment in the split bar, 3.8:1 on white */
+  --color-kcal: #8c877d;        /* calories card bar, neutral grey, 3.6:1 on white */
+  --color-kcal-deep: #57534b;   /* calories past the target (graphics), still grey, never orange */
+  --color-ink-soft: #45423c;    /* darker grey text for "+N kcal over" (10:1 on white) */
 }
 
 html, body, #root { height: 100%; }

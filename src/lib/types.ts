@@ -25,7 +25,7 @@ export type Profile = {
   weightKg: number
   activity: Activity
   goal: Goal
-  /** Daily food target on a rest day (kcal), derived by dailyPlan(): BMR + movement - pace deficit (or + surplus). */
+  /** Daily food target on a rest day (kcal), derived by dailyPlan(): plan base (BMR + movement, or BMR x 1.2 with movement off) minus the pace deficit (or plus surplus), never under the sex floor. */
   target: number
   /** Daily starting budget. Mifflin-St Jeor unless the user typed their own. */
   bmr: number

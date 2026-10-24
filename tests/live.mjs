@@ -18,9 +18,9 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'Lose weight' }).click()
   await page.getByLabel(/Light \(exercise/).check()
-  assert.equal(await page.getByTestId('pace').getByRole('button').count(), 3) // v1.1 build is live
+  assert.equal(await page.getByTestId('pace').getByRole('button').count(), 3) // pace picker (v1.1+)
   await page.getByRole('button', { name: 'See my target' }).click()
-  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1400) // movement off -> BMR floor
+  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1344) // v1.2: movement off -> 1400 x 1.2 = 1680 - 336 (20% cap)
   await page.getByRole('button', { name: 'Start logging' }).click()
   await page.waitForURL(BASE + '/')
   await page.getByTestId('balance').waitFor()
@@ -42,6 +42,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /calorie-v1\.2-[0-9a-f]{12}/) // v1.2 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()
@@ -98,6 +99,13 @@ await step('sample meals and exercise for today', async () => {
   })
   await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
   await page.getByText('Chicken rice').first().waitFor()
+})
+await step('v1.2 Nutrition: calories card, macro %, split bar', async () => {
+  await page.goto(BASE + '/nutrition'); await page.getByTestId('cal-card').waitFor()
+  assert.match(await page.getByTestId('cal-text').innerText(), /^Eaten [\d,]+ of [\d,]+ kcal, \d+%/)
+  assert.match(await page.getByTestId('nutri-protein-text').innerText(), /^\d+ of \d+ g, \d+%/)
+  const sp = (await page.getByTestId('split').getAttribute('data-split')).split('/').map(Number)
+  assert.equal(sp[0] + sp[1] + sp[2], 100)
 })
 await step('mobile screenshot', async () => { await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor(); await page.waitForTimeout(500); await top(page); await page.screenshot({ path: OUT + 'live-mobile.png' }) })
 await step('desktop screenshot', async () => {

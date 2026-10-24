@@ -138,26 +138,48 @@ export function splitMacros(target: number, goalWeightKg: number, o: MacroOverri
   return { protein, carbs, fat }
 }
 
-export type PlanInput = Pick<Profile, 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'goalWeightKg' | 'macros'>
+export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'goalWeightKg' | 'macros'>
 
 /** Pace in kcal a day before the cap (7,700 kcal per kg). */
 export const paceKcal = (pace: Pace) => (PACE[pace].kg * KCAL_PER_KG) / 7
 
+/** v1.2: with Movement off, plan from BMR x 1.2 (a light everyday allowance) instead of bare BMR. */
+export const NO_MOVEMENT_FACTOR = 1.2
+
 /**
- * v1.1 daily target. Lose: BMR + movement - pace kcal, the deficit capped at 20% of (BMR + movement) and the
- * target never below BMR. Gain: the same pace as a surplus, capped at 20%. Keep: BMR + movement.
- * The macro carb floor can raise the target. dailyGoal = BMR + movement - target (the balance goal).
+ * v1.2 lowest daily target: 1,500 kcal for men, 1,200 for women. Any other or missing value gets the lower
+ * 1,200 (the app only offers male and female today; this keeps older or hand-edited data safe).
+ */
+export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 1500 : 1200)
+
+/**
+ * Daily target.
+ * Plan base: BMR + movement when Movement is on, BMR x 1.2 when it is off (v1.2).
+ * Lose: base - pace kcal, the deficit capped at 20% of the plan base. Gain: the same pace as a surplus, capped at 20%.
+ * Keep: the plan base.
+ * Floor (v1.2): never under 1,500 kcal (men) / 1,200 (women). With Movement on the v1.1 BMR floor is kept as well,
+ * so nothing changes there. The macro carb floor can still raise the target.
+ * dailyGoal is the balance goal against what Home counts (BMR + movement): BMR + movement - target.
+ * planDeficit is what the plan takes off its base (base - target, negative for a surplus).
  */
 export function dailyPlan(p: PlanInput) {
   const movement = movementKcal(p)
   const base = p.bmr + movement
+  const planBase = p.includeMovement ? base : p.bmr * NO_MOVEMENT_FACTOR
   const want = paceKcal(p.pace)
-  const cap = DEFICIT_CAP * base
-  let target = base
-  if (p.goal === 'lose') target = Math.max(p.bmr, Math.round(base - Math.min(want, cap)))
-  if (p.goal === 'gain') target = Math.round(base + Math.min(want, cap))
+  const cap = DEFICIT_CAP * planBase
+  const floor = p.includeMovement ? Math.max(p.bmr, targetFloor(p.sex)) : targetFloor(p.sex)
+  let target = Math.round(planBase)
+  if (p.goal === 'lose') target = Math.round(planBase - Math.min(want, cap))
+  if (p.goal === 'gain') target = Math.round(planBase + Math.min(want, cap))
+  const floored = target < floor
+  target = Math.max(floor, target)
   const m = macroPlan(target, p.goalWeightKg, p.macros)
-  return { bmr: p.bmr, movement, base, target: m.target, dailyGoal: base - m.target, protein: m.protein, carbs: m.carbs, fat: m.fat, adjusted: m.adjusted, capped: p.goal !== 'keep' && want > cap }
+  return {
+    bmr: p.bmr, movement, base, planBase: Math.round(planBase), planDeficit: Math.round(planBase) - m.target, floor, floored,
+    target: m.target, dailyGoal: base - m.target, protein: m.protein, carbs: m.carbs, fat: m.fat, adjusted: m.adjusted,
+    capped: p.goal !== 'keep' && want > cap,
+  }
 }
 
 export function macroTargets(p: PlanInput) {
@@ -243,6 +265,32 @@ export function goalMessage(balance: number, goal: number, done: boolean): strin
 }
 
 
+
+// ---------- Nutrition (v1.2) ----------
+
+/** Whole-number percentage of a target (0 when there is no target). */
+export const pctOf = (value: number, target: number) => (target > 0 ? Math.round((value / target) * 100) : 0)
+
+export const KCAL_PER_G = { protein: 4, carbs: 4, fat: 9 } as const
+type Grams = { protein: number; carbs: number; fat: number }
+
+/**
+ * Share of calories from protein, carbs and fat (4/4/9 kcal per gram) as whole percentages that always sum to 100.
+ * Each share is rounded, then any rounding gap (+-1 or 2) goes to the largest segment. Ties for largest go to the
+ * first in protein, carbs, fat order. Returns null when there are no macro calories (nothing logged).
+ */
+export function macroSplit(g: Grams): Grams | null {
+  const kcal = { protein: Math.max(0, g.protein) * 4, carbs: Math.max(0, g.carbs) * 4, fat: Math.max(0, g.fat) * 9 }
+  const total = kcal.protein + kcal.carbs + kcal.fat
+  if (!(total > 0)) return null
+  const keys = ['protein', 'carbs', 'fat'] as const
+  const out = { protein: 0, carbs: 0, fat: 0 }
+  for (const k of keys) out[k] = Math.round((kcal[k] / total) * 100)
+  const gap = 100 - (out.protein + out.carbs + out.fat)
+  const largest = keys.reduce((a, k) => (kcal[k] > kcal[a] ? k : a), keys[0])
+  out[largest] += gap
+  return out
+}
 
 // ---------- History chart scale (v1.1) ----------
 
