@@ -583,7 +583,7 @@ try {
     assert.equal(await sp.getAttribute('data-target'), '25/50/25')
     assert.equal(await np.getByTestId('split-mark').count(), 2)
     assert.equal(await sp.getByRole('img').getAttribute('aria-label'), 'Calories split: protein 25%, carbs 25%, fat 50%. Target protein 25%, carbs 50%, fat 25%.')
-    assert.deepEqual(await Promise.all(['protein', 'carbs', 'fat'].map((k) => bg(np.getByTestId(`split-${k}`)))), ['rgb(217, 70, 122)', 'rgb(184, 134, 11)', 'rgb(74, 127, 230)'])
+    assert.deepEqual(await Promise.all(['protein', 'carbs', 'fat'].map((k) => bg(np.getByTestId(`split-${k}`)))), ['rgb(200, 69, 111)', 'rgb(217, 164, 58)', 'rgb(79, 127, 214)']) // v1.3 palette: #C8456F, #D9A43A, #4F7FD6
     assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 1,601 of 1,760 kcal, 91%')
     assert.equal(await np.getByTestId('protein-progress').innerText(), '100 of 109 g, 92%')
     assert.equal(await np.getByTestId('protein-ring-label').innerText(), 'of 109 g, 92%')
@@ -599,7 +599,7 @@ try {
     assert.equal(await color(over), 'rgb(69, 66, 60)')
     assert.notEqual(await color(over), ORANGE)
     const fills = await np.getByTestId('cal-card').locator('i').evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor))
-    assert.ok(!fills.includes('rgb(229, 112, 75)') && !fills.includes(ORANGE), fills.join())
+    assert.ok(!fills.includes('rgb(229, 112, 75)') && !fills.includes(ORANGE) && !fills.includes('rgb(217, 102, 63)'), fills.join())
     assert.equal(await np.getByTestId('cal-card').getAttribute('data-over'), '241')
     assert.match(await np.getByTestId('cal-card').getByRole('progressbar').getAttribute('aria-label'), /2,001 of 1,760 kcal, 114%, 241 kcal over/)
     // Exercise raises today's food target, as on Today (target + burned - eaten = left).

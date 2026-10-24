@@ -66,14 +66,14 @@ export default function Settings() {
     <>
     <Screen>
       <header>
-        <h1 className="text-[28px] font-bold tracking-tight">Me</h1>
+        <h1 className="title text-[32px] leading-tight">Me</h1>
         <p className="text-[15px] text-mute">Your body, goal and daily targets.</p>
       </header>
       <form className="flex flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); save() }}>
         <BodyFields d={d} set={setD} />
         <GoalFields d={d} set={setD} />
         <Card className="flex flex-col gap-3">
-          <h2 className="text-[17px] font-bold">Daily balance</h2>
+          <h2 className="title text-[21px]">Daily balance</h2>
           <label className="flex items-center justify-between gap-3 text-base font-semibold">
             BMR (kcal)
             <input type="number" name="bmr" inputMode="numeric" min={800} max={4000} value={bmr} onChange={(e) => { setBmr(Number(e.target.value)); setBmrCustom(true) }} className={numInput} />
@@ -96,7 +96,7 @@ export default function Settings() {
           </p>
         </Card>
         <Card className="flex flex-col gap-3">
-          <h2 className="text-[17px] font-bold">Macro targets</h2>
+          <h2 className="title text-[21px]">Macro targets</h2>
           {macroRow('protein', 'Protein', `${autoProtein} g (${PROTEIN_PER_KG} g per kg goal weight)`)}
           {macroRow('carbs', 'Carbs', `${auto.carbs} g`)}
           {macroRow('fat', 'Fat', `${auto.fat} g`)}
@@ -110,10 +110,10 @@ export default function Settings() {
       </form>
       <BackupCard />
       <Card className="flex flex-col gap-3">
-        <h2 className="text-[17px] font-bold">Data</h2>
+        <h2 className="title text-[21px]">Data</h2>
         <Button variant="danger" onClick={() => { if (confirm('Delete all data on this device? Export a backup first if you want to keep it.')) { dispatch({ type: 'reset' }); nav('/onboarding', { replace: true }) } }}>Reset all data</Button>
       </Card>
-      <details className="rounded-[20px] border border-line bg-card p-4 text-[15px]" data-testid="developer">
+      <details className="rounded-[22px] border border-line bg-card p-4 text-[15px]" data-testid="developer">
         <summary className="cursor-pointer font-bold">Developer</summary>
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-mute">Replace the last 6 days with sample meals and workouts. Today stays as it is.</p>

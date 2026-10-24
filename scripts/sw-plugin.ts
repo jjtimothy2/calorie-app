@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import type { Plugin } from 'vite'
 
 // Bumped per release (v1.1: new storage key and formulas). The content hash below changes on every build anyway.
-export const APP_VERSION = 'v1.2.1'
+export const APP_VERSION = 'v1.3-preview'
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))
@@ -35,7 +35,10 @@ export function serviceWorker(): Plugin {
 }
 
 const SW = (version: string, urls: string[], base: string) => `// Generated at build time by scripts/sw-plugin.ts. Offline cache for the app shell.
-const CACHE = 'calorie-${version}'
+// v1.3 preview: a build served under /preview/ keeps its own cache prefix and only ever deletes its own old caches,
+// so it never wipes the live app's cache (and the live app keeps working exactly as before).
+const PREFIX = ${JSON.stringify(base.includes('/preview/') ? 'calorie-preview-' : 'calorie-')}
+const CACHE = PREFIX + '${version}'
 const PRECACHE = ${JSON.stringify(urls)}
 const SHELL = ${JSON.stringify(base)}
 
@@ -45,7 +48,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('calorie-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE && (PREFIX !== 'calorie-' || !k.startsWith('calorie-preview-'))).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   )
 })

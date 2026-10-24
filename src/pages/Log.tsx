@@ -6,6 +6,7 @@ import { Screen } from '../components/Layout'
 import { Button, Chip } from '../components/ui'
 import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
+import { foodEmoji } from '../data/foodEmoji'
 import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
 import { entryFromFood, useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
@@ -79,19 +80,19 @@ export default function Log() {
         <header className="flex items-center justify-between gap-2">
           <Link to="/" aria-label="Close and go back to Today" className="grid h-11 w-11 place-items-center text-xl text-mute">✕</Link>
           {mode === 'food' ? (
-            <label className="flex items-center gap-1 text-xl font-bold">
+            <label className="title flex items-center gap-1 text-[24px]">
               <span>Add to</span>
               <select
                 aria-label="Meal"
                 value={meal}
                 onChange={(e) => { const n = new URLSearchParams(params); n.set('meal', e.target.value); setParams(n, { replace: true }) }}
-                className="rounded-lg bg-transparent font-bold text-g-ink"
+                className="rounded-lg bg-transparent font-display font-semibold text-g-ink"
               >
                 {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
               </select>
             </label>
           ) : (
-            <h1 className="text-xl font-bold">Log exercise</h1>
+            <h1 className="title text-[24px]">Log exercise</h1>
           )}
           <button type="button" disabled={!!day.closed} onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="px-1 py-2 text-[15px] font-bold text-g-ink disabled:opacity-40">Quick add</button>
         </header>
@@ -100,7 +101,7 @@ export default function Log() {
           <Chip on={mode === 'exercise'} onClick={() => setMode('exercise')}><span aria-hidden="true">🏃 </span>Exercise</Chip>
         </div>
         {day.closed ? (
-          <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-card p-4 text-center" data-testid="day-locked">
+          <div className="flex flex-col gap-3 rounded-[22px] border border-line bg-card p-4 text-center" data-testid="day-locked">
             <p className="text-base font-semibold">Today is closed: {verdict(day.balance)}.</p>
             <p className="text-[15px] text-mute">Reopen it to log more.</p>
             <Button variant="ghost" onClick={() => dispatch({ type: 'reopenDay', date: today })}>Reopen day</Button>
@@ -131,13 +132,16 @@ export default function Log() {
         <ul aria-label="Foods" data-testid="food-list">
           {list.map((f) => (
             <li key={f.id} className="flex items-center justify-between gap-2 border-b border-line">
-              <button type="button" className="flex-1 py-3 text-left" onClick={() => setPicked(f)} aria-label={`${f.name}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
+              <button type="button" className="flex flex-1 items-center gap-3 py-2.5 text-left" onClick={() => setPicked(f)} aria-label={`${f.name}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
+                <span className="tile" aria-hidden="true">{foodEmoji(f.name)}</span>
+                <span className="min-w-0">
                 <div className="text-base font-semibold">{state.favourites.includes(f.id) && <span aria-hidden="true" className="text-carbs">★ </span>}{f.name}</div>
                 <div className="text-[13px] text-mute">{f.servingLabel} ({f.grams} g)</div>
+                </span>
               </button>
               <div className="flex items-center gap-3">
-                <b className="tabular-nums">{f.kcal}</b>
-                <button type="button" onClick={() => oneTap(f)} aria-label={`Add one serving of ${f.name} to ${MEAL_LABEL[meal]}`} className="grid h-[34px] w-[34px] place-items-center rounded-full bg-g-soft text-[22px] font-bold text-g-soft-ink">+</button>
+                <b className="num text-[17px]">{f.kcal}</b>
+                <button type="button" onClick={() => oneTap(f)} aria-label={`Add one serving of ${f.name} to ${MEAL_LABEL[meal]}`} className="fab grid h-[34px] w-[34px] place-items-center rounded-full bg-g-soft text-[22px] font-bold text-g-soft-ink">+</button>
               </div>
             </li>
           ))}
@@ -154,7 +158,7 @@ export default function Log() {
         </>)}
       </Screen>
       {toast && (
-        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
+        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg" data-testid="toast">
           <span>{toast.text}</span>
           <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteEntry', id: toast.entry.id }); setToast(null) }}>Undo</button>
@@ -163,7 +167,7 @@ export default function Log() {
         </div>
       )}
       {exToast && (
-        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-[15px] text-white shadow-lg" data-testid="toast">
+        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg" data-testid="toast">
           <span>Added {exToast.name} · {fmt(exToast.kcal)} kcal burned</span>
           <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteExercise', id: exToast.id }); setExToast(null) }}>Undo</button>

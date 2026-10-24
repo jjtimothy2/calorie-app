@@ -42,7 +42,7 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
           ))}
         </div>
       </fieldset>
-      <div className="rounded-[20px] border border-line bg-card px-4">
+      <div className="rounded-[22px] border border-line bg-card px-4">
         {num('age', 'Age', 'yrs', 14, 100)}
         {num('heightCm', 'Height', 'cm', 120, 230)}
         {num('weightKg', 'Weight', 'kg', 30, 300)}
@@ -72,7 +72,7 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
           </div>
         </fieldset>
       )}
-      <label className="flex items-center justify-between rounded-[20px] border border-line bg-card px-4 py-3 text-base">
+      <label className="flex items-center justify-between rounded-[22px] border border-line bg-card px-4 py-3 text-base">
         <span>
           Goal weight
           <span className="block text-[13px] text-mute">Optional. Sets protein. Blank = current weight</span>
@@ -94,7 +94,7 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
       </label>
       <fieldset>
         <legend className="mb-2 text-[15px] font-semibold">Activity level</legend>
-        <div className="rounded-[20px] border border-line bg-card px-4">
+        <div className="rounded-[22px] border border-line bg-card px-4">
           {(Object.keys(ACTIVITY) as Activity[]).map((a) => (
             <label key={a} className="flex cursor-pointer items-center gap-3 border-b border-line py-3 text-[15px] last:border-0">
               <input type="radio" name="activity" className="h-5 w-5 accent-g-ink" checked={d.activity === a} onChange={() => set({ ...d, activity: a })} />

@@ -19,21 +19,21 @@ export function ProteinCard({ totals, targets }: { totals: Macros; targets: { pr
   return (
     <Link
       to="/nutrition"
-      className="block rounded-[20px] border-2 border-protein-line bg-card p-4"
+      className="tap block rounded-[22px] border border-line bg-card p-4"
       data-testid="protein-card"
       aria-label={`Protein: ${left > 0 ? `${fmt(left)} g left today` : left === 0 ? 'target hit' : `target hit, ${fmt(-left)} g over`}, ${fmt(p)} of ${fmt(targets.protein)} g. ${said('Carbs', totals.carbs, targets.carbs, cOver)}, ${said('fat', totals.fat, targets.fat, fOver)}. Open Nutrition.`}
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-[13px] text-mute">{left >= 0 ? 'Protein left today' : 'Protein target hit'}</div>
-          <div className="text-[30px] font-extrabold leading-tight tracking-tight text-protein-ink" data-testid="protein-left">
+          <div className="eyebrow">{left >= 0 ? 'Protein left today' : 'Protein target hit'}</div>
+          <div className="num text-[32px] leading-tight text-protein-ink" data-testid="protein-left">
             {left > 0 ? `${fmt(left)} g left` : left === 0 ? 'Target hit' : `+${fmt(-left)} g over`}
           </div>
         </div>
         <span className="pt-1 text-[15px] font-bold text-g-ink" aria-hidden="true">View ›</span>
       </div>
-      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-line" aria-hidden="true">
-        <i className={`block h-full rounded-full ${left < 0 ? 'bg-protein-deep' : 'bg-protein'}`} style={{ width: `${pct}%` }} />
+      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-track" aria-hidden="true">
+        <i className={`grow-x bar-fill block h-full rounded-full ${left < 0 ? 'bg-protein-deep' : 'bg-protein'}`} style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-2 flex gap-4 text-[13px] text-mute" data-testid="protein-sub" aria-hidden="true">
         {macro('Carbs', totals.carbs, targets.carbs, cOver, 'text-carbs-ink', 'protein-sub-carbs')}

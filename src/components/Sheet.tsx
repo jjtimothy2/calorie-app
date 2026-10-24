@@ -21,7 +21,7 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
   }, [onClose])
   return (
     <div className="absolute inset-0 z-30">
-      <div className="anim-fade absolute inset-0 bg-[rgba(28,27,25,.45)]" onClick={onClose} aria-hidden="true" />
+      <div className="anim-fade absolute inset-0 bg-[rgba(42,36,32,.42)]" onClick={onClose} aria-hidden="true" />
       <div
         ref={ref}
         role="dialog"

@@ -123,7 +123,7 @@ export function ExerciseQuickSheet({ date, initial, onDone, onClose }: { date: s
   }
   return (
     <Sheet label={initial ? 'Edit exercise' : 'Quick add exercise'} onClose={onClose}>
-      <h2 className="text-xl font-bold">{initial ? 'Edit exercise' : 'Quick add exercise'}</h2>
+      <h2 className="title text-[24px] leading-tight">{initial ? 'Edit exercise' : 'Quick add exercise'}</h2>
       <form className="flex flex-col gap-3" onSubmit={(ev) => { ev.preventDefault(); save() }}>
         <label className="flex flex-col gap-1 text-[15px] font-semibold">
           Calories burned (kcal)
@@ -149,7 +149,7 @@ export function ExerciseEditSheet({ entry, onClose }: { entry: ExerciseEntry; on
   const { dispatch } = useStore()
   return (
     <Sheet label={`Edit ${entry.name}`} onClose={onClose}>
-      <h2 className="text-xl font-bold">Edit exercise</h2>
+      <h2 className="title text-[24px] leading-tight">Edit exercise</h2>
       <ExerciseForm date={entry.date} initial={entry} onSaved={onClose} />
       <Button variant="danger" onClick={() => { dispatch({ type: 'deleteExercise', id: entry.id }); onClose() }}>Delete exercise</Button>
       <p className="text-center text-xs text-mute">Estimates use MET x body weight x hours. Illustrative.</p>
