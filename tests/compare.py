@@ -1,5 +1,6 @@
 # Before | after compare. Usage: python3 tests/compare.py out.png "Title" before1.png after1.png [before2.png after2.png ...]
-import sys
+# Column labels default to 1.0 -> v1.1; set COMPARE_BEFORE / COMPARE_AFTER to change them.
+import os, sys
 from PIL import Image, ImageDraw, ImageFont
 out, title, pairs = sys.argv[1], sys.argv[2], sys.argv[3:]
 H, gap, lab = 1200, 30, 70
@@ -19,7 +20,7 @@ except Exception:
 d.text((gap, 24), title, fill='#1c1b19', font=big)
 for r, (a, b, name) in enumerate(rows):
     y = 80 + r * (H + lab + gap)
-    for c, (label, im) in enumerate([('Before (1.0)', a), ('After (v1.1, live)', b)]):
+    for c, (label, im) in enumerate([(os.environ.get('COMPARE_BEFORE', 'Before (1.0)'), a), (os.environ.get('COMPARE_AFTER', 'After (v1.1, live)'), b)]):
         x = gap + c * (colw + gap)
         d.text((x, y + 15), label, fill='#178046' if c else '#6b6862', font=f)
         img.paste(im, (x, y + lab))
