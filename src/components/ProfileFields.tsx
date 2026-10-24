@@ -1,8 +1,11 @@
-import { ACTIVITY, computeTarget, tdee, weeklyKg, type Body } from '../lib/calc'
-import type { Activity, Goal, Sex } from '../lib/types'
+import { ACTIVITY, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
+import type { Activity, Goal, Pace, Sex } from '../lib/types'
 import { Chip } from './ui'
 
-export type Draft = Body
+/** goalWeightKg NaN = left blank, which means "same as current weight". */
+export type Draft = Body & { goalWeightKg: number; pace: Pace }
+export const goalWeightOf = (d: Pick<Draft, 'goalWeightKg' | 'weightKg'>) => (Number.isFinite(d.goalWeightKg) && d.goalWeightKg > 0 ? d.goalWeightKg : d.weightKg)
+export const PACE_LABEL = (p: Pace) => `${PACE[p].label} ${PACE[p].kg} kg/wk`
 export const GOAL_LABEL: Record<Goal, string> = { lose: 'Lose weight', keep: 'Keep weight', gain: 'Gain weight' }
 export const ACTIVITY_SHORT: Record<Activity, string> = {
   sedentary: 'Sedentary', light: 'Lightly active', moderate: 'Moderately active', active: 'Active', very: 'Very active',
@@ -59,6 +62,36 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
           ))}
         </div>
       </fieldset>
+      {d.goal !== 'keep' && (
+        <fieldset>
+          <legend className="mb-2 text-[15px] font-semibold">Pace</legend>
+          <div className="flex flex-wrap gap-2" data-testid="pace">
+            {PACES.map((p) => (
+              <Chip key={p} on={d.pace === p} onClick={() => set({ ...d, pace: p })}>{PACE_LABEL(p)}</Chip>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      <label className="flex items-center justify-between rounded-[20px] border border-line bg-card px-4 py-3 text-base">
+        <span>
+          Goal weight
+          <span className="block text-[13px] text-mute">Optional. Sets protein. Blank = current weight</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <input
+            className={input}
+            type="number"
+            inputMode="decimal"
+            min={30}
+            max={300}
+            name="goalWeightKg"
+            placeholder={Number.isFinite(d.weightKg) ? String(d.weightKg) : ''}
+            value={Number.isNaN(d.goalWeightKg) ? '' : d.goalWeightKg}
+            onChange={(e) => set({ ...d, goalWeightKg: e.target.value === '' ? NaN : Number(e.target.value) })}
+          />
+          <span className="w-6 text-mute">kg</span>
+        </span>
+      </label>
       <fieldset>
         <legend className="mb-2 text-[15px] font-semibold">Activity level</legend>
         <div className="rounded-[20px] border border-line bg-card px-4">
@@ -74,15 +107,19 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
   )
 }
 
-export function validBody(d: Draft) {
+export function validBody(d: Body) {
   return d.age >= 14 && d.age <= 100 && d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
 }
 
-/** Goal line based on the deficit or surplus actually used by the suggested target. */
-export function goalBlurb(d: Draft) {
-  if (d.goal === 'keep') return 'to keep your current weight'
-  const delta = computeTarget(d) - tdee(d)
-  const kg = weeklyKg(delta)
-  const verb = d.goal === 'lose' ? 'lose' : 'gain'
-  return kg >= 0.25 ? `to ${verb} about ${kg} kg a week` : `to ${verb} weight gradually`
+/** Goal weight is optional; when typed it must be 30 to 300 kg. */
+export const validGoalWeight = (d: Pick<Draft, 'goalWeightKg'>) => Number.isNaN(d.goalWeightKg) || (d.goalWeightKg >= 30 && d.goalWeightKg <= 300)
+
+/** Goal line from the balance goal the plan actually uses (after the 20% cap and the BMR floor). */
+export function goalBlurb(goal: Goal, dailyGoal: number, capped: boolean) {
+  if (goal === 'keep') return 'to keep your current weight'
+  const kcal = Math.abs(dailyGoal)
+  if (goal === 'lose' && dailyGoal <= 0) return 'at your BMR, the lowest target we suggest'
+  const kg = Math.round(((kcal * 7) / KCAL_PER_KG) * 20) / 20
+  const verb = goal === 'lose' ? 'lose' : 'gain'
+  return `${fmt(kcal)} kcal a day ${goal === 'lose' ? 'deficit' : 'surplus'}, to ${verb} about ${kg} kg a week${capped ? ' (capped at 20%)' : ''}`
 }

@@ -2,7 +2,7 @@
 // Usage: npm run build && npx vite preview --port 4174 & node tests/pwa.mjs
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 
 // The app is served under the GitHub Pages base path /calorie-app/ (see vite.config.ts).
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
@@ -30,7 +30,7 @@ const SEED = {
   closedDays: {},
   favourites: [],
 }
-const lsState = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v1')))
+const lsState = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
 const seed = (p, extra = {}) => p.evaluate(([s, extra]) => {
   localStorage.clear()
   localStorage.setItem('calorie-app:v1', JSON.stringify(s))
@@ -118,9 +118,11 @@ try {
     file = await dl.path()
     const j = JSON.parse(readFileSync(file, 'utf8'))
     assert.equal(j.app, 'calorie-counter')
-    assert.equal(j.schema, 1)
+    assert.equal(j.schema, 2)
     assert.ok(Math.abs(Date.parse(j.exportedAt) - Date.now()) < 60_000)
-    assert.equal(j.data['calorie-app:v1'].entries.length, 3)
+    assert.equal(j.data['calorie-app:v2'].entries.length, 3)
+    assert.equal(j.data['calorie-app:v2'].version, 2)
+    assert.equal(j.data['calorie-app:v1'], undefined) // the legacy 1.0 copy is not exported
     assert.equal(j.data['calorie-app:backup'], undefined)
     assert.equal(await page.getByTestId('last-backup').innerText(), 'Last backup: today')
   })
@@ -147,9 +149,25 @@ try {
     assert.equal((await lsState(page)).entries.length, 3)
   })
 
+  await step('v1.1: a 1.0 backup (schema 1) still restores and migrates', async () => {
+    const old = OUT + '../node_modules/.tmp/backup-v1.json'
+    const v1 = { ...SEED, profile: { ...SEED.profile, bmr: 1500, bmrCustom: true, includeMovement: true, dailyGoal: 500, target: 1700, macros: { protein: null, carbs: null, fat: null } } }
+    writeFileSync(old, JSON.stringify({ app: 'calorie-counter', schema: 1, exportedAt: '2026-10-01T00:00:00.000Z', data: { 'calorie-app:v1': v1 } }))
+    await page.goto(BASE + '/settings')
+    await page.getByTestId('import-file').setInputFiles(old)
+    const dlg = page.getByRole('dialog', { name: 'Restore backup' })
+    await dlg.getByRole('button', { name: 'Replace my data' }).click()
+    await page.waitForURL(BASE + '/')
+    const st = await lsState(page)
+    assert.equal(st.version, 2)
+    assert.deepEqual([st.profile.includeMovement, st.profile.goalWeightKg, st.profile.pace, st.profile.bmr], [true, 70, 'standard', 1500])
+    assert.deepEqual(st.entries, SEED.entries)
+    assert.deepEqual(st.exercises, SEED.exercises)
+  })
+
   await step('import over existing data asks to replace; cancel changes nothing', async () => {
     await page.goto(BASE + '/settings')
-    await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('calorie-app:v1')); return s })
+    await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('calorie-app:v2')); return s })
     await page.getByTestId('import-file').setInputFiles(file)
     const dlg = page.getByRole('dialog', { name: 'Restore backup' })
     await dlg.getByText('This replaces everything currently on this device.').waitFor()
@@ -247,7 +265,7 @@ try {
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 47, bottom: 34, left: 0, right: 0 } }).catch(() => null)
     const pb = await p.locator('nav[aria-label=Main]').evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))
     const pt = await p.locator('main').evaluate((el) => parseFloat(getComputedStyle(el).paddingTop))
-    const supported = pb !== 14
+    const supported = pb !== 12
     if (supported) { assert.equal(pb, 34); assert.equal(pt, 47) } else { assert.equal(pt, 20) } // older Chromium: falls back to the normal padding
     results.push(`  (safe-area override ${supported ? 'applied: bottom 34, top 47' : 'not supported by this Chromium; fallback padding checked'})`)
     await c.close()

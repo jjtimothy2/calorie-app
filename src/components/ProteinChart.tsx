@@ -1,4 +1,4 @@
-import { fmt } from '../lib/calc'
+import { fmt, proteinScale } from '../lib/calc'
 
 export type ProteinBar = { key: string; label: string; value: number | null; today?: boolean }
 
@@ -7,14 +7,14 @@ export function ProteinChart({ bars, target, height = 200 }: { bars: ProteinBar[
   const W = 350
   const labelH = 22
   const plotH = height - labelH - 10
-  const max = Math.max(target * 1.15, ...bars.map((b) => b.value ?? 0), 1)
+  const max = proteinScale(bars.map((b) => b.value ?? 0), target)
   const gap = bars.length > 10 ? 3 : 12
   const bw = (W - gap * (bars.length - 1)) / bars.length
   const every = bars.length > 10 ? 5 : 1
   const base = 10 + plotH
   const ty = base - (target / max) * plotH
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} className="block w-full" aria-hidden="true" data-testid="protein-chart">
+    <svg viewBox={`0 0 ${W} ${height}`} className="block w-full" aria-hidden="true" data-testid="protein-chart" data-scale={Math.round(max)}>
       {bars.map((b, i) => {
         const x = i * (bw + gap)
         const h = b.value ? Math.max(4, (b.value / max) * plotH) : 0

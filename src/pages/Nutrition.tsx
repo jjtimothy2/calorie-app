@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Screen, TabBar } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
 import { formatAmount } from '../lib/amount'
-import { entryTotals, fmt, lastNDays, macroTargets, overBy, round1, sumEntries } from '../lib/calc'
+import { entryTotals, fmt, lastNDays, dailyPlan, overBy, round1, sumEntries } from '../lib/calc'
 import { useStore } from '../lib/store'
 import type { Entry } from '../lib/types'
 
@@ -83,7 +83,7 @@ export default function Nutrition() {
   const { state, today } = useStore()
   const [range, setRange] = useState<'today' | 'week'>('today')
   const profile = state.profile!
-  const t = macroTargets(profile)
+  const t = dailyPlan(profile)
   const days = range === 'today' ? [today] : lastNDays(7, today)
   const entries = state.entries.filter((e) => days.includes(e.date))
   const loggedDays = new Set(entries.map((e) => e.date)).size || 1
@@ -92,7 +92,7 @@ export default function Nutrition() {
   const p = Math.round(per.protein)
   const left = t.protein - p
   const pOver = overBy(p, t.protein)
-  const perKg = round1(t.protein / profile.weightKg)
+  const perKg = round1(t.protein / profile.goalWeightKg)
   const sources = topSources(entries)
 
   return (
@@ -108,7 +108,7 @@ export default function Nutrition() {
           <p className="text-[15px] text-mute">
             <span className="font-semibold text-ink" data-testid="protein-progress">{fmt(p)} of {fmt(t.protein)} g</span>
             {range === 'week' && ' a day on average'}.{' '}
-            {left > 0 ? `${fmt(left)} g to go.` : pOver ? <>Target hit, <b className="text-protein-ink" data-testid="protein-over">+{fmt(pOver)} g over</b>.</> : 'Target hit.'} About {perKg} g per kg body weight.
+            {left > 0 ? `${fmt(left)} g to go.` : pOver ? <>Target hit, <b className="text-protein-ink" data-testid="protein-over">+{fmt(pOver)} g over</b>.</> : 'Target hit.'} About {perKg} g per kg of goal weight ({fmt(profile.goalWeightKg)} kg).
           </p>
         </Card>
         <Card className="flex flex-col gap-3.5">
@@ -130,7 +130,7 @@ export default function Nutrition() {
             <p className="py-2 text-[15px] text-mute">Log food to see where your protein comes from.</p>
           )}
         </Card>
-        <p className="text-center text-xs text-mute">Targets: protein {PROTEIN_HINT}, fat at least 0.6 g per kg, carbs take the rest. Change them under Me.</p>
+        <p className="text-center text-xs text-mute" data-testid="targets-hint">Targets for your {fmt(t.target)} kcal day: protein {PROTEIN_HINT}, fat 25% of calories (at least 0.6 g per kg), carbs the rest (at least 100 g). Change goal weight, pace or macros under Me.</p>
         <Illustrative />
       </Screen>
       <TabBar />
@@ -138,4 +138,4 @@ export default function Nutrition() {
   )
 }
 
-const PROTEIN_HINT = '1.6 g per kg by default'
+const PROTEIN_HINT = '1.6 g per kg of goal weight'

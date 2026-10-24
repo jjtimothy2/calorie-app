@@ -18,10 +18,15 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'Lose weight' }).click()
   await page.getByLabel(/Light \(exercise/).check()
+  assert.equal(await page.getByTestId('pace').getByRole('button').count(), 3) // v1.1 build is live
   await page.getByRole('button', { name: 'See my target' }).click()
+  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1400) // movement off -> BMR floor
   await page.getByRole('button', { name: 'Start logging' }).click()
   await page.waitForURL(BASE + '/')
   await page.getByTestId('balance').waitFor()
+  assert.equal(await page.getByTestId('eq-movement').count(), 0)
+  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
+  assert.deepEqual([st.version, st.profile.includeMovement, st.profile.pace, st.profile.goalWeightKg], [2, false, 'standard', 68])
 })
 await step('load demo week (sample data) via Me > Developer', async () => {
   await page.getByRole('link', { name: 'Me', exact: true }).click()
@@ -46,10 +51,10 @@ await step('manifest and service worker', async () => {
   assert.deepEqual(inst.installabilityErrors, [])
 })
 await step('data persists on reload', async () => {
-  const before = await page.evaluate(() => localStorage.getItem('calorie-app:v1'))
+  const before = await page.evaluate(() => localStorage.getItem('calorie-app:v2'))
   assert.ok(JSON.parse(before).profile && JSON.parse(before).entries.length > 0)
   await page.reload()
-  assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v1')), before)
+  assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v2')), before)
   await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
 })
 const day = await page.evaluate(() => { const d = new Date(Date.now() - 86400000); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` })
@@ -84,12 +89,12 @@ await step('installed/returning (SW controls): every route deep-link + refresh, 
 })
 await step('sample meals and exercise for today', async () => {
   await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('calorie-app:v1'))
+    const s = JSON.parse(localStorage.getItem('calorie-app:v2'))
     const p = (n) => String(n).padStart(2, '0'); const d = new Date(); const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; const t = Date.now()
     const e = (id, meal, name, servingLabel, kcal, protein, carbs, fat) => ({ id, date, meal, foodId: null, name, servingLabel, servingMult: 1, qty: 1, kcal, protein, carbs, fat, createdAt: t })
     s.entries.push(e('live1', 'breakfast', 'Greek yoghurt with berries', '1 bowl', 260, 20, 30, 6), e('live2', 'lunch', 'Chicken rice', '1 plate', 610, 38, 72, 16), e('live3', 'snack', 'Banana', '1 medium', 105, 1, 27, 0))
     s.exercises.push({ id: 'livex', date, activityId: null, name: 'Badminton', minutes: 45, intensity: 'moderate', kcal: 330, createdAt: t })
-    localStorage.setItem('calorie-app:v1', JSON.stringify(s))
+    localStorage.setItem('calorie-app:v2', JSON.stringify(s))
   })
   await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
   await page.getByText('Chicken rice').first().waitFor()

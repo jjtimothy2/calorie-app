@@ -44,7 +44,7 @@ body { @apply bg-bg text-ink font-sans antialiased; }
    screens without a tab bar (Log, Verdict, Onboarding) pad their own bottom. */
 main { padding-top: max(1.25rem, env(safe-area-inset-top)); }
 main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
-.pb-safe-bar { padding-bottom: max(0.875rem, env(safe-area-inset-bottom)); }
+.pb-safe-bar { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); min-height: calc(4.5rem + env(safe-area-inset-bottom)); }
 .pb-safe-sheet { padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1rem)); }
 .bottom-safe { bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem)); }
 

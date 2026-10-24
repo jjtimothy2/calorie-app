@@ -67,7 +67,7 @@ try {
     assert.ok((await page.locator('[data-bar]').count()) >= 7)
     await page.getByRole('button', { name: 'Protein' }).click()
     assert.match(await page.getByTestId('protein-hit').innerText(), /^\d \/ 7$/)
-    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v1')))
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
     assert.equal(stored.profile.macros.protein, 110)
   })
   await step('no console errors, warnings or failed requests', async () => { assert.deepEqual(errors, []) })

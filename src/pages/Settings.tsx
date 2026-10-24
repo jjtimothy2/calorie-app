@@ -1,52 +1,47 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BodyFields, GoalFields, validBody, type Draft } from '../components/ProfileFields'
+import { BodyFields, GoalFields, goalBlurb, goalWeightOf, PACE_LABEL, validBody, validGoalWeight, type Draft } from '../components/ProfileFields'
 import { Screen, TabBar } from '../components/Layout'
-import { Button, Card, Chip } from '../components/ui'
+import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
-import { calcBmr, defaultDailyGoal, fmt, foodBudget, macroTargets, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
+import { calcBmr, CARB_FLOOR, dailyPlan, fmt, macroPlan, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
 
-type Dir = 'deficit' | 'even' | 'surplus'
 const numInput = 'w-28 rounded-xl border border-line bg-bg px-3 py-2 text-right text-[17px]'
 
 export default function Settings() {
   const { state, dispatch } = useStore()
   const nav = useNavigate()
   const p = state.profile!
-  const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal })
+  // Goal weight shows blank when it equals the current weight (blank = follow the current weight).
+  const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal, goalWeightKg: p.goalWeightKg === p.weightKg ? NaN : p.goalWeightKg, pace: p.pace })
   const [bmr, setBmr] = useState(p.bmr)
   const [bmrCustom, setBmrCustom] = useState(p.bmrCustom)
   const [includeMovement, setIncludeMovement] = useState(p.includeMovement)
-  const [dir, setDir] = useState<Dir>(p.dailyGoal > 0 ? 'deficit' : p.dailyGoal < 0 ? 'surplus' : 'even')
-  const [amount, setAmount] = useState(Math.abs(p.dailyGoal) || 500)
   const [msg, setMsg] = useState('')
   const [mac, setMac] = useState({ protein: p.macros.protein?.toString() ?? '', carbs: p.macros.carbs?.toString() ?? '', fat: p.macros.fat?.toString() ?? '' })
   const calculated = validBody(d) ? calcBmr(d) : 0
 
-  // Body changes (weight, height, age, sex) recalculate BMR. Goal changes reset the daily goal.
+  // Body changes (weight, height, age, sex) recalculate BMR. The target follows from BMR, movement and pace.
   const setD = (n: Draft) => {
     const body = n.weightKg !== d.weightKg || n.heightCm !== d.heightCm || n.age !== d.age || n.sex !== d.sex
     if (body && validBody(n)) { setBmr(calcBmr(n)); setBmrCustom(false) }
-    if (n.goal !== d.goal) {
-      const g = defaultDailyGoal(n.goal)
-      setDir(g > 0 ? 'deficit' : g < 0 ? 'surplus' : 'even')
-      if (g) setAmount(Math.abs(g))
-    }
     setDraft(n)
   }
-  const dailyGoal = dir === 'even' ? 0 : dir === 'deficit' ? amount : -amount
-  const movement = movementKcal({ bmr, activity: d.activity, includeMovement })
-  const budget = foodBudget({ bmr, activity: d.activity, includeMovement, dailyGoal })
   const toG = (v: string) => (v.trim() === '' ? null : Math.round(Number(v)))
   const macros = { protein: toG(mac.protein), carbs: toG(mac.carbs), fat: toG(mac.fat) }
   const macOk = Object.values(macros).every((v) => v == null || (Number.isFinite(v) && v > 0 && v < 1000))
-  const draftProfile = { ...p, ...d, bmr, bmrCustom, includeMovement, dailyGoal, target: budget }
-  // Placeholders show what "auto" would be given the other boxes: fat follows protein, carbs follow protein and fat.
-  const autoFat = macroTargets({ ...draftProfile, macros: { protein: macros.protein, carbs: null, fat: null } }).fat
-  const auto = { ...macroTargets({ ...draftProfile, macros: { protein: macros.protein, carbs: null, fat: macros.fat } }), fat: autoFat }
-  const autoProtein = Math.round(PROTEIN_PER_KG * d.weightKg)
-  const ok = validBody(d) && bmr >= 800 && bmr <= 4000 && (dir === 'even' || (amount > 0 && amount <= 1500)) && macOk
+  const gw = goalWeightOf(d)
+  const base = { ...p, ...d, goalWeightKg: gw, bmr, bmrCustom, includeMovement }
+  const plan = dailyPlan({ ...base, macros })
+  const movement = plan.movement
+  const draftProfile = { ...base, macros, target: plan.target, dailyGoal: plan.dailyGoal }
+  // Placeholders show what "auto" would be given the other boxes: fat follows the target, carbs follow protein and fat.
+  const pre = dailyPlan({ ...base, macros: { protein: null, carbs: null, fat: null } }).target
+  const autoFat = macroPlan(pre, gw, { protein: macros.protein, carbs: null, fat: null }).fat
+  const auto = { ...macroPlan(pre, gw, { protein: macros.protein, carbs: null, fat: macros.fat }), fat: autoFat }
+  const autoProtein = macroPlan(pre, gw).protein
+  const ok = validBody(d) && validGoalWeight(d) && bmr >= 800 && bmr <= 4000 && macOk
 
   const save = () => {
     if (!ok) return
@@ -91,32 +86,19 @@ export default function Settings() {
             </span>
             <input type="checkbox" role="switch" name="movement" checked={includeMovement} onChange={(e) => setIncludeMovement(e.target.checked)} className="h-6 w-6 shrink-0 accent-g-ink" />
           </label>
-          <fieldset className="border-t border-line pt-3">
-            <legend className="sr-only">Daily goal</legend>
-            <div className="mb-2 text-base font-semibold" aria-hidden="true">Daily goal</div>
-            <div className="flex flex-wrap gap-2">
-              <Chip on={dir === 'deficit'} onClick={() => setDir('deficit')}>Deficit</Chip>
-              <Chip on={dir === 'even'} onClick={() => setDir('even')}>Break even</Chip>
-              <Chip on={dir === 'surplus'} onClick={() => setDir('surplus')}>Surplus</Chip>
-            </div>
-            {dir !== 'even' && (
-              <label className="mt-3 flex items-center justify-between gap-3 text-base">
-                {dir === 'deficit' ? 'Deficit' : 'Surplus'} per day (kcal)
-                <input type="number" name="goalAmount" inputMode="numeric" min={50} max={1500} step={50} value={amount} onChange={(e) => setAmount(Number(e.target.value))} className={numInput} />
-              </label>
-            )}
-          </fieldset>
           <p className="border-t border-line pt-3 text-[15px] text-mute" data-testid="budget-line">
-            BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''} means you can eat about <b className="text-ink">{fmt(budget)} kcal</b> on a rest day, plus whatever you burn exercising.
+            BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
+            {plan.dailyGoal > 0 ? ` − ${fmt(plan.dailyGoal)} deficit` : plan.dailyGoal < 0 ? ` + ${fmt(-plan.dailyGoal)} surplus` : ''} = <b className="text-ink">{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
+            <span className="mt-1 block" data-testid="pace-line">{d.goal === 'keep' ? 'Keep weight: no deficit.' : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan.dailyGoal, plan.capped)}.`} Deficits are capped at 20% and the target never goes under your BMR.</span>
           </p>
         </Card>
         <Card className="flex flex-col gap-3">
           <h2 className="text-[17px] font-bold">Macro targets</h2>
-          {macroRow('protein', 'Protein', `${autoProtein} g (${PROTEIN_PER_KG} g per kg)`)}
+          {macroRow('protein', 'Protein', `${autoProtein} g (${PROTEIN_PER_KG} g per kg goal weight)`)}
           {macroRow('carbs', 'Carbs', `${auto.carbs} g`)}
           {macroRow('fat', 'Fat', `${auto.fat} g`)}
           <div className="flex items-center justify-between border-t border-line pt-3 text-[13px] text-mute">
-            <span>Fat gets 40% of the calories left after protein, never under {FAT_FLOOR_PER_KG} g per kg. Carbs take the rest. Leave a box empty for auto.</span>
+            <span data-testid="macro-rule">Fat gets 25% of your calories, never under {FAT_FLOOR_PER_KG} g per kg of goal weight. Carbs take the rest, at least {CARB_FLOOR} g (protein eases first if needed). Leave a box empty for auto.</span>
             <button type="button" className="shrink-0 px-1 font-bold text-g-ink" onClick={() => setMac({ protein: '', carbs: '', fat: '' })}>Use auto</button>
           </div>
         </Card>

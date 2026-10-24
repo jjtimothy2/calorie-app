@@ -2,6 +2,8 @@ export type Sex = 'male' | 'female'
 export type Goal = 'lose' | 'keep' | 'gain'
 export type Activity = 'sedentary' | 'light' | 'moderate' | 'active' | 'very'
 export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+/** Weight-change pace in kg a week. */
+export type Pace = 'gentle' | 'standard' | 'faster'
 export type Intensity = 'light' | 'moderate' | 'vigorous'
 
 export const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snacks']
@@ -23,15 +25,19 @@ export type Profile = {
   weightKg: number
   activity: Activity
   goal: Goal
-  /** Food budget on a rest day (kcal). Kept in sync with BMR + movement - daily goal. */
+  /** Daily food target on a rest day (kcal), derived by dailyPlan(): BMR + movement - pace deficit (or + surplus). */
   target: number
   /** Daily starting budget. Mifflin-St Jeor unless the user typed their own. */
   bmr: number
   bmrCustom: boolean
   /** Add NEAT (BMR x (activity factor - 1)) to the daily budget. */
   includeMovement: boolean
-  /** Daily balance goal in kcal. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
+  /** Daily balance goal in kcal, derived: BMR + movement - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
   dailyGoal: number
+  /** v1.1: goal weight (kg) used for protein and the fat floor. Defaults to the current weight. */
+  goalWeightKg: number
+  /** v1.1: how fast to lose (or gain). Ignored for "keep". */
+  pace: Pace
   macros: MacroOverrides
 }
 
@@ -74,8 +80,10 @@ export type DaySummary = {
   auto: boolean
 }
 
+/** v2 (app v1.1) added Profile.goalWeightKg and Profile.pace. v1 data is migrated on load and on restore. */
+export const STATE_VERSION = 2
 export type State = {
-  version: 1
+  version: typeof STATE_VERSION
   profile: Profile | null
   entries: Entry[]
   exercises: ExerciseEntry[]

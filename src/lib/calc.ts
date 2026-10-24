@@ -1,4 +1,4 @@
-import type { Activity, DaySummary, Entry, ExerciseEntry, Goal, Macros, Profile, Sex, State } from './types'
+import type { Activity, DaySummary, Entry, ExerciseEntry, MacroOverrides, Macros, Pace, Profile, Sex, State } from './types'
 
 export const ACTIVITY: Record<Activity, { label: string; factor: number }> = {
   sedentary: { label: 'Sedentary (desk job, little exercise)', factor: 1.2 },
@@ -7,8 +7,6 @@ export const ACTIVITY: Record<Activity, { label: string; factor: number }> = {
   active: { label: 'Active (6 to 7 days a week)', factor: 1.725 },
   very: { label: 'Very active (physical job or 2x training)', factor: 1.9 },
 }
-
-export const GOAL_ADJUST: Record<Goal, number> = { lose: -500, keep: 0, gain: 300 }
 
 /** Mifflin-St Jeor BMR */
 export function bmr(sex: Sex, weightKg: number, heightCm: number, age: number): number {
@@ -24,12 +22,6 @@ export function tdee(p: Body): number {
 /** ~7,700 kcal per kg of body weight; rounded to the nearest 0.25 kg a week. */
 export function weeklyKg(dailyDelta: number): number {
   return Math.round(((Math.abs(dailyDelta) * 7) / 7700) * 4) / 4
-}
-
-export function computeTarget(p: Body): number {
-  const raw = tdee(p) + GOAL_ADJUST[p.goal]
-  const floor = p.sex === 'male' ? 1500 : 1200
-  return Math.round(Math.max(floor, raw) / 10) * 10
 }
 
 export function entryTotals(e: Entry): Macros {
@@ -93,25 +85,84 @@ export function defaultMeal(hour = new Date().getHours()) {
 
 export const round1 = (n: number) => Math.round(n * 10) / 10
 
-export const PROTEIN_PER_KG = 1.6
-export const FAT_SHARE = 0.4 // of the calories left after protein
-export const FAT_FLOOR_PER_KG = 0.6 // fat never defaults below this
+export const KCAL_PER_KG = 7700
+
+export const PROTEIN_PER_KG = 1.6 // of goal weight
+export const PROTEIN_MIN_PER_KG = 1.2 // protein is lowered towards this before carbs drop under the floor
+export const FAT_SHARE = 0.25 // of the daily target
+export const FAT_FLOOR_PER_KG = 0.6 // of goal weight; fat never defaults below this
+export const CARB_FLOOR = 100 // g
+export const DEFICIT_CAP = 0.2 // of BMR + movement
+
+export const PACE: Record<Pace, { label: string; kg: number }> = {
+  gentle: { label: 'Gentle', kg: 0.25 },
+  standard: { label: 'Standard', kg: 0.5 },
+  faster: { label: 'Faster', kg: 0.75 },
+}
+export const PACES = Object.keys(PACE) as Pace[]
 
 /**
- * Macro targets with user overrides applied (pure, for unit tests).
- * Protein 1.6 g/kg. Fat = the larger of 0.6 g/kg and 40% of the calories left after protein.
- * Carbs take whatever calories are left after protein and fat.
+ * v1.1 macros for a daily target (pure, for unit tests).
+ * Protein = round(1.6 x goal weight). Fat = max(25% of target, 0.6 g x goal weight) (kcal kept unrounded).
+ * Carbs = (target - protein x 4 - fat kcal) / 4, never under 100 g: protein drops first (down to 1.2 g/kg),
+ * then carbs are held at 100 g and the target is raised to fit. Overrides are used as typed.
  */
-export function splitMacros(budget: number, weightKg: number, o: { protein: number | null; carbs: number | null; fat: number | null }) {
-  const protein = o.protein ?? Math.round(PROTEIN_PER_KG * weightKg)
-  const rest = Math.max(0, budget - protein * 4)
-  const fat = o.fat ?? Math.max(Math.round(FAT_FLOOR_PER_KG * weightKg), Math.round((rest * FAT_SHARE) / 9))
-  const carbs = o.carbs ?? Math.max(0, Math.round((rest - fat * 9) / 4))
+export function macroPlan(target: number, goalWeightKg: number, o: MacroOverrides = { protein: null, carbs: null, fat: null }) {
+  const fatKcalAt = (t: number) => (o.fat != null ? o.fat * 9 : Math.max(FAT_SHARE * t, FAT_FLOOR_PER_KG * goalWeightKg * 9))
+  const carbsAt = (t: number, p: number) => (t - p * 4 - fatKcalAt(t)) / 4
+  let protein = o.protein ?? Math.round(PROTEIN_PER_KG * goalWeightKg)
+  if (o.carbs != null) return { target, protein, fat: Math.round(fatKcalAt(target) / 9), carbs: o.carbs, adjusted: false }
+  let adjusted = false
+  if (carbsAt(target, protein) < CARB_FLOOR && o.protein == null) {
+    protein = Math.max(Math.round(PROTEIN_MIN_PER_KG * goalWeightKg), Math.floor((target - fatKcalAt(target) - CARB_FLOOR * 4) / 4))
+    adjusted = true
+  }
+  if (carbsAt(target, protein) < CARB_FLOOR) {
+    // Hold carbs at the floor and raise the target until protein + fat + 100 g carbs fit.
+    const fixed = protein * 4 + CARB_FLOOR * 4
+    let t: number
+    if (o.fat != null) t = fixed + o.fat * 9
+    else {
+      const share = fixed / (1 - FAT_SHARE) // fat at 25% of the new target
+      t = FAT_SHARE * share >= FAT_FLOOR_PER_KG * goalWeightKg * 9 ? share : fixed + FAT_FLOOR_PER_KG * goalWeightKg * 9
+    }
+    target = Math.ceil(t - 1e-9)
+    adjusted = true
+  }
+  return { target, protein, fat: Math.round(fatKcalAt(target) / 9), carbs: Math.round(carbsAt(target, protein)), adjusted }
+}
+
+/** v1 split kept for reference: callers now use macroPlan. */
+export function splitMacros(target: number, goalWeightKg: number, o: MacroOverrides) {
+  const { protein, carbs, fat } = macroPlan(target, goalWeightKg, o)
   return { protein, carbs, fat }
 }
 
-export function macroTargets(p: Profile) {
-  return splitMacros(foodBudget(p), p.weightKg, p.macros)
+export type PlanInput = Pick<Profile, 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'goalWeightKg' | 'macros'>
+
+/** Pace in kcal a day before the cap (7,700 kcal per kg). */
+export const paceKcal = (pace: Pace) => (PACE[pace].kg * KCAL_PER_KG) / 7
+
+/**
+ * v1.1 daily target. Lose: BMR + movement - pace kcal, the deficit capped at 20% of (BMR + movement) and the
+ * target never below BMR. Gain: the same pace as a surplus, capped at 20%. Keep: BMR + movement.
+ * The macro carb floor can raise the target. dailyGoal = BMR + movement - target (the balance goal).
+ */
+export function dailyPlan(p: PlanInput) {
+  const movement = movementKcal(p)
+  const base = p.bmr + movement
+  const want = paceKcal(p.pace)
+  const cap = DEFICIT_CAP * base
+  let target = base
+  if (p.goal === 'lose') target = Math.max(p.bmr, Math.round(base - Math.min(want, cap)))
+  if (p.goal === 'gain') target = Math.round(base + Math.min(want, cap))
+  const m = macroPlan(target, p.goalWeightKg, p.macros)
+  return { bmr: p.bmr, movement, base, target: m.target, dailyGoal: base - m.target, protein: m.protein, carbs: m.carbs, fat: m.fat, adjusted: m.adjusted, capped: p.goal !== 'keep' && want > cap }
+}
+
+export function macroTargets(p: PlanInput) {
+  const { protein, carbs, fat } = dailyPlan(p)
+  return { protein, carbs, fat }
 }
 
 /** Grams over target, or 0. Ignores rounding noise under half a gram. */
@@ -121,9 +172,6 @@ export const fmt = (n: number) => Math.round(n).toLocaleString('en-US')
 
 // ---------- Daily balance (v1) ----------
 
-/** Daily balance goal from the onboarding goal. Positive = deficit. */
-export const defaultDailyGoal = (g: Goal) => -GOAL_ADJUST[g]
-
 export const calcBmr = (p: Body) => Math.round(bmr(p.sex, p.weightKg, p.heightCm, p.age))
 
 /** NEAT: everyday movement on top of BMR, from the activity level. */
@@ -131,10 +179,8 @@ export function movementKcal(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovem
   return p.includeMovement ? Math.round(p.bmr * (ACTIVITY[p.activity].factor - 1)) : 0
 }
 
-/** Food budget on a rest day: what you can eat and still hit the daily goal. */
-export function foodBudget(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovement' | 'dailyGoal'>): number {
-  return Math.max(0, p.bmr + movementKcal(p) - p.dailyGoal)
-}
+/** Food target on a rest day (v1.1: from the pace, see dailyPlan). */
+export const foodBudget = (p: PlanInput): number => dailyPlan(p).target
 
 export type DayBalance = { bmr: number; movement: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean }
 
@@ -196,4 +242,24 @@ export function goalMessage(balance: number, goal: number, done: boolean): strin
   return b > 0 ? `${fmt(b)} kcal under break even.` : `${fmt(-b)} kcal over break even.`
 }
 
-export const KCAL_PER_KG = 7700
+
+
+// ---------- History chart scale (v1.1) ----------
+
+export const ceil500 = (n: number) => Math.ceil(n / 500) * 500
+
+/**
+ * Symmetric kcal scale for the balance chart (same reach up and down from zero).
+ * scale = max(500, 2 x |goal|, robust max) rounded up to 500, where the robust max ignores the largest 10% of
+ * |values| (at least one) when there are two or more bars. Bars past the scale are drawn clipped with a cap.
+ * So one +2,500 spike does not squash a week of +/-400 days, but two or more big days still set the scale.
+ */
+export function balanceScale(values: number[], goal: number): number {
+  const abs = values.map((v) => Math.abs(v)).sort((a, b) => b - a)
+  const drop = Math.max(1, Math.floor(abs.length / 10))
+  const robust = abs.length > drop ? abs[drop] : (abs[0] ?? 0)
+  return Math.max(500, ceil500(2 * Math.abs(goal)), ceil500(robust))
+}
+
+/** Protein chart scale: max(1.25 x target, biggest value). */
+export const proteinScale = (values: number[], target: number) => Math.max(target * 1.25, ...values, 1)

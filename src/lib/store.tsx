@@ -1,25 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
-import type { Entry, ExerciseEntry, Intensity, Profile, State } from './types'
+import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Profile, type State } from './types'
 import { FOOD_BY_ID, FOODS } from '../data/foods'
 import { exerciseKcal, ACTIVITY_BY_ID } from '../data/activities'
-import { addDays, calcBmr, dateKey, defaultDailyGoal, foodBudget, liveDay, summarise } from './calc'
+import { addDays, dateKey, liveDay, summarise } from './calc'
+import { migrateState, normaliseProfile } from './migrate'
 
-export const STORAGE_KEY = 'calorie-app:v1'
-const empty: State = { version: 1, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [] }
+import { LEGACY_STATE_KEY, STATE_KEY } from './backup'
+export const STORAGE_KEY = STATE_KEY
+const empty: State = { version: STATE_VERSION, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [] }
 
-/** Fill v1/v2 profile fields for data saved by v0. */
-export function normaliseProfile(p: Partial<Profile> & Pick<Profile, 'age' | 'sex' | 'heightCm' | 'weightKg' | 'activity' | 'goal'>): Profile {
-  const bmr = typeof p.bmr === 'number' && p.bmr > 0 ? p.bmr : calcBmr(p)
-  const base = {
-    ...p,
-    bmr,
-    bmrCustom: p.bmrCustom ?? false,
-    includeMovement: p.includeMovement ?? true,
-    dailyGoal: typeof p.dailyGoal === 'number' ? p.dailyGoal : defaultDailyGoal(p.goal),
-    macros: { protein: null, carbs: null, fat: null, ...(p.macros ?? {}) },
-  }
-  return { ...base, target: foodBudget(base) }
-}
+export { normaliseProfile }
 
 /** Close every past day that has logs but no summary yet (the midnight auto-close, computed on load). */
 export function autoClose(s: State, today = dateKey()): State {
@@ -37,12 +27,12 @@ export function autoClose(s: State, today = dateKey()): State {
 
 function load(): State {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    // v2 key first; otherwise migrate the app 1.0 data (left in place under its old key).
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STATE_KEY)
     if (!raw) return empty
-    const s = JSON.parse(raw) as State
-    if (s.version !== 1) return empty
-    const merged: State = { ...empty, ...s, profile: s.profile ? normaliseProfile(s.profile) : null }
-    return autoClose(merged)
+    // v1 data (app 1.0) is migrated in place; the next save writes it back as v2.
+    const merged = migrateState(JSON.parse(raw))
+    return merged ? autoClose(merged) : empty
   } catch {
     return empty
   }
@@ -211,9 +201,9 @@ function reducer(state: State, a: Action): State {
     case 'reset':
       return empty
     case 'restore': {
-      // Already validated by parseBackup; fill defaults the same way load() does.
-      const s: State = { ...empty, ...a.state, version: 1, profile: a.state.profile ? normaliseProfile(a.state.profile) : null }
-      return autoClose(s)
+      // Already validated by parseBackup (v1 or v2); migrate the same way load() does.
+      const s = migrateState(a.state)
+      return s ? autoClose(s) : state
     }
   }
 }

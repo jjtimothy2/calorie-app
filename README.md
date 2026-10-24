@@ -2,7 +2,7 @@
 
 Mobile-first personal web app (installable PWA, data stays on the device). v0 food logging, v1 daily balance (BMR + exercise - food), v2 macros with a protein focus.
 Mockups: `/workspace/proto-bot/builds/calorie-v0`, `calorie-v1`, `calorie-v2`.
-Vite + React + TypeScript + Tailwind v4 + React Router. All data in localStorage (`calorie-app:v1`). Food and MET values are illustrative.
+Vite + React + TypeScript + Tailwind v4 + React Router. All data in localStorage (`calorie-app:v2`; a 1.0 `calorie-app:v1` copy is migrated on load and left in place). Food and MET values are illustrative.
 
 - `npm install`
 - `npm run dev` (dev server at http://localhost:5173/calorie-app/) or `npm run build && npx vite preview --port 4174` (http://localhost:4174/calorie-app/)
@@ -42,7 +42,8 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
   weekly total (closed days) and an estimated kg change at 7,700 kcal per kg.
 
 ## v2 Macros
-- Protein target defaults to 1.6 g per kg. Fat gets 40% of the calories left after protein, never under 0.6 g per kg. Carbs take the rest. All three editable in Me (a fat override re-splits carbs).
+- v1.1 daily target: BMR + movement (off by default for new profiles) minus pace x 7,700 / 7 (Gentle 0.25, Standard 0.5, Faster 0.75 kg a week). The deficit is capped at 20% of BMR + movement and the target never goes under BMR.
+- Protein 1.6 g per kg of goal weight (optional, defaults to current weight). Fat 25% of the target, never under 0.6 g per kg of goal weight. Carbs take the rest, never under 100 g: protein drops first (to 1.2 g per kg), then the target rises. All three editable in Me (a fat override re-splits carbs).
 - Home "Protein left today" card links to the Nutrition tab (protein ring, carbs and fat bars, top protein sources).
 - History Balance/Protein toggle: protein bars vs a dashed target line, solid when hit, "X / 7 days" and daily average.
 - Protein is pink everywhere; orange only means surplus.

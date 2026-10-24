@@ -106,7 +106,7 @@ export default function History() {
             </div>
           </div>
           <div className="mt-3"><BalanceChart bars={bars} goal={goal} /></div>
-          <p className="mt-1.5 text-center text-xs text-mute">Up is deficit (green), down is surplus (orange). Dashed line is your goal. Open days are faded.</p>
+          <p className="mt-1.5 text-center text-xs text-mute">Up is deficit (green), down is surplus (orange). Faint lines mark even and ± your daily goal. Very big days are cut short and show their value. Open days are faded.</p>
         </Card>
         <Card className="py-1">
           <ul aria-label="Daily balance" data-testid="day-list">

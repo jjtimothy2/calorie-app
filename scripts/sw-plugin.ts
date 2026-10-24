@@ -5,6 +5,9 @@ import { copyFileSync, readdirSync, readFileSync, statSync, writeFileSync } from
 import { join, relative } from 'node:path'
 import type { Plugin } from 'vite'
 
+// Bumped per release (v1.1: new storage key and formulas). The content hash below changes on every build anyway.
+export const APP_VERSION = 'v1.1'
+
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))
 
@@ -24,7 +27,7 @@ export function serviceWorker(): Plugin {
       const files = walk(outDir).map((f) => relative(outDir, f).split('\\').join('/')).filter((f) => !SKIP.has(f)).sort()
       const hash = createHash('sha256')
       for (const f of files) hash.update(f).update(readFileSync(join(outDir, f)))
-      const version = hash.digest('hex').slice(0, 12)
+      const version = `${APP_VERSION}-${hash.digest('hex').slice(0, 12)}`
       const urls = files.map((f) => base + (f === 'index.html' ? '' : f))
       writeFileSync(join(outDir, 'sw.js'), SW(version, urls, base))
     },
