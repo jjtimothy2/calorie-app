@@ -6,7 +6,7 @@ import { Ticker, useRingFrom } from './motion'
  * Ring for the daily balance (positive = deficit, green; negative = surplus, orange).
  * Fill shows progress toward the daily goal.
  */
-export function BalanceRing({ balance, goal, size = 230, stroke = 12, closed = false }: { balance: number; goal: number; size?: number; stroke?: number; closed?: boolean }) {
+export function BalanceRing({ balance, goal, size = 230, stroke = 12, closed = false, minimum = false }: { balance: number; goal: number; size?: number; stroke?: number; closed?: boolean; minimum?: boolean }) {
   const b = Math.round(balance)
   const surplus = b < 0
   const r = (size - stroke) / 2
@@ -43,8 +43,8 @@ export function BalanceRing({ balance, goal, size = 230, stroke = 12, closed = f
         <div className={`num text-[64px] leading-none ${surplus ? 'text-over-ink' : 'text-g-ink'}`} style={{ fontSize: size > 200 ? 64 : 44 }} data-testid="balance">
           <Ticker value={Math.abs(b)} format={(n) => fmt(Math.round(n))} id="balance" />
         </div>
-        <div className="mt-1 text-[13px] text-mute" data-testid="ring-goal">{goal === 0 ? 'goal: even' : `goal ${fmt(Math.abs(goal))}${goal < 0 ? ' surplus' : ''}`}</div>
-        <span className="sr-only">{`Balance ${fmt(Math.abs(b))} kcal ${surplus ? 'surplus' : 'deficit'}. Goal ${goalLabel(goal)}.`}</span>
+        <div className="mt-1 text-[13px] text-mute" data-testid="ring-goal">{minimum ? 'at minimum intake' : goal === 0 ? 'goal: even' : `goal ${fmt(Math.abs(goal))}${goal < 0 ? ' surplus' : ''}`}</div>
+        <span className="sr-only">{`Balance ${fmt(Math.abs(b))} kcal ${surplus ? 'surplus' : 'deficit'}. ${minimum ? 'At the minimum intake.' : `Goal ${goalLabel(goal)}.`}`}</span>
       </div>
     </div>
   )

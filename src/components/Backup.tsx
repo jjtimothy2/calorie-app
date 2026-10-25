@@ -4,6 +4,7 @@ import { Sheet } from './Sheet'
 import { Button, Card } from './ui'
 import { downloadBackup, lastBackupText, parseBackup, readMeta, restoreExtraKeys, type Parsed } from '../lib/backup'
 import { useStore } from '../lib/store'
+import { Info } from './Info'
 
 type Ok = Extract<Parsed, { ok: true }>
 const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`
@@ -61,8 +62,7 @@ export function BackupCard() {
   const imp = useImport(() => nav('/', { replace: true }))
   return (
     <Card className="flex flex-col gap-3">
-      <h2 className="title text-[21px]">Backup</h2>
-      <p className="text-[15px] text-mute">Your data lives only in this browser. Save a backup file now and then, and keep it somewhere safe (Files, iCloud Drive, Google Drive).</p>
+      <h2 className="title flex items-center text-[21px]">Backup<Info title="Backup" id="backup"><p>Your data lives only in this browser. Save a backup file now and then, and keep it somewhere safe (Files, iCloud Drive, Google Drive).</p><p>Import replaces everything on this device with the file's data.</p></Info></h2>
       <Button onClick={() => { downloadBackup(); setMeta(readMeta()); setMsg('Backup saved to your downloads.') }}>Export backup</Button>
       <Button variant="ghost" onClick={imp.pick}>Import backup</Button>
       <p className="text-center text-[13px] text-mute" data-testid="last-backup">{lastBackupText(meta)}</p>

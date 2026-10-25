@@ -24,6 +24,8 @@ export default function Home() {
   const totals = sumEntries(entries)
   const day = dayView(state, today)
   const closed = !!day.closed
+  // v1.3.2: a Lose plan held at the 1,500/1,200 floor with nothing left to cut has a goal of 0; say so instead of "even".
+  const atMinimum = !closed && state.profile!.goal === 'lose' && day.goal === 0
   const profile = state.profile!
   const s = streak(state.entries, today)
   const [editing, setEditing] = useState<Entry | null>(null)
@@ -61,10 +63,10 @@ export default function Home() {
               <Link to={`/day/${today}`} className="px-1 py-1 text-[15px] font-bold text-g-ink">View verdict ›</Link>
             </div>
           )}
-          <BalanceRing balance={day.balance} goal={day.goal} closed={closed} />
+          <BalanceRing balance={day.balance} goal={day.goal} closed={closed} minimum={atMinimum} />
           <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} />
-          <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
+          <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{atMinimum ? <>You're at the minimum intake.<span className="mt-0.5 block text-[13px]" data-testid="minimum-hint">Your watch or exercise burn creates your deficit.</span></> : goalMessage(day.balance, day.goal, closed)}</p>
           </Card>
         </section>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />

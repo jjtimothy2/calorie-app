@@ -34,7 +34,7 @@ export type Profile = {
   includeMovement: boolean
   /** Daily balance goal in kcal, derived: home base (BMR + movement, or BMR with movement off) - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
   dailyGoal: number
-  /** v1.1: goal weight (kg) used for protein and the fat floor. Defaults to the current weight. */
+  /** v1.1: goal weight (kg). Defaults to the current weight. Since v1.3.2 macros use the current weight, so this is kept for reference only. */
   goalWeightKg: number
   /** v1.1: how fast to lose (or gain). Ignored for "keep". */
   pace: Pace

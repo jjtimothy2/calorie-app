@@ -60,7 +60,7 @@ export default function Onboarding() {
           </Card>
           {plan && (
             <p className="text-[15px] text-mute" data-testid="onboard-macros">
-              Protein {plan.protein} g, carbs {plan.carbs} g, fat {plan.fat} g. Daily movement is off, so this starts from your BMR ({fmt(plan.bmr)}){d.goal === 'keep' ? '' : `, ${d.goal === 'gain' ? 'plus' : 'minus'} your pace`}, and never goes under {fmt(plan.floor)} kcal. Turn it on in Me to add about {fmt(movementKcal({ bmr: plan.bmr, activity: d.activity, includeMovement: true }))} kcal from your activity level.
+              Macro goals: protein {plan.protein} g, carbs {plan.carbs} g, fat {plan.fat} g, set from your maintenance ({fmt(plan.maintenance)} kcal) and current weight. Daily movement is off, so your target starts from your BMR ({fmt(plan.bmr)}){d.goal === 'keep' ? '' : `, ${d.goal === 'gain' ? 'plus' : 'minus'} your pace`}, and never goes under {fmt(plan.floor)} kcal. Turn it on in Me to add about {fmt(movementKcal({ bmr: plan.bmr, activity: d.activity, includeMovement: true }))} kcal from your activity level.
             </p>
           )}
           <div className="flex-1" />

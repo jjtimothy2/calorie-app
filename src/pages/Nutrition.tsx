@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
 import { formatAmount } from '../lib/amount'
-import { entryTotals, fmt, lastNDays, dailyPlan, macroSplit, overBy, pctOf, round1, sumEntries, sumExercise } from '../lib/calc'
+import { entryTotals, fmt, lastNDays, dailyPlan, macroSplit, overBy, pctOf, sumEntries, sumExercise } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { Ticker, useRingFrom } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
@@ -118,7 +118,7 @@ function CaloriesCard({ eaten, target, exercise, week }: { eaten: number; target
         </div>
         {(week || exercise > 0) && (
           <p className="mt-1.5 text-[13px] text-mute" data-testid="cal-note">
-            {week ? 'A day on average over the days you logged. ' : ''}{exercise > 0 ? `Target includes ${fmt(exercise)} kcal of exercise${week ? ' a day' : ''}, as on Today.` : ''}
+            {week ? 'A day on average over the days you logged. ' : ''}{exercise > 0 ? `Target includes ${fmt(exercise)} kcal of exercise${week ? ' a day' : ''}, as on Today. Macro goals stay the same.` : ''}
           </p>
         )}
       </div>
@@ -203,7 +203,6 @@ export default function Nutrition() {
   const p = Math.round(per.protein)
   const left = t.protein - p
   const pOver = overBy(p, t.protein)
-  const perKg = round1(t.protein / profile.goalWeightKg)
   const sources = topSources(entries)
   // Same food target Today works to: the plan target plus exercise logged that day (Today's "left" = target + burned - eaten).
   const burned = sumExercise(state.exercises.filter((x) => days.includes(x.date))) / (range === 'today' ? 1 : loggedDays)
@@ -227,7 +226,7 @@ export default function Nutrition() {
             <p className="mt-1 text-[13px] text-mute">
               <span className="sr-only"><span data-testid="protein-progress">{fmt(p)} of {fmt(t.protein)} g, {pctP}%</span>{range === 'week' ? ' a day on average' : ''}. </span>
               {range === 'week' && <span aria-hidden="true">A day on average. </span>}
-              {left > 0 ? `${fmt(left)} g to go.` : pOver ? <>Target hit, <b className="text-protein-ink" data-testid="protein-over">+{fmt(pOver)} g over</b>.</> : 'Target hit.'} About {perKg} g per kg of goal weight ({fmt(profile.goalWeightKg)} kg).
+              {left > 0 ? `${fmt(left)} g to go.` : pOver ? <>Target hit, <b className="text-protein-ink" data-testid="protein-over">+{fmt(pOver)} g over</b>.</> : 'Target hit.'}
             </p>
           </div>
         </Card>
@@ -252,7 +251,7 @@ export default function Nutrition() {
             <p className="py-2 text-[15px] text-mute">Log food to see where your protein comes from.</p>
           )}
         </Card>
-        <p className="text-center text-xs text-mute" data-testid="targets-hint">Targets for your {fmt(t.target)} kcal day: protein {PROTEIN_HINT}, fat 25% of calories (at least 0.6 g per kg), carbs the rest (at least 100 g). Split uses 4 kcal per g of protein and carbs, 9 per g of fat. Change goal weight, pace or macros under Me.</p>
+        <p className="text-center text-xs text-mute" data-testid="targets-hint">Macro goals are fixed: they are built on your maintenance, {fmt(t.maintenance)} kcal ({profile.includeMovement ? 'BMR plus movement' : 'your BMR'}), at your current weight of {fmt(profile.weightKg)} kg, so they don't add up to your calorie target and logged exercise doesn't change them. Protein {PROTEIN_HINT}, fat 25% of maintenance (at least 0.6 g per kg), carbs the rest. Split uses 4 kcal per g of protein and carbs, 9 per g of fat. Change your weight, movement or macros under Me.</p>
         <Illustrative />
       </Screen>
       <TabBar />
@@ -260,4 +259,4 @@ export default function Nutrition() {
   )
 }
 
-const PROTEIN_HINT = '1.6 g per kg of goal weight'
+const PROTEIN_HINT = '1.6 g per kg'

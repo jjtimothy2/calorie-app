@@ -10,7 +10,7 @@ import { useFirstVisit } from './motion'
 export function PhoneFrame({ children }: { children: ReactNode }) {
   return (
     <div className="fixed inset-0 flex justify-center framed:items-center framed:py-6" data-testid="frame">
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-bg framed:h-[844px] framed:max-h-full framed:w-[390px] framed:rounded-[44px] framed:shadow-[0_20px_50px_rgba(0,0,0,.18)]">
+      <div id="app-frame" className="relative flex h-full w-full flex-col overflow-hidden bg-bg framed:h-[844px] framed:max-h-full framed:w-[390px] framed:rounded-[44px] framed:shadow-[0_20px_50px_rgba(0,0,0,.18)]">
         {children}
       </div>
     </div>

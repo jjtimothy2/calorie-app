@@ -1,6 +1,7 @@
 import { ACTIVITY, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
 import type { Activity, Goal, Pace, Sex } from '../lib/types'
 import { Chip } from './ui'
+import { Info } from './Info'
 
 /** goalWeightKg NaN = left blank, which means "same as current weight". */
 export type Draft = Body & { goalWeightKg: number; pace: Pace }
@@ -35,7 +36,7 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
   return (
     <>
       <fieldset>
-        <legend className="mb-2 text-[15px] font-semibold">Sex <span className="font-normal text-mute">(for the calorie formula)</span></legend>
+        <legend className="mb-2 flex items-center text-[15px] font-semibold">Sex<Info title="Sex" id="sex"><p>Used in the BMR formula (Mifflin-St Jeor), which estimates the calories your body burns at rest. Men get a slightly higher estimate for the same height, weight and age.</p></Info></legend>
         <div className="flex gap-2">
           {(['female', 'male'] as Sex[]).map((s) => (
             <Chip key={s} on={d.sex === s} onClick={() => set({ ...d, sex: s })}>{s === 'female' ? 'Female' : 'Male'}</Chip>
@@ -55,7 +56,7 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
   return (
     <>
       <fieldset>
-        <legend className="mb-2 text-[15px] font-semibold">Goal</legend>
+        <legend className="mb-2 flex items-center text-[15px] font-semibold">Goal<Info title="Goal" id="goal"><p>Lose or gain sets a daily calorie target below or above your base (your BMR, plus daily movement if it is on). Keep sets the target at your base.</p><p>Your macro goals don't change with this: they come from your maintenance calories and current weight.</p></Info></legend>
         <div className="flex flex-wrap gap-2">
           {(['lose', 'keep', 'gain'] as Goal[]).map((g) => (
             <Chip key={g} on={d.goal === g} onClick={() => set({ ...d, goal: g })}>{GOAL_LABEL[g]}</Chip>
@@ -64,7 +65,7 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
       </fieldset>
       {d.goal !== 'keep' && (
         <fieldset>
-          <legend className="mb-2 text-[15px] font-semibold">Pace</legend>
+          <legend className="mb-2 flex items-center text-[15px] font-semibold">Pace<Info title="Pace" id="pace"><p>How fast to aim for, per week. About 7,700 kcal is one kg of body weight, so 0.5 kg a week is roughly 550 kcal a day.</p><p>The daily difference is capped at 20% of your base, and the target never goes under 1,500 kcal for men or 1,200 kcal for women (or under your BMR when movement is on).</p></Info></legend>
           <div className="flex flex-wrap gap-2" data-testid="pace">
             {PACES.map((p) => (
               <Chip key={p} on={d.pace === p} onClick={() => set({ ...d, pace: p })}>{PACE_LABEL(p)}</Chip>
@@ -72,13 +73,14 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
           </div>
         </fieldset>
       )}
-      <label className="flex items-center justify-between rounded-[22px] border border-line bg-card px-4 py-3 text-base">
-        <span>
-          Goal weight
-          <span className="block text-[13px] text-mute">Optional. Sets protein. Blank = current weight</span>
+      <div className="flex items-center justify-between rounded-[22px] border border-line bg-card px-4 py-3 text-base">
+        <span className="flex items-center">
+          <label htmlFor="goal-weight">Goal weight <span className="text-[13px] text-mute">(optional)</span></label>
+          <Info title="Goal weight" id="goal-weight"><p>Optional, for your own reference. Leave it blank to use your current weight.</p><p>Your targets don't depend on it: protein and the fat minimum use your current weight, so update your weight here as it changes.</p></Info>
         </span>
         <span className="flex items-center gap-2">
           <input
+            id="goal-weight"
             className={input}
             type="number"
             inputMode="decimal"
@@ -91,9 +93,9 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
           />
           <span className="w-6 text-mute">kg</span>
         </span>
-      </label>
+      </div>
       <fieldset>
-        <legend className="mb-2 text-[15px] font-semibold">Activity level</legend>
+        <legend className="mb-2 flex items-center text-[15px] font-semibold">Activity level<Info title="Activity level" id="activity"><p>How much you move on a normal day. With daily movement on (under Daily balance), it adds everyday activity on top of your BMR: 20% for sedentary up to 90% for very active.</p><p>Log workouts separately as exercise. Exercise adds to the food you can eat that day but never changes your macro goals.</p></Info></legend>
         <div className="rounded-[22px] border border-line bg-card px-4">
           {(Object.keys(ACTIVITY) as Activity[]).map((a) => (
             <label key={a} className="flex cursor-pointer items-center gap-3 border-b border-line py-3 text-[15px] last:border-0">
@@ -119,7 +121,7 @@ export function goalBlurb(goal: Goal, plan: { planDeficit: number; capped: boole
   if (goal === 'keep') return 'to keep your current weight'
   const kcal = Math.abs(plan.planDeficit)
   const min = `the ${fmt(plan.floor)} kcal minimum`
-  if (goal === 'lose' && plan.planDeficit <= 0) return `at ${min}, the lowest target we suggest`
+  if (goal === 'lose' && plan.planDeficit <= 0) return `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit`
   const kg = Math.round(((kcal * 7) / KCAL_PER_KG) * 20) / 20
   const verb = goal === 'lose' ? 'lose' : 'gain'
   const note = plan.floored ? ` (held at ${min})` : plan.capped ? ' (capped at 20%)' : ''

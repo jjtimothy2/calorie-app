@@ -87,10 +87,10 @@ export const round1 = (n: number) => Math.round(n * 10) / 10
 
 export const KCAL_PER_KG = 7700
 
-export const PROTEIN_PER_KG = 1.6 // of goal weight
+export const PROTEIN_PER_KG = 1.6 // of current weight (v1.3.2; goal weight before)
 export const PROTEIN_MIN_PER_KG = 1.2 // protein is lowered towards this before carbs drop under the floor
-export const FAT_SHARE = 0.25 // of the daily target
-export const FAT_FLOOR_PER_KG = 0.6 // of goal weight; fat never defaults below this
+export const FAT_SHARE = 0.25 // of maintenance calories (v1.3.2; of the daily target before)
+export const FAT_FLOOR_PER_KG = 0.6 // of current weight; fat never defaults below this
 export const CARB_FLOOR = 100 // g
 export const DEFICIT_CAP = 0.2 // of the plan base (BMR + movement, or BMR with Movement off)
 
@@ -102,43 +102,47 @@ export const PACE: Record<Pace, { label: string; kg: number }> = {
 export const PACES = Object.keys(PACE) as Pace[]
 
 /**
- * v1.1 macros for a daily target (pure, for unit tests).
- * Protein = round(1.6 x goal weight). Fat = max(25% of target, 0.6 g x goal weight) (kcal kept unrounded).
- * Carbs = (target - protein x 4 - fat kcal) / 4, never under 100 g: protein drops first (down to 1.2 g/kg),
- * then carbs are held at 100 g and the target is raised to fit. Overrides are used as typed.
+ * Macro goals (pure, for unit tests). v1.3.2: built on MAINTENANCE calories at the current weight (the burn Home
+ * counts before logged exercise: BMR, or BMR + movement), not on the deficit or surplus target, and never on exercise.
+ * Protein = round(1.6 x current weight). Fat = max(25% of maintenance, 0.6 g x current weight) (kcal kept unrounded).
+ * Carbs = (maintenance - protein x 4 - fat kcal) / 4, never under 100 g: protein drops first (down to 1.2 g/kg),
+ * then carbs are held at 100 g and the kcal the split is built on is raised to fit (returned as kcal; this never
+ * changes the calorie target). That fallback only triggers for a low BMR against a heavy weight or a big typed
+ * fat value. Overrides are used as typed.
  */
-export function macroPlan(target: number, goalWeightKg: number, o: MacroOverrides = { protein: null, carbs: null, fat: null }) {
-  const fatKcalAt = (t: number) => (o.fat != null ? o.fat * 9 : Math.max(FAT_SHARE * t, FAT_FLOOR_PER_KG * goalWeightKg * 9))
+export function macroPlan(maintenance: number, weightKg: number, o: MacroOverrides = { protein: null, carbs: null, fat: null }) {
+  let kcal = maintenance
+  const fatKcalAt = (t: number) => (o.fat != null ? o.fat * 9 : Math.max(FAT_SHARE * t, FAT_FLOOR_PER_KG * weightKg * 9))
   const carbsAt = (t: number, p: number) => (t - p * 4 - fatKcalAt(t)) / 4
-  let protein = o.protein ?? Math.round(PROTEIN_PER_KG * goalWeightKg)
-  if (o.carbs != null) return { target, protein, fat: Math.round(fatKcalAt(target) / 9), carbs: o.carbs, adjusted: false }
+  let protein = o.protein ?? Math.round(PROTEIN_PER_KG * weightKg)
+  if (o.carbs != null) return { kcal, protein, fat: Math.round(fatKcalAt(kcal) / 9), carbs: o.carbs, adjusted: false }
   let adjusted = false
-  if (carbsAt(target, protein) < CARB_FLOOR && o.protein == null) {
-    protein = Math.max(Math.round(PROTEIN_MIN_PER_KG * goalWeightKg), Math.floor((target - fatKcalAt(target) - CARB_FLOOR * 4) / 4))
+  if (carbsAt(kcal, protein) < CARB_FLOOR && o.protein == null) {
+    protein = Math.max(Math.round(PROTEIN_MIN_PER_KG * weightKg), Math.floor((kcal - fatKcalAt(kcal) - CARB_FLOOR * 4) / 4))
     adjusted = true
   }
-  if (carbsAt(target, protein) < CARB_FLOOR) {
-    // Hold carbs at the floor and raise the target until protein + fat + 100 g carbs fit.
+  if (carbsAt(kcal, protein) < CARB_FLOOR) {
+    // Hold carbs at the floor and raise the split's kcal until protein + fat + 100 g carbs fit.
     const fixed = protein * 4 + CARB_FLOOR * 4
     let t: number
     if (o.fat != null) t = fixed + o.fat * 9
     else {
-      const share = fixed / (1 - FAT_SHARE) // fat at 25% of the new target
-      t = FAT_SHARE * share >= FAT_FLOOR_PER_KG * goalWeightKg * 9 ? share : fixed + FAT_FLOOR_PER_KG * goalWeightKg * 9
+      const share = fixed / (1 - FAT_SHARE) // fat at 25% of the raised kcal
+      t = FAT_SHARE * share >= FAT_FLOOR_PER_KG * weightKg * 9 ? share : fixed + FAT_FLOOR_PER_KG * weightKg * 9
     }
-    target = Math.ceil(t - 1e-9)
+    kcal = Math.ceil(t - 1e-9)
     adjusted = true
   }
-  return { target, protein, fat: Math.round(fatKcalAt(target) / 9), carbs: Math.round(carbsAt(target, protein)), adjusted }
+  return { kcal, protein, fat: Math.round(fatKcalAt(kcal) / 9), carbs: Math.round(carbsAt(kcal, protein)), adjusted }
 }
 
 /** v1 split kept for reference: callers now use macroPlan. */
-export function splitMacros(target: number, goalWeightKg: number, o: MacroOverrides) {
-  const { protein, carbs, fat } = macroPlan(target, goalWeightKg, o)
+export function splitMacros(maintenance: number, weightKg: number, o: MacroOverrides) {
+  const { protein, carbs, fat } = macroPlan(maintenance, weightKg, o)
   return { protein, carbs, fat }
 }
 
-export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'goalWeightKg' | 'macros'>
+export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'weightKg' | 'macros'>
 
 /** Pace in kcal a day before the cap (7,700 kcal per kg). */
 export const paceKcal = (pace: Pace) => (PACE[pace].kg * KCAL_PER_KG) / 7
@@ -155,27 +159,34 @@ export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 
  * Lose: base - pace kcal, the deficit capped at 20% of the plan base. Gain: the same pace as a surplus, capped at 20%.
  * Keep: the plan base.
  * Floor (v1.2): never under 1,500 kcal (men) / 1,200 (women). With Movement on the v1.1 BMR floor is kept as well,
- * so nothing changes there. The macro carb floor can still raise the target.
+ * so nothing changes there.
  * planDeficit is what the plan takes off its base (base - target, negative for a surplus).
  * dailyGoal is the balance goal against what Home counts as the burn (homeBase), which is the plan base
  * (BMR with Movement off), so dailyGoal = planDeficit. Keep = 0, Lose = the deficit, Gain = minus the surplus.
+ * v1.3.2: when the floor holds a Lose target, the goal is base - floor; if that is <= 0 the goal is 0 and the plan
+ * is atMinimum (the user's exercise burn creates the deficit). A Lose goal is never a surplus.
+ * Macros (v1.3.2) come from maintenance = the plan base, at the current weight, and are fixed for the day:
+ * they don't follow the target, the floor or logged exercise.
  */
 export function dailyPlan(p: PlanInput) {
   const movement = movementKcal(p)
   const base = p.bmr + movement
-  const planBase = p.includeMovement ? base : p.bmr
+  const planBase = Math.round(p.includeMovement ? base : p.bmr)
   const want = paceKcal(p.pace)
   const cap = DEFICIT_CAP * planBase
   const floor = p.includeMovement ? Math.max(p.bmr, targetFloor(p.sex)) : targetFloor(p.sex)
-  let target = Math.round(planBase)
+  let target = planBase
   if (p.goal === 'lose') target = Math.round(planBase - Math.min(want, cap))
   if (p.goal === 'gain') target = Math.round(planBase + Math.min(want, cap))
   const floored = target < floor
   target = Math.max(floor, target)
-  const m = macroPlan(target, p.goalWeightKg, p.macros)
+  const planDeficit = planBase - target
+  const dailyGoal = p.goal === 'lose' ? Math.max(0, planDeficit) : planDeficit
+  const m = macroPlan(planBase, p.weightKg, p.macros)
   return {
-    bmr: p.bmr, movement, base, planBase: Math.round(planBase), planDeficit: Math.round(planBase) - m.target, floor, floored,
-    target: m.target, dailyGoal: Math.round(planBase) - m.target, protein: m.protein, carbs: m.carbs, fat: m.fat, adjusted: m.adjusted,
+    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, floor, floored, target, dailyGoal,
+    atMinimum: p.goal === 'lose' && dailyGoal === 0,
+    protein: m.protein, carbs: m.carbs, fat: m.fat, macroKcal: m.kcal, adjusted: m.adjusted,
     capped: p.goal !== 'keep' && want > cap,
   }
 }

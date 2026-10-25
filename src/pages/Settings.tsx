@@ -4,6 +4,7 @@ import { BodyFields, GoalFields, goalBlurb, goalWeightOf, PACE_LABEL, validBody,
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
+import { Info } from '../components/Info'
 import { calcBmr, CARB_FLOOR, dailyPlan, fmt, macroPlan, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
 
@@ -36,11 +37,11 @@ export default function Settings() {
   const plan = dailyPlan({ ...base, macros })
   const movement = plan.movement
   const draftProfile = { ...base, macros, target: plan.target, dailyGoal: plan.dailyGoal }
-  // Placeholders show what "auto" would be given the other boxes: fat follows the target, carbs follow protein and fat.
-  const pre = dailyPlan({ ...base, macros: { protein: null, carbs: null, fat: null } }).target
-  const autoFat = macroPlan(pre, gw, { protein: macros.protein, carbs: null, fat: null }).fat
-  const auto = { ...macroPlan(pre, gw, { protein: macros.protein, carbs: null, fat: macros.fat }), fat: autoFat }
-  const autoProtein = macroPlan(pre, gw).protein
+  // v1.3.2: macros are built on maintenance (plan.maintenance) at the current weight. Placeholders show what "auto"
+  // would be given the other boxes: fat follows maintenance and weight, carbs follow protein and fat.
+  const w = d.weightKg
+  const autoFat = macroPlan(plan.maintenance, w, { protein: macros.protein, carbs: null, fat: null }).fat
+  const auto = { ...macroPlan(plan.maintenance, w, { protein: macros.protein, carbs: null, fat: macros.fat }), fat: autoFat }
   const ok = validBody(d) && validGoalWeight(d) && bmr >= 800 && bmr <= 4000 && macOk
 
   const save = () => {
@@ -53,7 +54,7 @@ export default function Settings() {
     <label className="flex items-center justify-between gap-3 text-base font-semibold">
       <span>
         {label} (g)
-        <span className="block text-[13px] font-normal text-mute">{mac[k] ? 'Custom' : `Auto: ${hint}`}</span>
+        <span className="block text-[13px] font-normal text-mute">{mac[k] ? 'Custom' : hint}</span>
         {k === 'carbs' && macros.carbs != null && macros.carbs > 0 && macros.carbs < CARB_FLOOR && (
           <span className="block text-[13px] font-normal text-mute" data-testid="carbs-low-hint">Below the {CARB_FLOOR} g we suggest. That's fine if it's on purpose.</span>
         )}
@@ -67,41 +68,61 @@ export default function Settings() {
     <Screen>
       <header>
         <h1 className="title text-[32px] leading-tight">Me</h1>
-        <p className="text-[15px] text-mute">Your body, goal and daily targets.</p>
+        <p className="text-[15px] text-mute">Your body, goal and daily targets. Tap ? for details.</p>
       </header>
       <form className="flex flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); save() }}>
         <BodyFields d={d} set={setD} />
         <GoalFields d={d} set={setD} />
         <Card className="flex flex-col gap-3">
           <h2 className="title text-[21px]">Daily balance</h2>
-          <label className="flex items-center justify-between gap-3 text-base font-semibold">
-            BMR (kcal)
-            <input type="number" name="bmr" inputMode="numeric" min={800} max={4000} value={bmr} onChange={(e) => { setBmr(Number(e.target.value)); setBmrCustom(true) }} className={numInput} />
-          </label>
+          <div className="flex items-center justify-between gap-3 text-base font-semibold">
+            <span className="flex items-center">
+              <label htmlFor="bmr">BMR (kcal)</label>
+              <Info title="BMR" id="bmr"><p>Basal metabolic rate: the calories your body burns at complete rest. It is calculated from your sex, age, height and weight, and recalculated when you change them.</p><p>If you know yours from a body scan or your watch, type it here. Use calculated goes back to the formula.</p></Info>
+            </span>
+            <input id="bmr" type="number" name="bmr" inputMode="numeric" min={800} max={4000} value={bmr} onChange={(e) => { setBmr(Number(e.target.value)); setBmrCustom(true) }} className={numInput} />
+          </div>
           <div className="-mt-1 flex items-center justify-between text-[15px] text-mute">
             <span data-testid="bmr-calculated">Calculated: {calculated ? fmt(calculated) : '–'}</span>
             <button type="button" className="font-bold text-g-ink" onClick={() => { if (calculated) { setBmr(calculated); setBmrCustom(false) } }}>Use calculated</button>
           </div>
-          <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-line pt-3 text-base font-semibold">
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-3 text-base font-semibold">
             <span>
-              Include daily movement
-              <span className="block text-[13px] font-normal text-mute">Adds {fmt(movementKcal({ bmr, activity: d.activity, includeMovement: true }))} kcal a day from your activity level</span>
+              <span className="flex items-center">
+                <label htmlFor="movement" className="cursor-pointer">Include daily movement</label>
+                <Info title="Daily movement" id="movement"><p>Adds {fmt(movementKcal({ bmr, activity: d.activity, includeMovement: true }))} kcal a day for your activity level on top of your BMR, so Today counts it as burned and your target and macros start from BMR plus movement.</p><p>Leave it off if you log workouts or use a watch: then your BMR is the base and exercise you log adds the rest.</p></Info>
+              </span>
+              <span className="block text-[13px] font-normal text-mute">+{fmt(movementKcal({ bmr, activity: d.activity, includeMovement: true }))} kcal a day</span>
             </span>
-            <input type="checkbox" role="switch" name="movement" checked={includeMovement} onChange={(e) => setIncludeMovement(e.target.checked)} className="h-6 w-6 shrink-0 accent-g-ink" />
-          </label>
-          <p className="border-t border-line pt-3 text-[15px] text-mute" data-testid="budget-line">
-            BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
-            {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} ${plan.floored ? 'to the minimum' : 'surplus'}` : ''} = <b className="text-ink">{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
-            <span className="mt-1 block" data-testid="pace-line">{d.goal === 'keep' ? 'Keep weight: no deficit.' : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</span>
-          </p>
+            <input id="movement" type="checkbox" role="switch" name="movement" checked={includeMovement} onChange={(e) => setIncludeMovement(e.target.checked)} className="h-6 w-6 shrink-0 cursor-pointer accent-g-ink" />
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-3 text-base font-semibold">
+            <span className="flex items-center">
+              Daily target
+              <Info title="Daily target" id="target">
+                <p data-testid="budget-line">
+                  BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
+                  {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} ${plan.floored ? 'to the minimum' : 'surplus'}` : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
+                </p>
+                <p data-testid="pace-line">{d.goal === 'keep' ? 'Keep weight: no deficit.' : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</p>
+              </Info>
+            </span>
+            <span className="num text-[20px]" data-testid="settings-target">{fmt(plan.target)} kcal</span>
+          </div>
         </Card>
         <Card className="flex flex-col gap-3">
-          <h2 className="title text-[21px]">Macro targets</h2>
-          {macroRow('protein', 'Protein', `${autoProtein} g (${PROTEIN_PER_KG} g per kg goal weight)`)}
-          {macroRow('carbs', 'Carbs', `${auto.carbs} g`)}
-          {macroRow('fat', 'Fat', `${auto.fat} g`)}
-          <div className="flex items-center justify-between border-t border-line pt-3 text-[13px] text-mute">
-            <span data-testid="macro-rule">Fat gets 25% of your calories, never under {FAT_FLOOR_PER_KG} g per kg of goal weight. Carbs take the rest, at least {CARB_FLOOR} g (protein eases first if needed). Leave a box empty for auto.</span>
+          <h2 className="title flex items-center text-[21px]">
+            Macro targets
+            <Info title="Macro targets" id="macros">
+              <p data-testid="macro-rule">Your macro goals are fixed for the day. They are built on your maintenance calories, {fmt(plan.maintenance)} kcal ({includeMovement ? 'BMR plus daily movement' : 'your BMR'}), at your current weight, not on your deficit or surplus target, and logged exercise never changes them.</p>
+              <p>Protein is {PROTEIN_PER_KG} g per kg of current weight. Fat gets 25% of maintenance, never under {FAT_FLOOR_PER_KG} g per kg. Carbs take the rest, at least {CARB_FLOOR} g (protein eases first if needed).</p>
+              <p>Type a number to set your own; leave a box empty for auto.</p>
+            </Info>
+          </h2>
+          {macroRow('protein', 'Protein', `Auto · ${PROTEIN_PER_KG} g per kg`)}
+          {macroRow('carbs', 'Carbs', 'Auto · the rest')}
+          {macroRow('fat', 'Fat', 'Auto · 25% of maintenance')}
+          <div className="flex justify-end border-t border-line pt-3 text-[13px]">
             <button type="button" className="shrink-0 px-1 font-bold text-g-ink" onClick={() => setMac({ protein: '', carbs: '', fat: '' })}>Use auto</button>
           </div>
         </Card>
