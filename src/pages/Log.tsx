@@ -28,6 +28,8 @@ export default function Log() {
   const [quick, setQuick] = useState(false)
   const [toast, setToast] = useState<{ entry: Entry; text: string } | null>(null)
   const timer = useRef<number | undefined>(undefined)
+  const keyboard = useKeyboardOpen()
+  const bar = !day.closed && !keyboard
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const showToast = (entry: Entry) => {
@@ -94,7 +96,7 @@ export default function Log() {
           ) : (
             <h1 className="title text-[24px]">Log exercise</h1>
           )}
-          <button type="button" disabled={!!day.closed} onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="px-1 py-2 text-[15px] font-bold text-g-ink disabled:opacity-40">Quick add</button>
+          <span className="h-11 w-11" aria-hidden="true" />
         </header>
         <div className="flex gap-2" role="group" aria-label="What to log">
           <Chip on={mode === 'food'} onClick={() => setMode('food')}><span aria-hidden="true">🍽 </span>Food</Chip>
@@ -109,7 +111,7 @@ export default function Log() {
         ) : mode === 'exercise' ? (
           <>
             <ExerciseForm date={today} onSaved={showExToast} onQuickAdd={() => setQuickEx(true)} />
-            <p className="mt-auto text-center text-xs text-mute">From a watch? Use Quick add to type the calories. Estimates are illustrative.</p>
+            <p className="mt-auto text-center text-xs text-mute">From a watch? Use Quick add burn below. Estimates are illustrative.</p>
           </>
         ) : (<>
         <div className="flex items-center gap-2.5 rounded-2xl border-2 border-line bg-card px-4 py-3 focus-within:border-g-ink">
@@ -157,8 +159,17 @@ export default function Log() {
         </p>
         </>)}
       </Screen>
+      {/* v1.3.4: Quick add lives in a sticky full-width bar at the bottom of Log (Reed, option 1). Hidden when the
+          day is closed, and while the on-screen keyboard is up so it never rides up over the list. */}
+      {!day.closed && !keyboard && (
+        <div className="shrink-0 border-t border-line bg-bg px-5 pt-3 pb-safe-qa" data-testid="qa-bar">
+          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="tap flex w-full items-center justify-center gap-2 rounded-[18px] bg-ink p-4 text-[17px] font-bold text-bg shadow-[0_8px_20px_rgba(42,36,32,.22)]">
+            <span aria-hidden="true">⚡</span>{mode === 'food' ? 'Quick add calories' : 'Quick add burn'}
+          </button>
+        </div>
+      )}
       {toast && (
-        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg" data-testid="toast">
+        <div role="status" className={`anim-fade ${bar ? 'bottom-above-qa' : 'bottom-safe'} absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg`} data-testid="toast">
           <span>{toast.text}</span>
           <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteEntry', id: toast.entry.id }); setToast(null) }}>Undo</button>
@@ -167,7 +178,7 @@ export default function Log() {
         </div>
       )}
       {exToast && (
-        <div role="status" className="anim-fade bottom-safe absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg" data-testid="toast">
+        <div role="status" className={`anim-fade ${bar ? 'bottom-above-qa' : 'bottom-safe'} absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg`} data-testid="toast">
           <span>Added {exToast.name} · {fmt(exToast.kcal)} kcal burned</span>
           <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteExercise', id: exToast.id }); setExToast(null) }}>Undo</button>
@@ -186,4 +197,26 @@ export default function Log() {
       )}
     </>
   )
+}
+
+/**
+ * True while an on-screen keyboard takes a big bite out of the visual viewport (iOS keeps the layout height, Android
+ * shrinks it; both shrink visualViewport). Compared with the tallest height seen at this width, so a desktop window
+ * or rotation never counts.
+ */
+function useKeyboardOpen() {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    let w = vv.width, max = vv.height
+    const check = () => {
+      if (Math.abs(vv.width - w) > 1) { w = vv.width; max = vv.height }
+      max = Math.max(max, vv.height)
+      setOpen(max - vv.height > 150)
+    }
+    vv.addEventListener('resize', check)
+    return () => vv.removeEventListener('resize', check)
+  }, [])
+  return open
 }

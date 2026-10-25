@@ -79,6 +79,9 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 .pb-safe-bar { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); min-height: calc(4.5rem + env(safe-area-inset-bottom)); }
 .pb-safe-sheet { padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1rem)); }
 .bottom-safe { bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem)); }
+/* v1.3.4 Log quick add bar: 12px top + 56px button + the safe-area pad; the Undo toast sits 12px above it. */
+.pb-safe-qa { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+.bottom-above-qa { bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 5rem); }
 
 @layer base {
   :focus-visible { outline: 3px solid var(--color-g-ink); outline-offset: 2px; }

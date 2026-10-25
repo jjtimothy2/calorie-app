@@ -45,7 +45,7 @@ try {
     await page.getByText('Saved.').waitFor()
     await page.getByRole('link', { name: 'Today', exact: true }).click()
     await page.getByRole('link', { name: 'Add to Lunch' }).click()
-    await page.getByRole('button', { name: 'Quick add', exact: true }).click()
+    await page.getByTestId('qa-bar').getByRole('button', { name: 'Quick add calories' }).click()
     const dlg = page.getByRole('dialog')
     await dlg.locator('input[name=kcal]').fill('700')
     await dlg.locator('input[name=name]').fill('Chicken rice')
