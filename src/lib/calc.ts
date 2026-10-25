@@ -165,6 +165,8 @@ export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 
  * (BMR with Movement off), so dailyGoal = planDeficit. Keep = 0, Lose = the deficit, Gain = minus the surplus.
  * v1.3.2: when the floor holds a Lose target, the goal is base - floor; if that is <= 0 the goal is 0 and the plan
  * is atMinimum (the user's exercise burn creates the deficit). A Lose goal is never a surplus.
+ * v1.3.3: Keep gets the same treatment: when the floor lifts a Keep target above its base, the goal is 0 (not a
+ * surplus) and the plan is atMinimum. Only Gain has a negative (surplus) goal.
  * Macros (v1.3.2) come from maintenance = the plan base, at the current weight, and are fixed for the day:
  * they don't follow the target, the floor or logged exercise.
  */
@@ -181,11 +183,11 @@ export function dailyPlan(p: PlanInput) {
   const floored = target < floor
   target = Math.max(floor, target)
   const planDeficit = planBase - target
-  const dailyGoal = p.goal === 'lose' ? Math.max(0, planDeficit) : planDeficit
+  const dailyGoal = p.goal === 'gain' ? planDeficit : Math.max(0, planDeficit)
   const m = macroPlan(planBase, p.weightKg, p.macros)
   return {
     bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, floor, floored, target, dailyGoal,
-    atMinimum: p.goal === 'lose' && dailyGoal === 0,
+    atMinimum: p.goal !== 'gain' && floored && dailyGoal === 0,
     protein: m.protein, carbs: m.carbs, fat: m.fat, macroKcal: m.kcal, adjusted: m.adjusted,
     capped: p.goal !== 'keep' && want > cap,
   }

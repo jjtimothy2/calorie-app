@@ -4,8 +4,8 @@ import { Sheet } from './Sheet'
 import { Button } from './ui'
 
 /**
- * v1.3.2: a small (?) next to a setting's label. Tapping it opens a bottom sheet with the explanation, so the Me page
- * reads as a clean list. The sheet traps focus, closes on Escape, the backdrop or Close, and gives focus back to the (?).
+ * v1.3.2: a small info button next to a setting's label (v1.3.3: a circled "i", 20px visible inside a 44px tap area). Tapping it opens a bottom sheet with the explanation, so the Me page
+ * reads as a clean list. The sheet traps focus, closes on Escape, the backdrop or Close, and gives focus back to the button.
  */
 export function Info({ title, id, children }: { title: string; id: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -15,14 +15,18 @@ export function Info({ title, id, children }: { title: string; id: string; child
     <>
       <button
         type="button"
-        aria-label={`About ${title.toLowerCase()}`}
+        aria-label={`About ${/^[A-Z]{2,}/.test(title) ? title : title.toLowerCase()}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid={`info-${id}`}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}
-        className="ml-1.5 inline-grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border border-line bg-bg align-[1px] text-[13px] font-bold leading-none text-mute"
+        className="-my-3 -mr-3 ml-[-6px] inline-grid h-11 w-11 shrink-0 place-items-center rounded-full text-mute transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-[-6px] focus-visible:outline-g-ink"
       >
-        ?
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" data-icon="info">
+          <circle cx="10" cy="10" r="8.6" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="10" cy="6.3" r="1.15" fill="currentColor" />
+          <path d="M10 9.2v5.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
       </button>
       {open && host && createPortal(
         <Sheet label={title} onClose={close}>

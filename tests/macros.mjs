@@ -1,4 +1,4 @@
-// Unit checks for v1.1 to v1.3.2: daily target from pace (20% cap; plain BMR base with movement off since v1.3.1, a 1,500 / 1,200 kcal floor,
+// Unit checks for v1.1 to v1.3.3 (v1.3.3: Keep at the floor has goal 0 too): daily target from pace (20% cap; plain BMR base with movement off since v1.3.1, a 1,500 / 1,200 kcal floor,
 // a Lose goal never under 0 since v1.3.2), macros (v1.3.2: fixed, built on maintenance at the current weight: protein 1.6 g/kg,
 // fat max(25% of maintenance, 0.6 g/kg), carbs the rest with a 100 g floor), chart scales, storage + backup migration.
 import { execSync } from 'node:child_process'
@@ -125,7 +125,7 @@ t('v1.3.2 floor Lose: base at or under the floor -> goal 0 and atMinimum, never 
   const on = dailyPlan({ ...reed, sex: 'male', bmr: 1200, activity: 'sedentary' }) // movement on: base 1440 < 1500
   assert.deepEqual([on.target, on.dailyGoal, on.atMinimum], [1500, 0, true])
   assert.equal(normaliseProfile({ age: 70, sex: 'male', heightCm: 160, weightKg: 55, activity: 'light', goal: 'lose', bmr: 1200, bmrCustom: true, includeMovement: false }).dailyGoal, 0)
-  // Keep and Gain are not clamped (they never were a Lose goal); atMinimum is Lose only.
+  // v1.3.3: Keep at the base (not floored) is not at the minimum; Gain is never clamped.
   assert.equal(dailyPlan({ ...reed, bmr: 1200, includeMovement: false, goal: 'keep' }).atMinimum, false)
   assert.equal(dailyPlan({ ...reed, sex: 'male', bmr: 1200, includeMovement: false, goal: 'gain' }).dailyGoal, 1200 - 1500)
   // Sweep: a Lose goal is never negative, and 0 only when the floor holds the whole base.
@@ -135,6 +135,39 @@ t('v1.3.2 floor Lose: base at or under the floor -> goal 0 and atMinimum, never 
     if (p.dailyGoal === 0) assert.ok(p.floored && p.planBase <= p.floor && p.atMinimum)
     else assert.equal(p.dailyGoal, p.planBase - p.target)
   }
+})
+t('v1.3.3 floor Keep: when the floor lifts Keep above its base -> goal 0 and atMinimum, never a surplus', () => {
+  const m = dailyPlan({ ...reed, sex: 'male', bmr: 1200, includeMovement: false, goal: 'keep' }) // base 1200 < 1500
+  assert.deepEqual([m.target, m.floored, m.planDeficit, m.dailyGoal, m.atMinimum], [1500, true, -300, 0, true]) // v1.3.2 gave -300
+  const on = dailyPlan({ ...reed, sex: 'male', bmr: 1200, activity: 'sedentary', goal: 'keep' }) // movement on: base 1440 < 1500
+  assert.deepEqual([on.target, on.dailyGoal, on.atMinimum], [1500, 0, true])
+  const f = dailyPlan({ ...reed, bmr: 1100, includeMovement: false, goal: 'keep' }) // woman: base 1100 < 1200
+  assert.deepEqual([f.target, f.dailyGoal, f.atMinimum], [1200, 0, true])
+  // Keep at or above the floor is the plain base with goal 0 and NOT at the minimum.
+  const at = dailyPlan({ ...reed, bmr: 1200, includeMovement: false, goal: 'keep' }) // woman: base 1200 = floor
+  assert.deepEqual([at.target, at.floored, at.dailyGoal, at.atMinimum], [1200, false, 0, false])
+  assert.deepEqual([dailyPlan({ ...male92, goal: 'keep' }).target, dailyPlan({ ...male92, goal: 'keep' }).atMinimum], [1900, false])
+  // The stored profile gets goal 0 too (Home reads profile.dailyGoal), and macros don't move.
+  const prof = normaliseProfile({ age: 70, sex: 'male', heightCm: 160, weightKg: 55, activity: 'light', goal: 'keep', bmr: 1200, bmrCustom: true, includeMovement: false })
+  assert.deepEqual([prof.target, prof.dailyGoal], [1500, 0])
+  assert.deepEqual(macroTargets({ ...prof, macros: auto }), macroTargets({ ...prof, goal: 'lose', macros: auto }))
+  // Sweep: Keep and Lose goals are never negative; only Gain can be a surplus.
+  for (const goal of ['lose', 'keep', 'gain']) for (const sex of ['female', 'male']) for (const bmr of [800, 1000, 1200, 1400, 1500, 1800, 2400]) for (const includeMovement of [true, false]) for (const pace of ['gentle', 'standard', 'faster']) for (const activity of ['sedentary', 'very']) {
+    const p = dailyPlan({ ...reed, goal, sex, bmr, includeMovement, pace, activity })
+    if (goal !== 'gain') assert.ok(p.dailyGoal >= 0, `${goal} ${sex} ${bmr}`)
+    else assert.ok(p.dailyGoal < 0)
+    assert.equal(p.atMinimum, goal !== 'gain' && p.floored && p.dailyGoal === 0)
+    assert.ok(p.target >= p.floor)
+  }
+})
+t('v1.3.3: BMR stays as stored when a custom BMR profile is normalised (no D change: Me still recalculates on body edits)', () => {
+  const p = normaliseProfile({ age: 35, sex: 'male', heightCm: 180, weightKg: 100, activity: 'light', goal: 'lose', bmr: 1900, bmrCustom: true, includeMovement: false })
+  assert.deepEqual([p.bmr, p.bmrCustom], [1900, true])
+  assert.equal(calcBmr(p), 1955) // Mifflin for 100 kg, 180 cm, 35: 1000 + 1125 - 175 + 5; the typed 1900 is kept
+  // Old data with a goal weight keeps it harmlessly; it changes nothing.
+  const g = normaliseProfile({ ...p, goalWeightKg: 80 })
+  assert.equal(g.goalWeightKg, 80)
+  assert.deepEqual([g.target, g.dailyGoal], [p.target, p.dailyGoal])
 })
 t('macroPlan builds on the kcal it is given (maintenance)', () => {
   assert.deepEqual(macroPlan(1900, 92, auto), { kcal: 1900, protein: 147, fat: 55, carbs: 204, adjusted: false })

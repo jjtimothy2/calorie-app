@@ -47,7 +47,7 @@ try {
   const terms = () => page.locator('[data-testid=equation] [data-term]').evaluateAll((els) => els.map((e) => e.getAttribute('data-term')))
   const goHome = async () => { await page.getByRole('link', { name: 'Today', exact: true }).click(); await page.waitForURL(BASE + '/') }
 
-  await step('onboarding (v1.2): goal weight + pace, movement off by default plans from BMR (v1.3.1)', async () => {
+  await step('onboarding (v1.2, v1.3.3 no goal weight): pace, movement off by default plans from BMR (v1.3.1)', async () => {
     await page.goto(BASE + '/')
     await page.waitForURL('**/onboarding')
     await page.getByRole('button', { name: 'Female' }).click()
@@ -57,11 +57,12 @@ try {
     await page.getByRole('button', { name: 'Next' }).click()
     await page.getByRole('button', { name: 'Lose weight' }).click()
     await page.getByLabel(/Light \(exercise/).check()
-    // Pace chips (Standard is the default) and an optional goal weight that defaults to the current weight.
+    // Pace chips (Standard is the default). v1.3.3: no goal weight field; the pace hint shows the real daily kcal.
     assert.equal(await page.getByTestId('pace').getByRole('button').count(), 3)
     assert.equal(await page.getByRole('button', { name: 'Standard 0.5 kg/wk' }).getAttribute('aria-pressed'), 'true')
-    assert.equal(await page.inputValue('input[name=goalWeightKg]'), '')
-    assert.equal(await page.getAttribute('input[name=goalWeightKg]', 'placeholder'), '68')
+    assert.equal(await page.locator('input[name=goalWeightKg]').count(), 0)
+    assert.doesNotMatch(await page.locator('main').innerText(), /goal weight/i)
+    assert.equal(await page.getByTestId('pace-hint').innerText(), 'About 200 kcal a day') // BMR 1400 woman: 1400 - 1200 floor
     await page.getByRole('button', { name: 'Keep weight' }).click()
     assert.equal(await page.getByTestId('pace').count(), 0) // no pace when keeping weight
     await page.getByRole('button', { name: 'Lose weight' }).click()
@@ -362,11 +363,8 @@ try {
     assert.equal(await ph('carbs'), '284')
     assert.equal(await page.getByTestId('settings-target').innerText(), '1,760 kcal')
     await page.fill('input[name=macro-fat]', '')
-    // v1.3.2: goal weight no longer changes protein (current weight does), nor the target.
-    await page.fill('input[name=goalWeightKg]', '60')
-    assert.equal(await ph('protein'), '109')
-    assert.equal(await page.getByTestId('settings-target').innerText(), '1,760 kcal')
-    await page.fill('input[name=goalWeightKg]', '')
+    // v1.3.3: there is no goal weight field; protein follows the current weight.
+    assert.equal(await page.locator('input[name=goalWeightKg]').count(), 0)
     await page.fill('input[name=weightKg]', '80') // BMR follows (1720); protein 128 = 1.6 x 80
     assert.equal(await ph('protein'), '128')
     await page.fill('input[name=weightKg]', '68')
@@ -379,14 +377,42 @@ try {
     await goHome()
     assert.equal(await page.getByTestId('protein-left').innerText(), '109 g left')
   })
-  await step('v1.3.2 Me: explanations sit behind (?) buttons; the sheet is labelled, takes focus, closes on Escape and Close', async () => {
+  await step('v1.3.3 Me: exactly 5 (i) buttons, short helper lines visible, no goal weight; sheets labelled, take focus, close on Escape and Close', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     const main = page.locator('main')
-    // Only units and short hints are visible: no explanation paragraphs.
-    for (const txt of [/Your data lives only in this browser/, /Fat gets 25%/, /Deficits are capped/, /for the calorie formula/, /Sets protein/]) assert.doesNotMatch(await main.innerText(), txt)
+    await page.getByText('Your body, goal and daily targets', { exact: true }).waitFor()
+    assert.doesNotMatch(await main.innerText(), /Tap \?/)
+    // Only short hints are visible: no explanation paragraphs.
+    for (const txt of [/Your data lives only in this browser/, /Fat gets 25%/, /Deficits are capped/, /for the calorie formula/, /Sets protein/, /goal weight/i]) assert.doesNotMatch(await main.innerText(), txt)
     assert.equal(await page.getByTestId('budget-line').count(), 0)
+    assert.equal(await page.locator('input[name=goalWeightKg]').count(), 0)
     const ids = await page.locator('[data-testid^=info-]').evaluateAll((els) => els.map((e) => e.dataset.testid))
-    assert.deepEqual(ids, ['info-sex', 'info-goal', 'info-pace', 'info-goal-weight', 'info-activity', 'info-bmr', 'info-movement', 'info-target', 'info-macros', 'info-backup'])
+    assert.deepEqual(ids, ['info-pace', 'info-activity', 'info-bmr', 'info-target', 'info-macros'])
+    assert.equal(await page.getByTestId('info-sex').count() + await page.getByTestId('info-goal').count() + await page.getByTestId('info-backup').count(), 0)
+    // Visible helper lines (68 kg woman, BMR 1600, light, Movement on, Lose Standard: 550 capped at 20% of 2,200 = 440).
+    assert.equal(await page.getByTestId('pace-hint').innerText(), 'About 440 kcal a day')
+    assert.equal(await page.getByTestId('movement-hint').innerText(), '+600 kcal a day. Leave off if you use a watch.')
+    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600 + 600 movement − 440 deficit')
+    assert.match(await page.getByTestId('bmr-calculated').innerText(), /^Calculated/)
+    assert.equal(await page.getByTestId('backup-hint').innerText(), "Stored only in this browser. Import replaces this device's data.")
+    await page.getByRole('button', { name: 'Gentle 0.25 kg/wk' }).click()
+    assert.equal(await page.getByTestId('pace-hint').innerText(), 'About 275 kcal a day')
+    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600 + 600 movement − 275 deficit')
+    await page.getByRole('switch', { name: /Include daily movement/ }).uncheck()
+    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600 − 275 deficit')
+    await page.getByRole('button', { name: 'Keep weight' }).click()
+    assert.equal(await page.getByTestId('pace-hint').count(), 0)
+    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600')
+    await page.getByRole('button', { name: 'Gain weight' }).click()
+    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600 + 275 surplus')
+    await page.getByRole('button', { name: 'Lose weight' }).click()
+    await page.getByRole('button', { name: 'Standard 0.5 kg/wk' }).click()
+    await page.getByRole('switch', { name: /Include daily movement/ }).check()
+    // 20px icon in a 44 x 44 tap area.
+    for (const id of ids) {
+      const bb = await page.getByTestId(id).boundingBox(), ib = await page.getByTestId(id).locator('svg').boundingBox()
+      assert.deepEqual([Math.round(bb.width), Math.round(bb.height), Math.round(ib.width), Math.round(ib.height)], [44, 44, 20, 20], id)
+    }
     const btn = page.getByRole('button', { name: 'About macro targets' })
     assert.equal(await btn.getAttribute('aria-expanded'), 'false')
     await btn.click()
@@ -397,17 +423,20 @@ try {
     assert.match(await dlg.innerText(), /Fat gets 25% of maintenance/)
     await page.keyboard.press('Escape')
     await dlg.waitFor({ state: 'detached' })
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'About macro targets') // focus back on the (?)
-    // Close button, and the label inputs still work next to a (?).
-    await page.getByRole('button', { name: 'About daily movement' }).click()
-    await page.getByRole('dialog', { name: 'Daily movement' }).getByRole('button', { name: 'Close' }).click()
-    await page.getByRole('dialog').waitFor({ state: 'detached' })
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'About macro targets') // focus back on the (i)
+    // Each sheet: content, Close button, focus back.
+    for (const [name, title, re] of [['About pace', 'Pace', /7,700 kcal[\s\S]*20%[\s\S]*never goes under 1,500 kcal/], ['About activity level', 'Activity level', /\+20%[\s\S]*\+90%/], ['About BMR', 'BMR', /Mifflin-St Jeor[\s\S]*type it here/], ['About daily target', 'Daily target', /1,500 kcal for men and 1,200 kcal for women[\s\S]*minimum intake/]]) {
+      await page.getByRole('button', { name }).click()
+      const d = page.getByRole('dialog', { name: title })
+      assert.match(await d.innerText(), re, title)
+      assert.doesNotMatch(await d.innerText(), /body fat/i)
+      await d.getByRole('button', { name: 'Close' }).click()
+      await page.getByRole('dialog').waitFor({ state: 'detached' })
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), name)
+    }
+    assert.equal(await page.getByTestId('activity-scale').count(), 0) // only inside the sheet
     assert.equal(await page.getByRole('switch', { name: /Include daily movement/ }).isChecked(), true)
     assert.equal(await page.getByLabel('BMR (kcal)').inputValue(), '1600')
-    assert.equal(await page.getByLabel(/Goal weight/).getAttribute('name'), 'goalWeightKg')
-    await page.getByRole('button', { name: 'About goal weight' }).click()
-    assert.match(await page.getByRole('dialog', { name: 'Goal weight' }).innerText(), /use your current weight/)
-    await page.keyboard.press('Escape')
     await goHome()
   })
   await step('v2 acceptance: 110 g target, 75 g logged -> 35 g left and 75 of 110 g', async () => {
@@ -566,7 +595,7 @@ try {
     assert.match(await mp.getByTestId('targets-hint').innerText(), /maintenance, 2,200 kcal \(BMR plus movement\), at your current weight of 68 kg/)
     assert.doesNotMatch(await mp.locator('main').innerText(), /goal weight/) // v1.3.2: no goal-weight nudge
     await mp.goto(BASE + '/settings')
-    assert.equal(await mp.inputValue('input[name=goalWeightKg]'), '') // blank = same as current weight
+    assert.equal(await mp.locator('input[name=goalWeightKg]').count(), 0) // v1.3.3: the stored value stays, the field is gone
     assert.equal(await mp.getByRole('button', { name: 'Standard 0.5 kg/wk' }).getAttribute('aria-pressed'), 'true')
     assert.equal(await mp.getByRole('switch', { name: /Include daily movement/ }).isChecked(), true)
   })
@@ -805,6 +834,25 @@ try {
       assert.match(await sheetText(fp, 'target', 'pace-line'), new RegExp(`You're at the minimum intake \\(${floor.toLocaleString('en-US')} kcal\\)\\. Your watch or exercise burn creates your deficit\\.`))
     })
   }
+  await step(`v1.3.3 floor Keep: man, BMR 1200, movement off -> target 1,500, goal 0, "You're at the minimum intake", never a surplus`, async () => {
+    await seedProfile({ sex: 'male', bmr: 1200, goal: 'keep' })
+    assert.equal(await fp.getByTestId('ring-goal').innerText(), 'at minimum intake')
+    assert.doesNotMatch(await fp.getByTestId('ring').innerText(), /surplus/i)
+    assert.match(await fp.getByTestId('goal-progress').innerText(), /^You're at the minimum intake\.\s*Your watch or exercise burn creates your deficit\.$/)
+    assert.equal(await fp.getByTestId('minimum-hint').innerText(), 'Your watch or exercise burn creates your deficit.')
+    const prof = await fp.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')).profile)
+    assert.deepEqual([prof.target, prof.dailyGoal], [1500, 0])
+    await top(fp); await fp.screenshot({ path: OUT + 'v133-e2e-home-keep-minimum.png' })
+    await fp.goto(BASE + '/settings')
+    assert.equal(await fp.getByTestId('settings-target').innerText(), '1,500 kcal')
+    assert.equal(await fp.getByTestId('target-sum').innerText(), 'BMR 1,200 · at the 1,500 minimum')
+    assert.match(await sheetText(fp, 'target', 'pace-line'), /You're at the minimum intake \(1,500 kcal\)\. Your watch or exercise burn creates your deficit/)
+  })
+  await step('v1.3.3 Keep above the floor is unchanged: woman, BMR 1600, movement off -> target 1,600, goal 0, not at the minimum', async () => {
+    await seedProfile({ sex: 'female', bmr: 1600, goal: 'keep' })
+    assert.doesNotMatch(await fp.getByTestId('ring-goal').innerText(), /minimum/)
+    assert.equal(await fp.getByTestId('minimum-hint').count(), 0)
+  })
   await fctx.close()
   await step('no console errors or warnings', async () => {
     assert.deepEqual(errors, [])

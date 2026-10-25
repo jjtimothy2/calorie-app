@@ -1,11 +1,10 @@
-import { ACTIVITY, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
+import { ACTIVITY, DEFICIT_CAP, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
 import type { Activity, Goal, Pace, Sex } from '../lib/types'
 import { Chip } from './ui'
 import { Info } from './Info'
 
-/** goalWeightKg NaN = left blank, which means "same as current weight". */
-export type Draft = Body & { goalWeightKg: number; pace: Pace }
-export const goalWeightOf = (d: Pick<Draft, 'goalWeightKg' | 'weightKg'>) => (Number.isFinite(d.goalWeightKg) && d.goalWeightKg > 0 ? d.goalWeightKg : d.weightKg)
+/** v1.3.3: goal weight is no longer asked for; a stored value is kept in the profile untouched. */
+export type Draft = Body & { pace: Pace }
 export const PACE_LABEL = (p: Pace) => `${PACE[p].label} ${PACE[p].kg} kg/wk`
 export const GOAL_LABEL: Record<Goal, string> = { lose: 'Lose weight', keep: 'Keep weight', gain: 'Gain weight' }
 export const ACTIVITY_SHORT: Record<Activity, string> = {
@@ -36,7 +35,7 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
   return (
     <>
       <fieldset>
-        <legend className="mb-2 flex items-center text-[15px] font-semibold">Sex<Info title="Sex" id="sex"><p>Used in the BMR formula (Mifflin-St Jeor), which estimates the calories your body burns at rest. Men get a slightly higher estimate for the same height, weight and age.</p></Info></legend>
+        <legend className="mb-2 text-[15px] font-semibold">Sex</legend>
         <div className="flex gap-2">
           {(['female', 'male'] as Sex[]).map((s) => (
             <Chip key={s} on={d.sex === s} onClick={() => set({ ...d, sex: s })}>{s === 'female' ? 'Female' : 'Male'}</Chip>
@@ -52,11 +51,14 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
   )
 }
 
-export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
+const pct = (f: number) => `${Math.round((f - 1) * 1000) / 10}%`
+
+/** paceHint: one short grey line under the pace chips (the plan's capped daily deficit or surplus). */
+export function GoalFields({ d, set, paceHint }: { d: Draft; set: (d: Draft) => void; paceHint?: string }) {
   return (
     <>
       <fieldset>
-        <legend className="mb-2 flex items-center text-[15px] font-semibold">Goal<Info title="Goal" id="goal"><p>Lose or gain sets a daily calorie target below or above your base (your BMR, plus daily movement if it is on). Keep sets the target at your base.</p><p>Your macro goals don't change with this: they come from your maintenance calories and current weight.</p></Info></legend>
+        <legend className="mb-2 text-[15px] font-semibold">Goal</legend>
         <div className="flex flex-wrap gap-2">
           {(['lose', 'keep', 'gain'] as Goal[]).map((g) => (
             <Chip key={g} on={d.goal === g} onClick={() => set({ ...d, goal: g })}>{GOAL_LABEL[g]}</Chip>
@@ -65,37 +67,35 @@ export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
       </fieldset>
       {d.goal !== 'keep' && (
         <fieldset>
-          <legend className="mb-2 flex items-center text-[15px] font-semibold">Pace<Info title="Pace" id="pace"><p>How fast to aim for, per week. About 7,700 kcal is one kg of body weight, so 0.5 kg a week is roughly 550 kcal a day.</p><p>The daily difference is capped at 20% of your base, and the target never goes under 1,500 kcal for men or 1,200 kcal for women (or under your BMR when movement is on).</p></Info></legend>
+          <legend className="mb-2 flex items-center text-[15px] font-semibold">
+            Pace
+            <Info title="Pace" id="pace">
+              <p>How fast to aim for, per week. About {fmt(KCAL_PER_KG)} kcal is one kg of body weight, so 0.25 kg a week is roughly 275 kcal a day, 0.5 kg about 550 and 0.75 kg about 825.</p>
+              <p>The daily difference is capped at {DEFICIT_CAP * 100}% of your base (your BMR, plus daily movement when it is on).</p>
+              <p>The target also never goes under 1,500 kcal for men or 1,200 kcal for women (or under your BMR when movement is on), so near that floor the real deficit is smaller.</p>
+            </Info>
+          </legend>
           <div className="flex flex-wrap gap-2" data-testid="pace">
             {PACES.map((p) => (
               <Chip key={p} on={d.pace === p} onClick={() => set({ ...d, pace: p })}>{PACE_LABEL(p)}</Chip>
             ))}
           </div>
+          {paceHint && <p className="mt-2 text-[13px] text-mute" data-testid="pace-hint">{paceHint}</p>}
         </fieldset>
       )}
-      <div className="flex items-center justify-between rounded-[22px] border border-line bg-card px-4 py-3 text-base">
-        <span className="flex items-center">
-          <label htmlFor="goal-weight">Goal weight <span className="text-[13px] text-mute">(optional)</span></label>
-          <Info title="Goal weight" id="goal-weight"><p>Optional, for your own reference. Leave it blank to use your current weight.</p><p>Your targets don't depend on it: protein and the fat minimum use your current weight, so update your weight here as it changes.</p></Info>
-        </span>
-        <span className="flex items-center gap-2">
-          <input
-            id="goal-weight"
-            className={input}
-            type="number"
-            inputMode="decimal"
-            min={30}
-            max={300}
-            name="goalWeightKg"
-            placeholder={Number.isFinite(d.weightKg) ? String(d.weightKg) : ''}
-            value={Number.isNaN(d.goalWeightKg) ? '' : d.goalWeightKg}
-            onChange={(e) => set({ ...d, goalWeightKg: e.target.value === '' ? NaN : Number(e.target.value) })}
-          />
-          <span className="w-6 text-mute">kg</span>
-        </span>
-      </div>
       <fieldset>
-        <legend className="mb-2 flex items-center text-[15px] font-semibold">Activity level<Info title="Activity level" id="activity"><p>How much you move on a normal day. With daily movement on (under Daily balance), it adds everyday activity on top of your BMR: 20% for sedentary up to 90% for very active.</p><p>Log workouts separately as exercise. Exercise adds to the food you can eat that day but never changes your macro goals.</p></Info></legend>
+        <legend className="mb-2 flex items-center text-[15px] font-semibold">
+          Activity level
+          <Info title="Activity level" id="activity">
+            <p>How much you move on a normal day. With daily movement on (under Daily balance), it adds everyday activity on top of your BMR:</p>
+            <ul className="flex flex-col gap-1" data-testid="activity-scale">
+              {(Object.keys(ACTIVITY) as Activity[]).map((a) => (
+                <li key={a} className="flex justify-between gap-3"><span>{ACTIVITY_SHORT[a]}</span><b className="num font-semibold">+{pct(ACTIVITY[a].factor)}</b></li>
+              ))}
+            </ul>
+            <p>Log workouts separately as exercise. Exercise adds to the food you can eat that day but never changes your macro goals.</p>
+          </Info>
+        </legend>
         <div className="rounded-[22px] border border-line bg-card px-4">
           {(Object.keys(ACTIVITY) as Activity[]).map((a) => (
             <label key={a} className="flex cursor-pointer items-center gap-3 border-b border-line py-3 text-[15px] last:border-0">
@@ -113,12 +113,30 @@ export function validBody(d: Body) {
   return d.age >= 14 && d.age <= 100 && d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
 }
 
-/** Goal weight is optional; when typed it must be 30 to 300 kg. */
-export const validGoalWeight = (d: Pick<Draft, 'goalWeightKg'>) => Number.isNaN(d.goalWeightKg) || (d.goalWeightKg >= 30 && d.goalWeightKg <= 300)
+/** v1.3.3: the short line under the pace chips: the plan's actual daily deficit or surplus after the cap and floor. */
+export function paceHint(goal: Goal, plan: { planDeficit: number; atMinimum: boolean }) {
+  if (goal === 'keep') return undefined
+  if (plan.atMinimum) return "You're at the minimum intake"
+  return `About ${fmt(Math.abs(plan.planDeficit))} kcal a day`
+}
+
+/**
+ * v1.3.3: the visible sum under the Daily target, e.g. "BMR 1,900 + 713 movement − 523 deficit". Keep has no
+ * deficit term, Gain shows "+ N surplus", and a target the floor holds up says so briefly. Never shows a surplus
+ * for Keep or Lose.
+ */
+export function targetSum(goal: Goal, plan: { bmr: number; movement: number; planDeficit: number; floored: boolean; floor: number }, includeMovement: boolean) {
+  let s = `BMR ${fmt(plan.bmr)}`
+  if (includeMovement) s += ` + ${fmt(plan.movement)} movement`
+  if (goal === 'lose' && plan.planDeficit > 0) s += ` − ${fmt(plan.planDeficit)} deficit`
+  if (goal === 'gain' && plan.planDeficit < 0) s += ` + ${fmt(-plan.planDeficit)} surplus`
+  if (plan.floored) s += ` · at the ${fmt(plan.floor)} minimum`
+  return s
+}
 
 /** Goal line from what the plan takes off (or adds to) its base, after the 20% cap and the v1.2 floor. */
 export function goalBlurb(goal: Goal, plan: { planDeficit: number; capped: boolean; floored: boolean; floor: number }) {
-  if (goal === 'keep') return 'to keep your current weight'
+  if (goal === 'keep') return plan.planDeficit < 0 ? `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit` : 'to keep your current weight'
   const kcal = Math.abs(plan.planDeficit)
   const min = `the ${fmt(plan.floor)} kcal minimum`
   if (goal === 'lose' && plan.planDeficit <= 0) return `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit`

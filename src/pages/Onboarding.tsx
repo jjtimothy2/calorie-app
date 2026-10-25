@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BodyFields, GoalFields, goalBlurb, goalWeightOf, GOAL_LABEL, ACTIVITY_SHORT, PACE_LABEL, validBody, validGoalWeight, type Draft } from '../components/ProfileFields'
+import { BodyFields, GoalFields, goalBlurb, GOAL_LABEL, ACTIVITY_SHORT, PACE_LABEL, paceHint, validBody, type Draft } from '../components/ProfileFields'
 import { Screen } from '../components/Layout'
 import { Button, Card, Dots } from '../components/ui'
 import { RestoreLink } from '../components/Backup'
@@ -11,9 +11,10 @@ export default function Onboarding() {
   const { dispatch } = useStore()
   const nav = useNavigate()
   const [step, setStep] = useState(0)
-  const [d, setD] = useState<Draft>({ age: NaN, sex: 'female', heightCm: NaN, weightKg: NaN, activity: 'light', goal: 'lose', goalWeightKg: NaN, pace: 'standard' })
-  // v1.1: new profiles start with daily movement off (turn it on in Me).
-  const profile = () => normaliseProfile({ ...d, goalWeightKg: goalWeightOf(d), bmr: calcBmr(d), bmrCustom: false, includeMovement: false })
+  const [d, setD] = useState<Draft>({ age: NaN, sex: 'female', heightCm: NaN, weightKg: NaN, activity: 'light', goal: 'lose', pace: 'standard' })
+  // v1.1: new profiles start with daily movement off (turn it on in Me). v1.3.3: no goal weight question; the
+  // stored goalWeightKg defaults to the current weight (normaliseProfile), as before when it was left blank.
+  const profile = () => normaliseProfile({ ...d, bmr: calcBmr(d), bmrCustom: false, includeMovement: false })
   const plan = validBody(d) ? dailyPlan(profile()) : null
   const target = plan?.target ?? 0
 
@@ -36,11 +37,11 @@ export default function Onboarding() {
         </form>
       )}
       {step === 1 && (
-        <form className="flex flex-1 flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); if (validGoalWeight(d)) setStep(2) }}>
+        <form className="flex flex-1 flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); setStep(2) }}>
           <h1 className="title text-[32px] leading-tight">Your goal</h1>
-          <GoalFields d={d} set={setD} />
+          <GoalFields d={d} set={setD} paceHint={plan ? paceHint(d.goal, plan) : undefined} />
           <div className="flex-1" />
-          <Button type="submit" disabled={!validGoalWeight(d)}>See my target</Button>
+          <Button type="submit">See my target</Button>
           <Button variant="ghost" onClick={() => setStep(0)}>Back</Button>
         </form>
       )}
@@ -54,7 +55,7 @@ export default function Onboarding() {
             <div className="text-[15px] text-mute" data-testid="goal-line">{plan ? goalBlurb(d.goal, plan) : ''}</div>
           </Card>
           <Card className="py-0">
-            {[['Goal', GOAL_LABEL[d.goal]], ...(d.goal === 'keep' ? [] : [['Pace', PACE_LABEL(d.pace)]]), ['Current weight', `${d.weightKg} kg`], ['Goal weight', `${goalWeightOf(d)} kg`], ['Height', `${d.heightCm} cm`], ['Activity', ACTIVITY_SHORT[d.activity]]].map(([k, v]) => (
+            {[['Goal', GOAL_LABEL[d.goal]], ...(d.goal === 'keep' ? [] : [['Pace', PACE_LABEL(d.pace)]]), ['Current weight', `${d.weightKg} kg`], ['Height', `${d.heightCm} cm`], ['Activity', ACTIVITY_SHORT[d.activity]]].map(([k, v]) => (
               <div key={k} className="flex justify-between border-b border-line py-3.5 text-base last:border-0"><span>{k}</span><b className="font-semibold">{v}</b></div>
             ))}
           </Card>

@@ -9,7 +9,7 @@ import { Screen, TabBar, Title } from '../components/Layout'
 import { useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
-import { dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
+import { dailyPlan, dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
 import { useStore } from '../lib/store'
@@ -24,8 +24,8 @@ export default function Home() {
   const totals = sumEntries(entries)
   const day = dayView(state, today)
   const closed = !!day.closed
-  // v1.3.2: a Lose plan held at the 1,500/1,200 floor with nothing left to cut has a goal of 0; say so instead of "even".
-  const atMinimum = !closed && state.profile!.goal === 'lose' && day.goal === 0
+  // v1.3.2/v1.3.3: a Lose or Keep plan held at the 1,500/1,200 floor with nothing left to cut has a goal of 0; say so instead of "even".
+  const atMinimum = !closed && day.goal === 0 && dailyPlan(state.profile!).atMinimum
   const profile = state.profile!
   const s = streak(state.entries, today)
   const [editing, setEditing] = useState<Entry | null>(null)

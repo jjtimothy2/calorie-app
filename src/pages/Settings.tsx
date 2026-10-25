@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BodyFields, GoalFields, goalBlurb, goalWeightOf, PACE_LABEL, validBody, validGoalWeight, type Draft } from '../components/ProfileFields'
+import { BodyFields, GoalFields, goalBlurb, PACE_LABEL, paceHint, targetSum, validBody, type Draft } from '../components/ProfileFields'
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
@@ -14,8 +14,8 @@ export default function Settings() {
   const { state, dispatch } = useStore()
   const nav = useNavigate()
   const p = state.profile!
-  // Goal weight shows blank when it equals the current weight (blank = follow the current weight).
-  const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal, goalWeightKg: p.goalWeightKg === p.weightKg ? NaN : p.goalWeightKg, pace: p.pace })
+  // v1.3.3: no goal weight field; a stored goalWeightKg rides along untouched in ...p.
+  const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal, pace: p.pace })
   const [bmr, setBmr] = useState(p.bmr)
   const [bmrCustom, setBmrCustom] = useState(p.bmrCustom)
   const [includeMovement, setIncludeMovement] = useState(p.includeMovement)
@@ -32,8 +32,7 @@ export default function Settings() {
   const toG = (v: string) => (v.trim() === '' ? null : Math.round(Number(v)))
   const macros = { protein: toG(mac.protein), carbs: toG(mac.carbs), fat: toG(mac.fat) }
   const macOk = Object.values(macros).every((v) => v == null || (Number.isFinite(v) && v > 0 && v < 1000))
-  const gw = goalWeightOf(d)
-  const base = { ...p, ...d, goalWeightKg: gw, bmr, bmrCustom, includeMovement }
+  const base = { ...p, ...d, bmr, bmrCustom, includeMovement }
   const plan = dailyPlan({ ...base, macros })
   const movement = plan.movement
   const draftProfile = { ...base, macros, target: plan.target, dailyGoal: plan.dailyGoal }
@@ -42,7 +41,7 @@ export default function Settings() {
   const w = d.weightKg
   const autoFat = macroPlan(plan.maintenance, w, { protein: macros.protein, carbs: null, fat: null }).fat
   const auto = { ...macroPlan(plan.maintenance, w, { protein: macros.protein, carbs: null, fat: macros.fat }), fat: autoFat }
-  const ok = validBody(d) && validGoalWeight(d) && bmr >= 800 && bmr <= 4000 && macOk
+  const ok = validBody(d) && bmr >= 800 && bmr <= 4000 && macOk
 
   const save = () => {
     if (!ok) return
@@ -68,17 +67,21 @@ export default function Settings() {
     <Screen>
       <header>
         <h1 className="title text-[32px] leading-tight">Me</h1>
-        <p className="text-[15px] text-mute">Your body, goal and daily targets. Tap ? for details.</p>
+        <p className="text-[15px] text-mute">Your body, goal and daily targets</p>
       </header>
       <form className="flex flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); save() }}>
         <BodyFields d={d} set={setD} />
-        <GoalFields d={d} set={setD} />
+        <GoalFields d={d} set={setD} paceHint={paceHint(d.goal, plan)} />
         <Card className="flex flex-col gap-3">
           <h2 className="title text-[21px]">Daily balance</h2>
           <div className="flex items-center justify-between gap-3 text-base font-semibold">
             <span className="flex items-center">
               <label htmlFor="bmr">BMR (kcal)</label>
-              <Info title="BMR" id="bmr"><p>Basal metabolic rate: the calories your body burns at complete rest. It is calculated from your sex, age, height and weight, and recalculated when you change them.</p><p>If you know yours from a body scan or your watch, type it here. Use calculated goes back to the formula.</p></Info>
+              <Info title="BMR" id="bmr">
+                <p>Basal metabolic rate: the calories your body burns at complete rest. It is the base of your daily balance and your target.</p>
+                <p>Calculated with the Mifflin-St Jeor formula: 10 × weight (kg) + 6.25 × height (cm) − 5 × age, plus 5 for men or minus 161 for women. Changing your weight, height, age or sex recalculates it.</p>
+                <p>If you know yours from a body scan or your watch, type it here. Use calculated goes back to the formula.</p>
+              </Info>
             </span>
             <input id="bmr" type="number" name="bmr" inputMode="numeric" min={800} max={4000} value={bmr} onChange={(e) => { setBmr(Number(e.target.value)); setBmrCustom(true) }} className={numInput} />
           </div>
@@ -88,26 +91,27 @@ export default function Settings() {
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-line pt-3 text-base font-semibold">
             <span>
-              <span className="flex items-center">
-                <label htmlFor="movement" className="cursor-pointer">Include daily movement</label>
-                <Info title="Daily movement" id="movement"><p>Adds {fmt(movementKcal({ bmr, activity: d.activity, includeMovement: true }))} kcal a day for your activity level on top of your BMR, so Today counts it as burned and your target and macros start from BMR plus movement.</p><p>Leave it off if you log workouts or use a watch: then your BMR is the base and exercise you log adds the rest.</p></Info>
-              </span>
-              <span className="block text-[13px] font-normal text-mute">+{fmt(movementKcal({ bmr, activity: d.activity, includeMovement: true }))} kcal a day</span>
+              <label htmlFor="movement" className="cursor-pointer">Include daily movement</label>
+              <span className="block text-[13px] font-normal text-mute" data-testid="movement-hint">+{fmt(movementKcal({ bmr, activity: d.activity, includeMovement: true }))} kcal a day. Leave off if you use a watch.</span>
             </span>
             <input id="movement" type="checkbox" role="switch" name="movement" checked={includeMovement} onChange={(e) => setIncludeMovement(e.target.checked)} className="h-6 w-6 shrink-0 cursor-pointer accent-g-ink" />
           </div>
-          <div className="flex items-center justify-between gap-3 border-t border-line pt-3 text-base font-semibold">
-            <span className="flex items-center">
-              Daily target
-              <Info title="Daily target" id="target">
-                <p data-testid="budget-line">
-                  BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
-                  {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} ${plan.floored ? 'to the minimum' : 'surplus'}` : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
-                </p>
-                <p data-testid="pace-line">{d.goal === 'keep' ? 'Keep weight: no deficit.' : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</p>
-              </Info>
-            </span>
-            <span className="num text-[20px]" data-testid="settings-target">{fmt(plan.target)} kcal</span>
+          <div className="flex flex-col gap-0.5 border-t border-line pt-3">
+            <div className="flex items-center justify-between gap-3 text-base font-semibold">
+              <span className="flex items-center">
+                Daily target
+                <Info title="Daily target" id="target">
+                  <p data-testid="budget-line">
+                    BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
+                    {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? (d.goal === 'gain' && !plan.floored ? ` + ${fmt(-plan.planDeficit)} surplus` : `, held at the ${fmt(plan.floor)} kcal minimum`) : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
+                  </p>
+                  <p data-testid="pace-line">{d.goal === 'keep' ? (plan.atMinimum ? `Keep weight: ${goalBlurb(d.goal, plan)}.` : 'Keep weight: no deficit.') : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</p>
+                  <p>The minimum is 1,500 kcal for men and 1,200 kcal for women (and never under your BMR when daily movement is on). When your goal would take the target below it, the target stays at the minimum: you're at the minimum intake, the daily goal is 0, and your watch or exercise burn creates your deficit. Keep and Lose never show a surplus goal.</p>
+                </Info>
+              </span>
+              <span className="num text-[20px]" data-testid="settings-target">{fmt(plan.target)} kcal</span>
+            </div>
+            <p className="text-right text-[13px] text-mute" data-testid="target-sum">{targetSum(d.goal, plan, includeMovement)}</p>
           </div>
         </Card>
         <Card className="flex flex-col gap-3">
