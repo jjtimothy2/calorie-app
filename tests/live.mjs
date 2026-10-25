@@ -20,14 +20,14 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.getByLabel(/Light \(exercise/).check()
   assert.equal(await page.getByTestId('pace').getByRole('button').count(), 3) // pace picker (v1.1+)
   await page.getByRole('button', { name: 'See my target' }).click()
-  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1344) // v1.2: movement off -> 1400 x 1.2 = 1680 - 336 (20% cap)
+  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1200) // v1.3.1+: movement off -> BMR 1400 - 280 (20% cap) = 1120, held at the 1,200 floor
   await page.getByRole('button', { name: 'Start logging' }).click()
   await page.waitForURL(BASE + '/')
   await page.getByTestId('balance').waitFor()
   assert.equal(await page.getByTestId('eq-movement').count(), 0)
-  // v1.2.1: Home counts the base burn BMR x 1.2 with movement off, so the goal is the 336 plan deficit.
-  assert.equal(Number((await page.getByTestId('eq-base').innerText()).replace(/\D/g, '')), 1680)
-  assert.match(await page.getByTestId('ring-goal').innerText(), /goal 336/)
+  // v1.3.1+: Home counts plain BMR with movement off; Lose at the floor: goal = 1400 - 1200 = 200.
+  assert.equal(Number((await page.getByTestId('eq-bmr').innerText()).replace(/\D/g, '')), 1400)
+  assert.match(await page.getByTestId('ring-goal').innerText(), /goal 200/)
   const st = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
   assert.deepEqual([st.version, st.profile.includeMovement, st.profile.pace, st.profile.goalWeightKg], [2, false, 'standard', 68])
 })
@@ -45,7 +45,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /calorie-v1\.2\.1-[0-9a-f]{12}/) // v1.2.1 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.3\.2-[0-9a-f]{12}'/) // v1.3.2 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()
