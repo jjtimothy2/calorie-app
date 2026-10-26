@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BalanceTrendChart, type TrendDay } from '../components/BalanceTrendChart'
-import { ProteinChart } from '../components/ProteinChart'
 import { Screen, TabBar } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
 import { dayView, fmt, KCAL_PER_KG, lastNDays, macroTargets, round1, streak } from '../lib/calc'
@@ -21,7 +20,7 @@ export default function History() {
   const { state, today } = useStore()
   const [n, setN] = useState<7 | 30>(7)
   const [view, setView] = useState<'balance' | 'protein'>('balance')
-  // Paging + scrubbing for the balance chart. page 0 = the latest n days.
+  // Paging + scrubbing, shared by the Balance and Protein charts (v1.4.2): switching tabs keeps the period. page 0 = the latest n days.
   const [page, setPage] = useState(0)
   const [scrub, setScrub] = useState<number | null>(null)
   const setRange = (r: 7 | 30) => { setN(r); setPage(0); setScrub(null) }
@@ -43,21 +42,36 @@ export default function History() {
       avg: avg[i] == null ? null : Math.round(avg[i]!),
     }))
   }, [all, n, N])
+  const pTrend: TrendDay[] = useMemo(() => {
+    const avg = rolling(all.map((d) => (d.closed ? d.protein : null)))
+    return trend.map((t, i) => {
+      const d = all[i]
+      const v = d.closed || d.logged ? Math.round(d.protein) : null
+      return { ...t, value: v, hit: v != null && v >= pTarget, avg: avg[i] == null ? null : Math.round(avg[i]!) }
+    })
+  }, [all, trend, pTarget])
   const pg = Math.min(page, N / n - 1)
   const days = all.slice(N - n * (pg + 1), N - n * pg)
   const sel = scrub != null ? trend[scrub] : null
+  const pSel = scrub != null ? pTrend[scrub] : null
   const selDay = scrub != null ? all[scrub] : null
   // Only closed days count toward the total. Today counts once it is closed.
   const closed = days.filter((d) => d.closed)
   const total = closed.reduce((s, d) => s + d.balance, 0)
   const kg = -total / KCAL_PER_KG
   const s = streak(state.entries, today)
-  const bars = days.map((d) => ({ key: d.key, label: n === 7 ? parse(d.key).toLocaleDateString('en-GB', { weekday: 'short' }) : String(parse(d.key).getDate()) }))
   const tone = total < 0 ? 'text-over-ink' : 'text-g-ink'
   const pDays = days.filter((d) => d.closed || d.logged)
   const hit = pDays.filter((d) => Math.round(d.protein) >= pTarget).length
   const pAvg = pDays.length ? pDays.reduce((s, d) => s + d.protein, 0) / pDays.length : 0
-  const pBars = days.map((d) => ({ key: d.key, label: bars.find((b) => b.key === d.key)!.label, value: d.closed || d.logged ? Math.round(d.protein) : null, today: d.key === today }))
+  const periodLabel = `${n === 7 ? 'Week' : '30 days'} · ${range(days[0].key, days[days.length - 1].key)}`
+  const onPage = (p: number) => { setPage(p); setScrub(null) }
+  const legend = (
+    <div className="mt-1.5 flex items-center justify-center gap-3 text-xs text-mute">
+      <span className="inline-flex items-center gap-1.5"><svg width="16" height="6" aria-hidden="true"><path d="M1 4 C5 0 11 6 15 2" stroke="var(--color-ink)" strokeOpacity=".82" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>7-day average</span>
+      <span>Hold to see a day · swipe for {n === 7 ? 'weeks' : 'months'}</span>
+    </div>
+  )
 
   return (
     <>
@@ -70,8 +84,8 @@ export default function History() {
         </header>
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-2" role="group" aria-label="View">
-            <Chip on={view === 'balance'} onClick={() => { setView('balance'); setPage(0); setScrub(null) }}>Balance</Chip>
-            <Chip on={view === 'protein'} onClick={() => { setView('protein'); setPage(0); setScrub(null) }}>Protein</Chip>
+            <Chip on={view === 'balance'} onClick={() => { setView('balance'); setScrub(null) }}>Balance</Chip>
+            <Chip on={view === 'protein'} onClick={() => { setView('protein'); setScrub(null) }}>Protein</Chip>
           </div>
           <div className="flex gap-1.5" role="group" aria-label="Range">
             <Chip on={n === 7} onClick={() => setRange(7)} className="px-3" aria-label="7d (7 days)">7d</Chip>
@@ -80,21 +94,39 @@ export default function History() {
         </div>
         {view === 'protein' ? (<>
         <Card>
-          <div className="flex justify-between gap-3">
-            <div>
-              <div className="eyebrow">Hit protein</div>
-              <div className="num text-[32px] leading-tight text-protein-ink" data-testid="protein-hit">{hit} / {n}</div>
-              <div className="text-[13px] text-mute">days {n === 7 ? 'this week' : 'in 30 days'}</div>
+          {pSel && selDay ? (
+            <div className="flex justify-between gap-3" data-testid="scrub-header">
+              <div>
+                <div className="eyebrow">{parse(pSel.key).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+                <div className="num text-[32px] leading-tight text-protein-ink" data-testid="scrub-value">{pSel.value == null ? '–' : `${fmt(pSel.value)} g`}</div>
+                <div className="text-[13px] text-mute">{pSel.value == null ? 'No logs' : `${pSel.hit ? 'target hit' : 'below target'} · ${selDay.closed ? 'closed' : 'open, so far'}`}</div>
+              </div>
+              <div className="text-right">
+                <div className="eyebrow">7-day avg</div>
+                <div className="num text-[32px] leading-tight" data-testid="scrub-avg">{pSel.avg == null ? '–' : `${fmt(pSel.avg)} g`}</div>
+                <div className="text-[13px] text-mute">a day</div>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="eyebrow">Daily average</div>
-              <div className="num text-[32px] leading-tight" data-testid="protein-avg">{pDays.length ? `${fmt(pAvg)} g` : '–'}</div>
-              <div className="text-[13px] text-mute">target {fmt(pTarget)} g</div>
+          ) : (
+            <div className="flex justify-between gap-3">
+              <div>
+                <div className="eyebrow whitespace-nowrap" data-testid="period-range">{periodLabel}</div>
+                <div className="num text-[32px] leading-tight text-protein-ink" data-testid="protein-hit">{hit} / {n}</div>
+                <div className="text-[13px] text-mute">days hit protein</div>
+              </div>
+              <div className="text-right">
+                <div className="eyebrow">Daily average</div>
+                <div className="num text-[32px] leading-tight" data-testid="protein-avg">{pDays.length ? `${fmt(pAvg)} g` : '–'}</div>
+                <div className="text-[13px] text-mute">target {fmt(pTarget)} g</div>
+              </div>
             </div>
+          )}
+          <p className="sr-only">{`${range(days[0].key, days[days.length - 1].key)}. Hit protein ${hit} of ${n} days. Daily average ${fmt(pAvg)} grams, target ${fmt(pTarget)} grams.`}</p>
+          <div className="mt-3">
+            <BalanceTrendChart key={`protein-${n}`} variant="protein" days={pTrend} n={n} goal={pTarget} page={pg} onPage={onPage} scrub={scrub} onScrub={setScrub} />
           </div>
-          <p className="sr-only">{`Hit protein ${hit} of ${n} days. Daily average ${fmt(pAvg)} grams, target ${fmt(pTarget)} grams.`}</p>
-          <div className="mt-3"><ProteinChart bars={pBars} target={pTarget} /></div>
-          <p className="mt-1.5 text-center text-xs text-mute">Dashed line is your {fmt(pTarget)} g target. Solid bars hit it. Today is faded.</p>
+          {legend}
+          <p className="mt-1 text-center text-xs text-mute">Dashed line is your {fmt(pTarget)} g target. Solid bars hit it.</p>
         </Card>
         <Card className="py-1">
           <ul aria-label="Daily protein" data-testid="protein-list">
@@ -103,7 +135,7 @@ export default function History() {
               const has = d.closed || d.logged
               const ok = has && g >= pTarget
               return (
-                <li key={d.key} className="flex items-center justify-between border-b border-line py-3 last:border-0">
+                <li key={d.key} data-day={d.key} className="flex items-center justify-between border-b border-line py-3 last:border-0">
                   <span className="text-base font-semibold">{d.key === today ? 'Today' : parse(d.key).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                   {has ? (
                     <span className={ok ? 'font-semibold' : 'text-mute'}>{fmt(g)} g{ok && <span aria-label=", target hit"> ✓</span>}</span>
@@ -133,7 +165,7 @@ export default function History() {
           ) : (
             <div className="flex justify-between gap-3">
               <div>
-                <div className="eyebrow whitespace-nowrap" data-testid="period-range">{n === 7 ? 'Week' : '30 days'} · {range(days[0].key, days[days.length - 1].key)}</div>
+                <div className="eyebrow whitespace-nowrap" data-testid="period-range">{periodLabel}</div>
                 <div className={`num text-[32px] leading-tight ${tone}`} data-testid="week-total" data-value={Math.round(total)}>
                   {closed.length ? fmt(Math.abs(total)) : '–'}
                 </div>
@@ -149,12 +181,9 @@ export default function History() {
             </div>
           )}
           <div className="mt-3">
-            <BalanceTrendChart key={n} days={trend} n={n} goal={goal} page={pg} onPage={(p) => { setPage(p); setScrub(null) }} scrub={scrub} onScrub={setScrub} />
+            <BalanceTrendChart key={`balance-${n}`} days={trend} n={n} goal={goal} page={pg} onPage={onPage} scrub={scrub} onScrub={setScrub} />
           </div>
-          <div className="mt-1.5 flex items-center justify-center gap-3 text-xs text-mute">
-            <span className="inline-flex items-center gap-1.5"><svg width="16" height="6" aria-hidden="true"><path d="M1 4 C5 0 11 6 15 2" stroke="var(--color-ink)" strokeOpacity=".82" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>7-day average</span>
-            <span>Hold to see a day · swipe for {n === 7 ? 'weeks' : 'months'}</span>
-          </div>
+          {legend}
           <p className="sr-only">{`${range(days[0].key, days[days.length - 1].key)}. ${closed.length} closed days, total ${fmt(Math.abs(total))} kcal ${total < 0 ? 'surplus' : 'deficit'}.`}</p>
         </Card>
         <Card className="py-1">

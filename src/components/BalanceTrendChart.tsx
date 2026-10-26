@@ -1,16 +1,16 @@
 // v1.4: History balance chart with a 7-day average line, press-and-hold scrubbing and
 // swipe paging, modelled on Apple Health's weight chart. Bars keep the v1.3 design.
+// v1.4.2: the same chart draws Protein (variant="protein"): pink bars from zero, solid when the target is hit.
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { fmt } from '../lib/calc'
 import { haptic } from '../lib/haptics'
-import { barLabel, monotonePath, runs, trendScale } from '../lib/trend'
+import { barLabel, monotonePath, proteinTrendScale, runs, trendScale } from '../lib/trend'
 import { reducedMotion } from './motion'
 
-export type TrendDay = { key: string; label: string; tick: boolean; value: number | null; open?: boolean; avg: number | null }
+export type TrendDay = { key: string; label: string; tick: boolean; value: number | null; open?: boolean; avg: number | null; hit?: boolean }
 
 // Rough bold-digit width (Inter-like): digits ~0.6em, commas and dots ~0.3em.
 const textW = (t: string, fs: number) => [...t].reduce((w, c) => w + (/[,.]/.test(c) ? 0.3 : 0.6), 0) * fs
-const signed = (n: number) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `−${fmt(-n)}` : '0')
 const HOLD_MS = 150
 const SLOP = 8
 
@@ -23,16 +23,19 @@ type G = {
  * days: oldest to today, length a multiple of n. page 0 is the latest n days, page 1 the n before, and so on.
  * The plot is one wide strip translated sideways; the y axis and reference lines stay put.
  */
-export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub, height = 232 }: {
+export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub, height = 232, variant = 'balance' }: {
   days: TrendDay[]; n: number; goal: number; page: number; onPage: (p: number) => void
   scrub: number | null; onScrub: (i: number | null) => void; height?: number
+  /** balance: goal is the daily balance goal. protein: goal is the protein target in grams. */
+  variant?: 'balance' | 'protein'
 }) {
-  const W = 350, left = 40, labelH = 22, top = 10
+  const isP = variant === 'protein'
+  const W = 350, left = 48, labelH = 22, top = 10
   const plotW = W - left
   const plotH = height - labelH - top - 6
   const N = days.length
   const slot = plotW / n
-  const gap = n > 10 ? 3 : 10
+  const gap = n > 10 ? 3 : 9 // v1.4.2: 9 (was 10) keeps 7-day bars as wide as before with the wider goal-label gutter
   const bw = slot - gap
   const maxPage = Math.max(0, N / n - 1)
   const tx = (p: number) => -(N - n * (p + 1)) * slot
@@ -41,10 +44,11 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   // v1.4.1: one fixed, lopsided scale for the whole history (never jumps while paging, never cuts off a closed day).
   // Room is kept above and below for value labels that sit outside short bars.
   const compact = n > 10
+  // Protein: every day counts (bars only go up, so today can never be clipped either).
   const closedVals = days.flatMap((d) => (d.value == null || d.open ? [] : [d.value]))
-  const { top: sTop, bottom: sBot } = trendScale(closedVals, goal)
+  const { top: sTop, bottom: sBot } = isP ? proteinTrendScale(days.flatMap((d) => (d.value == null ? [] : [d.value])), goal) : trendScale(closedVals, goal)
   const S = sTop
-  const padT = compact ? 26 : 18, padB = compact ? 26 : 18
+  const padT = compact ? 26 : 18, padB = sBot > 0 ? (compact ? 26 : 18) : isP ? 2 : compact ? 22 : 16
   const k = (plotH - padT - padB) / (sTop + sBot)
   const zero = top + padT + sTop * k
   const plotBottom = top + plotH
@@ -76,6 +80,8 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
     let ly: number
     if (compact) ly = inside ? (surplus ? barEnd - 4 : barEnd + 4) : (surplus ? barEnd + 3 : barEnd - 3) // rotated -90, reads bottom to top
     else ly = inside ? (surplus ? barEnd - 7 : barEnd + 16) : (surplus ? barEnd + 14 : barEnd - 5)
+    if (!inside && surplus) ly = Math.min(ly, plotBottom + (compact ? 3 : 9)) // never into the day ticks
+    if (!inside && !surplus && !compact) ly = Math.max(ly, 11) // never above the chart
     return { x, v, surplus, h, over, vis, dim, label, fs, inside, lx, ly }
   }
 
@@ -200,44 +206,53 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
     },
   }
 
-  const g0 = Math.abs(goal)
-  const refs = g0 > 0 ? [0, g0, -g0] : [0]
+  // v1.4.2: the solid 0 line plus one dashed line: the balance goal ('goal 337') or the protein target ('147 g').
+  const refs = goal !== 0 ? [0, goal] : [0]
+  const refLabel = (r: number) => (r === 0 ? '0' : isP ? `${fmt(r)} g` : `goal ${fmt(Math.abs(r))}`)
+  const gapPx = Math.abs(goal) * k
+  const tight = gapPx < 12 // keep '0' and the goal label apart when the lines are close
   const sel = scrub != null ? days[scrub] : null
   return (
-    <div {...handlers} tabIndex={0} aria-label="Balance chart. Press and hold to see a day. Swipe or use the arrow keys to change period."
-      className="relative -mx-1 select-none rounded-xl outline-offset-2 [-webkit-touch-callout:none]" style={{ touchAction: 'pan-y' }} data-testid="trend-chart" data-page={page}>
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid="chart" data-scale={S} data-top={sTop} data-bottom={sBot}
+    <div {...handlers} tabIndex={0} aria-label={`${isP ? 'Protein' : 'Balance'} chart. Press and hold to see a day. Swipe or use the arrow keys to change period.`}
+      className="relative -mx-1 select-none rounded-xl outline-offset-2 [-webkit-touch-callout:none]" style={{ touchAction: 'pan-y' }} data-testid="trend-chart" data-variant={variant} data-page={page}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid={isP ? 'protein-chart' : 'chart'} data-scale={S} data-top={sTop} data-bottom={sBot}
         data-zero={zero.toFixed(2)} data-k={k.toFixed(6)} data-plot-top={top} data-plot-bottom={plotBottom}>
         <defs>
-          <clipPath id="trend-clip"><rect x={left} y={0} width={plotW} height={height} /></clipPath>
-          <linearGradient id="trend-fill" gradientUnits="userSpaceOnUse" x1="0" y1={top} x2="0" y2={top + plotH}>
+          <clipPath id={`trend-clip-${variant}`}><rect x={left} y={0} width={plotW} height={height} /></clipPath>
+          <linearGradient id={`trend-fill-${variant}`} gradientUnits="userSpaceOnUse" x1="0" y1={top} x2="0" y2={top + plotH}>
+            {isP ? <>
+              <stop offset={(zf * 0.3).toFixed(3)} stopColor="var(--color-protein)" stopOpacity=".34" />
+              <stop offset={zf.toFixed(3)} stopColor="var(--color-protein)" stopOpacity=".05" />
+            </> : <>
             <stop offset={(zf * 0.35).toFixed(3)} stopColor="var(--color-g)" stopOpacity=".42" />
             <stop offset={zf.toFixed(3)} stopColor="var(--color-g)" stopOpacity=".06" />
             <stop offset={zf.toFixed(3)} stopColor="var(--color-over)" stopOpacity=".06" />
             <stop offset={(zf + (1 - zf) * 0.65).toFixed(3)} stopColor="var(--color-over)" stopOpacity=".42" />
+            </>}
           </linearGradient>
         </defs>
         {refs.map((r) => {
           const y = zero - r * k
           return (
-            <g key={r} data-ref={r}>
+            <g key={r} data-ref={r} data-ref-label={refLabel(r)}>
               <line x1={left - 4} x2={W} y1={y} y2={y} stroke="var(--color-ink)" strokeOpacity={r === 0 ? 0.22 : 0.16} strokeWidth={r === 0 ? 1.5 : 1.25} strokeDasharray={r === 0 ? undefined : '4 4'} />
-              {(r === 0 || g0 * k >= 10.5) && <text x={left - 8} y={y + (r === 0 ? 4 : r > 0 ? 2 : 6)} textAnchor="end" fontSize={r === 0 || g0 * k >= 13 ? 11 : 10} fill="var(--color-mute)">{signed(r)}</text>}
+              <text x={left - 7} y={r === 0 ? y + (tight ? (goal > 0 ? 9 : -3) : 4) : tight ? y + (goal > 0 ? -1 : 8) : y + 3.5} textAnchor="end"
+                fontSize={r === 0 ? 11 : refLabel(r).length > 8 ? 9 : 10} fontWeight={r === 0 ? 400 : 600} fill="var(--color-mute)">{refLabel(r)}</text>
             </g>
           )
         })}
-        <g clipPath="url(#trend-clip)">
+        <g clipPath={`url(#trend-clip-${variant})`}>
           <g ref={stripRef} transform={`translate(${tx(page).toFixed(2)} 0)`}>
-            <path d={areaPath} fill="url(#trend-fill)" className="trend-area" />
+            <path d={areaPath} fill={`url(#trend-fill-${variant})`} className="trend-area" />
             {days.map((d, i) => {
               const { x, v, surplus, h, over, vis, dim } = geom(d, i)
               return (
                 <g key={d.key} data-bar={d.key} data-value={d.value == null ? '' : Math.round(v)} data-kind={d.value == null ? 'empty' : surplus ? 'surplus' : 'deficit'}
                   data-clipped="no" data-over={over ? 'yes' : 'no'} data-h={Math.round(h)} data-hx={h.toFixed(2)} data-y0={(surplus ? zero : zero - h).toFixed(2)} data-y1={(surplus ? zero + h : zero).toFixed(2)}
-                  data-open={d.open ? 'yes' : 'no'} data-visible={vis ? 'yes' : 'no'}>
+                  data-open={d.open ? 'yes' : 'no'} data-visible={vis ? 'yes' : 'no'} data-pbar={isP ? d.key : undefined} data-hit={isP ? (d.hit ? 'yes' : 'no') : undefined}>
                   {d.value != null && (
                     <rect x={x} y={surplus ? zero : zero - h} width={bw} height={h} rx={Math.min(8, bw / 2, h / 2)}
-                      fill={surplus ? 'var(--color-over)' : 'var(--color-g)'} opacity={(d.open ? 0.5 : 1) * (dim ? 0.32 : 1)}
+                      fill={isP ? 'var(--color-protein)' : surplus ? 'var(--color-over)' : 'var(--color-g)'} opacity={(d.open ? 0.5 : 1) * (isP && !d.hit ? 0.4 : 1) * (dim ? 0.32 : 1)}
                       className="bar-grow" style={{ transformOrigin: surplus ? 'top' : 'bottom', animationDelay: vis ? `${(i - start) * (n > 10 ? 12 : 45)}ms` : '0ms', transition: 'opacity .12s' }} />
                   )}
                   {d.tick && <text x={x + bw / 2} y={height - 4} textAnchor="middle" fontSize="13" fill={scrub === i ? 'var(--color-ink)' : 'var(--color-mute)'} fontWeight={scrub === i ? 700 : 400}>{d.label}</text>}
@@ -252,7 +267,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
                 const anchor = compact ? (inside !== surplus ? 'end' : 'start') : 'middle'
                 return (
                   <text key={d.key} data-label-for={d.key} data-label={inside ? 'inside' : 'outside'} x={lx} y={ly} fontSize={fs} fontWeight="700" className="bar-label"
-                    fill={inside ? (d.open ? (surplus ? 'var(--color-over-ink)' : 'var(--color-g-ink)') : 'white') : 'var(--color-ink)'} fillOpacity={dim ? 0.32 : inside ? 1 : 0.8}
+                    fill={inside ? (d.open || (isP && !d.hit) ? (isP ? 'var(--color-protein-deep)' : surplus ? 'var(--color-over-ink)' : 'var(--color-g-ink)') : 'white') : 'var(--color-ink)'} fillOpacity={dim ? 0.32 : inside ? 1 : 0.8}
                     stroke={inside ? undefined : 'var(--color-card)'} strokeWidth={inside ? undefined : 3} strokeOpacity={dim ? 0.32 : 1} paintOrder="stroke" strokeLinejoin="round"
                     textAnchor={anchor} dominantBaseline={compact ? 'central' : undefined} transform={compact ? `rotate(-90 ${lx} ${ly})` : undefined}
                     style={{ animationDelay: vis ? `${(i - start) * (n > 10 ? 12 : 45) + 300}ms` : '0ms', transition: 'fill-opacity .12s' }}>{label}</text>
@@ -263,7 +278,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
               <g data-testid="scrub-indicator" pointerEvents="none">
                 <line x1={cx(scrub)} x2={cx(scrub)} y1={top - 6} y2={top + plotH} stroke="var(--color-ink)" strokeOpacity=".55" strokeWidth="1.25" />
                 {sel.avg != null && (
-                  <circle cx={cx(scrub)} cy={yOf(sel.avg)} r="6" fill="#fff" stroke={sel.avg < 0 ? 'var(--color-over)' : 'var(--color-g)'} strokeWidth="3" className="dot-pop" />
+                  <circle cx={cx(scrub)} cy={yOf(sel.avg)} r="6" fill="#fff" stroke={isP ? 'var(--color-protein)' : sel.avg < 0 ? 'var(--color-over)' : 'var(--color-g)'} strokeWidth="3" className="dot-pop" />
                 )}
               </g>
             )}

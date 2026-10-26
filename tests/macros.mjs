@@ -325,12 +325,17 @@ t('balance scale: robust symmetric scale, the +2,500 spike is clipped', () => {
   assert.equal(balanceScale([], 300), 1000)
   assert.equal(balanceScale([-1800, 200, 100], 0), 500) // surplus spike clipped too
 })
-const { trendScale, barLabel, rolling } = await load('trend')
+const { trendScale, proteinTrendScale, barLabel, rolling } = await load('trend')
 t('v1.4.1 trend scale: lopsided, fixed, closed days never cut off; labels', () => {
   assert.deepEqual(trendScale([1001, 3232, 410, -820, 45], 337), { top: 3600, bottom: 950 }) // Jordy: 3,232 + 10% -> 3,600
-  assert.deepEqual(trendScale([300, -100], 337), { top: 400, bottom: 400 }) // goal line + 10% both sides
-  assert.deepEqual(trendScale([], 0), { top: 50, bottom: 50 })
+  assert.deepEqual(trendScale([300, -100], 337), { top: 400, bottom: 150 }) // v1.4.2: bottom only fits the surplus (100 + 10%, min 50 steps)
+  assert.deepEqual(trendScale([300, 120], 337), { top: 400, bottom: 0 }) // no surplus: no bottom scale (the chart keeps a pixel margin)
+  assert.deepEqual(trendScale([], 0), { top: 50, bottom: 0 })
   assert.deepEqual(trendScale([-2000, 500], 500), { top: 550, bottom: 2200 })
+  assert.deepEqual(trendScale([200, -50], -300), { top: 250, bottom: 350 }) // gaining: the surplus goal line sits below zero and fits
+  assert.deepEqual(proteinTrendScale([120, 182, 95], 147), { top: 210, bottom: 0 }) // 182 + 10% -> 210 g
+  assert.deepEqual(proteinTrendScale([60, 80], 147), { top: 170, bottom: 0 }) // target 147 + 10% -> 170 g
+  assert.deepEqual(proteinTrendScale([], 0), { top: 10, bottom: 0 })
   for (const v of [1001, 3232, 45, -820, 9999]) { const s = trendScale([v, 100], 337); assert.ok(v <= s.top && -v <= s.bottom && v * 1.09 <= s.top + (v < 0 ? Infinity : 0)) }
   assert.deepEqual([barLabel(3232, false), barLabel(-820, false), barLabel(45, true), barLabel(1559, true), barLabel(-60, true)], ['3,232', '820', '45', '1.6k', '60'])
   // The 7-day average never exceeds the biggest closed value, so it always fits the scale unclamped.

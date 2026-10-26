@@ -40,17 +40,22 @@ export function runs<T>(items: (T | null)[]): T[][] {
 }
 
 /**
- * v1.4.1 lopsided, fixed y scale for the balance chart (one scale for all history, so paging never jumps).
- * top fits the biggest closed-day deficit, bottom the bigger of the biggest closed surplus or the goal line,
- * each with ~10% headroom rounded up to 50 kcal, so no closed day is ever cut off.
- * Open days (today) do not set the scale: the chart lets them run to the plot edge.
+ * v1.4.2 fixed balance scale for the whole history (paging never jumps, no closed day is cut off).
+ * top fits the biggest closed-day deficit (or a deficit goal), bottom only the biggest closed surplus
+ * (or a surplus goal when gaining), each + ~10% rounded up to 50 kcal. No surplus: bottom is 0 and the chart
+ * keeps a small pixel margin below zero. Open days (today) do not set the scale: they may run to the plot edge.
  */
 export function trendScale(closed: number[], goal: number): { top: number; bottom: number } {
-  const g = Math.abs(goal)
-  const up = (n: number) => Math.max(50, Math.ceil((n * 1.1) / 50) * 50)
-  const maxDef = Math.max(0, ...closed)
-  const maxSur = Math.max(0, ...closed.map((v) => -v))
-  return { top: up(Math.max(maxDef, g)), bottom: up(Math.max(maxSur, g)) }
+  const up = (n: number) => (n > 0 ? Math.max(50, Math.ceil((n * 1.1) / 50) * 50) : 0)
+  const maxDef = Math.max(0, ...closed, goal)
+  const maxSur = Math.max(0, ...closed.map((v) => -v), -goal)
+  return { top: Math.max(50, up(maxDef)), bottom: up(maxSur) }
+}
+
+/** v1.4.2 protein scale, fixed for all history: top = biggest day or the target, whichever is larger, + ~10% (rounded up to 10 g). */
+export function proteinTrendScale(values: number[], target: number): { top: number; bottom: number } {
+  const m = Math.max(0, target, ...values)
+  return { top: Math.max(10, Math.ceil((m * 1.1) / 10) * 10), bottom: 0 }
 }
 
 /** Short bar label: '380', '1,559' (7 days) or '380', '1.6k' (30 days). */

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { STATE as V1_STATE } from './v11-fixture.mjs'
 import { chartChecks, reducedMotionChecks } from './v14-chart.mjs'
 import { geometry, v141Checks } from './v141-chart.mjs'
+import { v142Checks, v142ReducedMotion } from './v142-chart.mjs'
 
 // The app is served under the GitHub Pages base path /calorie-app/ (see vite.config.ts).
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
@@ -526,7 +527,7 @@ try {
   await step('v2: History protein view, target line, X of 7 days, daily average', async () => {
     await page.getByRole('link', { name: 'History', exact: true }).click()
     await page.getByRole('button', { name: 'Protein' }).click()
-    const bars = await page.locator('[data-pbar]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), hit: e.getAttribute('data-hit') })))
+    const bars = await page.locator('[data-pbar][data-visible=yes]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), hit: e.getAttribute('data-hit') })))
     assert.equal(bars.length, 7)
     assert.equal(bars[6].v, 75)
     const hits = bars.filter((b) => b.hit === 'yes').length
@@ -626,12 +627,13 @@ try {
   await step('v1.4.1 chart: lopsided fixed scale fits the +2,500 spike, nothing clipped, every bar labelled', async () => {
     await mp.goto(BASE + '/history')
     const svg = mp.getByTestId('chart')
-    // top = 2,500 + 10% -> 2,750; bottom = max(420 surplus, 440 goal) + 10% -> 500.
+    // top = 2,500 + 10% -> 2,750; bottom (v1.4.2) = biggest surplus 420 + 10% -> 500.
     assert.deepEqual([await svg.getAttribute('data-top'), await svg.getAttribute('data-bottom')], ['2750', '500'])
     const refs = await mp.locator('[data-ref]').evaluateAll((els) => els.map((e) => e.getAttribute('data-ref')))
-    assert.equal(refs.length, 3)
+    assert.deepEqual(refs, ['0', '440'], 'v1.4.2: no mirrored -goal line')
     const labels = await mp.getByTestId('chart').locator('text').allTextContents()
-    for (const l of ['+440', '0', '−440']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
+    for (const l of ['goal 440', '0']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
+    for (const l of ['+440', '−440']) assert.ok(!labels.includes(l), `no ${l} label`)
     await mp.waitForTimeout(900)
     const g = await geometry(mp)
     const spike = g.bars.find((b) => b.v === 2500)
@@ -797,7 +799,7 @@ try {
     assert.equal(await np.locator(`[data-day="${TODAY}"]`).getByTestId('day-pill').innerText(), 'Surplus 101')
     assert.equal(await np.locator(`[data-bar="${TODAY}"]`).getAttribute('data-value'), '-101')
     const labels = await np.getByTestId('chart').locator('text').allTextContents()
-    for (const l of ['+320', '−320']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
+    assert.ok(labels.includes('goal 320'), `goal label in ${labels}`); assert.ok(!labels.includes('−320'), 'v1.4.2: no -goal label')
     assert.equal(await np.locator(`[data-day="${OLD}"]`).getByTestId('day-pill').innerText(), 'Deficit 100')
     assert.equal(await np.locator(`[data-day="${LEGACY}"]`).getByTestId('day-pill').innerText(), 'Deficit 420')
     await np.goto(BASE + `/day/${OLD}`)
@@ -896,6 +898,22 @@ try {
     const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' })
     const pg = await c.newPage(); watch(pg)
     await reducedMotionChecks(pg, c, BASE)
+    await c.close()
+  })
+  await step('v1.4.2 History: goal line only (no -goal), Protein chart (pink labelled bars, solid/light, target line, average), scrub, swipe, shared period, scale never clips', async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+    const pg = await c.newPage(); watch(pg)
+    results.push('  ' + JSON.stringify(await v142Checks(pg, c, BASE)))
+    await c.close()
+    const c2 = await browser.newContext({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true })
+    const pg2 = await c2.newPage(); watch(pg2)
+    results.push('  375x667 ' + JSON.stringify(await v142Checks(pg2, c2, BASE)))
+    await c2.close()
+  })
+  await step('v1.4.2 Protein chart, reduced motion: no entry animation, instant snap', async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' })
+    const pg = await c.newPage(); watch(pg)
+    await v142ReducedMotion(pg, c, BASE)
     await c.close()
   })
   await step('no console errors or warnings', async () => {

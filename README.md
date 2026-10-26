@@ -52,6 +52,14 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.4.2 Goal line and Protein chart
+
+- Balance: one dashed goal line labelled `goal 337` (no mirrored -goal line). The scale bottom fits only the biggest closed-day surplus + ~10% (rounded to 50 kcal); with no surplus a small margin stays below zero. Top rule unchanged.
+- Protein uses the same chart (`BalanceTrendChart variant="protein"`): pink bars with a number on each, solid when the day hit the target, light when not, today faded as an open day; 7-day average of closed days with a soft fill; dashed target line labelled in grams; hold to scrub, swipe to page, same snap and reduced-motion rules.
+- Protein scale is fixed across all history: top = max(biggest day, target) + ~10%; bars only go up.
+- Balance and Protein share one period: switching tabs keeps the shown week or month.
+- Tests: `tests/v142-chart.mjs` (in e2e and live). Screenshots: `node scripts/v142-shots.mjs` -> `screenshots/v142-*.png`.
+
 ## v1.4.1 History chart scale fix
 - Fixed, lopsided y scale for the whole history (`trendScale` in `src/lib/trend.ts`): top = biggest closed-day deficit + ~10%, bottom = bigger of the biggest closed surplus or the goal + ~10% (rounded up to 50). No closed day is ever cut off; paging never changes the scale.
 - No cap mark. Bars and the 7-day average line use the same unclamped scale, so heights are in proportion (3,232 is 2.07x 1,559).

@@ -4,6 +4,8 @@
 import assert from 'node:assert/strict'
 import { daysAgo, chartTools } from './v14-chart.mjs'
 
+// v1.4.2: protein varies so the Protein chart shows hit (solid) and missed (light) days around the target.
+export const P = { 13: 150, 12: 95, 11: 160, 10: 142, 9: 170, 8: 130, 7: 155, 2: 98, 1: 182 }
 const W = { 13: 410, 12: -820, 11: 45, 10: 260, 9: -60, 8: 380, 7: 520, 2: 1001, 1: 3232 }
 /** today: open balance so far (BMR 1,837 + 0 burn - eaten). */
 export function jordySeed(today = 1559, bmr = 1837) {
@@ -12,8 +14,8 @@ export function jordySeed(today = 1559, bmr = 1837) {
   let n = 0
   for (const [i, bal] of Object.entries(W)) {
     const k = daysAgo(+i), eaten = 1837 - bal
-    closedDays[k] = { bmr: 1837, movement: 0, burned: 0, eaten, balance: bal, goal: 337, protein: 120, closedAt: now - +i * 864e5, auto: true }
-    entries.push({ id: 'j' + ++n, date: k, meal: 'lunch', foodId: null, name: 'Logged meals', servingLabel: '1 portion', servingMult: 1, qty: 1, kcal: eaten, protein: 120, carbs: 200, fat: 60, createdAt: now - +i * 864e5 })
+    closedDays[k] = { bmr: 1837, movement: 0, burned: 0, eaten, balance: bal, goal: 337, protein: P[i], closedAt: now - +i * 864e5, auto: true }
+    entries.push({ id: 'j' + ++n, date: k, meal: 'lunch', foodId: null, name: 'Logged meals', servingLabel: '1 portion', servingMult: 1, qty: 1, kcal: eaten, protein: P[i], carbs: 200, fat: 60, createdAt: now - +i * 864e5 })
   }
   entries.push({ id: 'j' + ++n, date: daysAgo(0), meal: 'breakfast', foodId: null, name: 'Kopi susu', servingLabel: '1 cup', servingMult: 1, qty: 1, kcal: bmr - today, protein: 8, carbs: 30, fat: 6, createdAt: now - 1e6 })
   return {
@@ -34,9 +36,9 @@ export async function seedJordy(p, BASE, today, bmr) {
 const label = (v, compact) => { const a = Math.abs(v); return compact && a >= 1000 ? `${(a / 1000).toFixed(1)}k` : a.toLocaleString('en-US') }
 
 /** Reads the chart geometry and checks: a label on every non-zero visible bar, inside or just outside, within the svg;
- *  no bar past the plot; heights proportional; no cap mark; ref lines at 0 / +/-goal; the average line unclamped. */
-export async function geometry(p, { compact = false } = {}) {
-  const svg = p.getByTestId('chart')
+ *  no bar past the plot; heights proportional; no cap mark; ref lines at 0 / goal; the average line unclamped. */
+export async function geometry(p, { compact = false, id = 'chart' } = {}) {
+  const svg = p.getByTestId(id)
   const g = await svg.evaluate((s) => {
     const n = (a) => Number(s.getAttribute(a))
     const vb = s.viewBox.baseVal
@@ -79,10 +81,10 @@ export async function v141Checks(p, ctx, BASE) {
   const { swipe, pageNo, wait } = await chartTools(p, ctx)
   await wait(1100)
   let g = await geometry(p)
-  // Lopsided scale: top fits the biggest closed deficit (3,232 + 10% -> 3,600), bottom the bigger of the biggest
-  // surplus (820) or the goal (337) + 10% -> 950.
+  // Lopsided scale: top fits the biggest closed deficit (3,232 + 10% -> 3,600), bottom (v1.4.2) the biggest
+  // closed surplus (820) + 10% -> 950. Only one dashed line now: the goal at +337.
   assert.deepEqual([g.top, g.bottom], [3600, 950], 'lopsided fixed scale')
-  assert.deepEqual(g.refs.map((r) => r[0]), [0, 337, -337])
+  assert.deepEqual(g.refs.map((r) => r[0]), [0, 337])
   const by = (v) => g.bars.find((b) => b.v === v)
   const sun = by(3232), mon = by(1559), sat = by(1001)
   assert.ok(sun && mon && sat, 'Jordy week bars')

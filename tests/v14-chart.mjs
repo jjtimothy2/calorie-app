@@ -77,7 +77,7 @@ export async function chartChecks(p, ctx, BASE) {
   assert.equal(await p.locator('[data-bar][data-visible=yes]').count(), 7)
   const scale = await p.getByTestId('chart').getAttribute('data-scale')
   const refs = await p.locator('[data-ref]').evaluateAll((els) => els.map((e) => e.getAttribute('data-ref')))
-  assert.deepEqual(refs, ['0', '380', '-380'], '0 and ± goal lines')
+  assert.deepEqual(refs, ['0', '380'], 'v1.4.2: 0 and the goal line, no mirrored -goal line')
   const stored = await p.evaluate(() => localStorage.getItem('calorie-app:v2'))
   assert.equal(JSON.parse(stored).version, 2)
   assert.deepEqual((await visibleDays())[0], daysAgo(0))
