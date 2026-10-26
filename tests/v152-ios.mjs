@@ -7,6 +7,7 @@ import { webkit, devices } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE } from './v11-fixture.mjs'
 import { EST, PLATE, geminiOk, makePlate } from './v15-fixture.mjs'
+import { CAMERA_MOCK } from './camera-mock.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const SHOTS = process.env.SHOTS === '1'
@@ -29,6 +30,7 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
     if (!localStorage.getItem('calorie-app:ai')) localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: 'gemini', key: 'AIzaTEST-not-a-real-key-000000000000' }))
   }, STATE)
+  await ctx.addInitScript(CAMERA_MOCK, 'ok') // v1.6.3 live camera (mocked)
   await ctx.route('https://generativelanguage.googleapis.com/**', (r) => r.request().method() === 'OPTIONS'
     ? r.fulfill({ status: 204, headers: CORS })
     : r.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: JSON.stringify(geminiOk(EST)) }))
@@ -39,7 +41,7 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
   const keyboard = async (open) => { await page.setViewportSize({ width, height: open ? height - kb : height }); await page.waitForTimeout(400) }
   const dlg = page.getByRole('dialog')
 
-  await step(`${tag}: AI button (sparkle only, v1.6.1) sits right of Quick add, 56 px, 8 px from the edge, clear of Quick add`, async () => {
+  await step(`${tag}: AI button (star only, v1.6.3) sits right of Quick add, 56 px, 8 px from the edge, clear of Quick add`, async () => {
     await page.goto(BASE + '/log')
     const btn = page.getByRole('button', { name: 'Estimate with AI', exact: true })
     const qa = page.getByRole('button', { name: /Quick add calories/ })

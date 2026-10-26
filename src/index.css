@@ -130,7 +130,6 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 .tap:active { transform: scale(.97); transition-duration: .08s; }
 /* v1.6.2: the AI sheet's photo frame folds big <-> 56 px strip in one 280 ms ease-out motion. */
 .frame-anim { transition: height .28s ease-out, background-color .28s ease-out, transform .2s ease-out; }
-.frame-anim:active { transform: scale(.985); }
 .fab { transition: transform .4s cubic-bezier(.34, 1.8, .64, 1), box-shadow .2s; }
 .fab:active { transform: scale(.92); transition-duration: .08s; }
 

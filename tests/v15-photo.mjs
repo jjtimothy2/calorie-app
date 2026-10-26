@@ -5,6 +5,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE as V1_STATE } from './v11-fixture.mjs'
 import { EST, PLATE, TODAY, geminiOk, jpegSize, makePlate, openaiOk } from './v15-fixture.mjs'
+import { CAMERA_MOCK } from './camera-mock.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const results = [], errors = []
@@ -54,9 +55,10 @@ const mock = async (ctx) => {
   })
 }
 
-const setup = async (opts = {}) => {
+const setup = async ({ camera, ...opts } = {}) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, reducedMotion: 'reduce', serviceWorkers: 'block', ...opts })
   await ctx.addInitScript((s) => { if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s)) }, V1_STATE)
+  await ctx.addInitScript(CAMERA_MOCK, camera ?? 'ok') // v1.6.3: live camera in the sheet (mocked)
   await mock(ctx)
   const page = await ctx.newPage()
   page.on('console', (m) => {
@@ -78,7 +80,7 @@ const openAi = async (page) => { await page.getByRole('button', AI_BTN).click();
 /** Opens the AI sheet and adds the test photo. */
 const snap = async (page) => {
   await openAi(page)
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), dialog(page).getByTestId('add-photo').click()])
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), dialog(page).getByRole('button', { name: 'Choose from gallery' }).click()])
   assert.equal(chooser.isMultiple(), false)
   await chooser.setFiles(PLATE)
   await dialog(page).getByTestId('photo-added').waitFor()
@@ -88,14 +90,14 @@ const errorKind = (page) => dialog(page).getByTestId('photo-error').getAttribute
 try {
   const { ctx, page } = await setup()
 
-  await step('old v1 data loads; AI button (sparkle + "AI") sits right of Quick add on Log (Food only), input has no capture attribute', async () => {
+  await step('old v1 data loads; AI button (gradient star) sits right of Quick add on Log (Food only), input has no capture attribute', async () => {
     await page.goto(BASE + '/log')
     const cam = page.getByRole('button', AI_BTN)
     await cam.waitFor()
     assert.equal((await cam.innerText()).trim(), '', 'v1.6.1: no text label, sparkle only')
     assert.equal(await cam.locator('svg').count(), 1, 'sparkle icon')
-    const look = await cam.evaluate((el) => { const c = getComputedStyle(el); return { bg: c.backgroundColor, border: c.borderTopColor, ink: c.color, svg: getComputedStyle(el.querySelector('svg')).fill } })
-    assert.deepEqual(look, { bg: 'rgb(255, 253, 248)', border: 'rgb(231, 223, 208)', ink: 'rgb(47, 143, 91)', svg: 'rgb(47, 143, 91)' }, 'Reed palette: card, line border, green sparkle')
+    const look = await cam.evaluate((el) => { const c = getComputedStyle(el), svg = el.querySelector('svg'), id = svg.getAttribute('fill').match(/^url\(#(.+)\)$/)?.[1]; return { bg: c.backgroundColor, border: c.borderTopColor, stops: [...(document.getElementById(id)?.querySelectorAll('stop') ?? [])].map((x) => x.getAttribute('stop-color').toUpperCase()), paths: svg.querySelectorAll('path').length } })
+    assert.deepEqual(look, { bg: 'rgb(255, 253, 248)', border: 'rgb(231, 223, 208)', stops: ['#2F8F5B', '#D9663F'], paths: 1 }, 'v1.6.3: cream card, line border, one star filled green to orange')
     assert.equal(await page.getByTestId('camera-btn').count(), 0, 'camera button is gone')
     const qa = page.getByRole('button', { name: /Quick add calories/ })
     await cam.waitFor()
@@ -171,12 +173,13 @@ try {
     assert.notEqual(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA', 'keyboard stays down on open')
     const order = await d.evaluate((el) => {
       const y = (sel) => el.querySelector(sel).getBoundingClientRect().top
-      return [y('[data-testid=add-photo]'), y('[data-testid=photo-tip]'), y('textarea'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
+      return [y('[data-testid=photo-frame]'), y('[data-testid=photo-tip]'), y('textarea'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
     })
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'frame, tip, note, chips, Estimate from top to bottom')
-    const frame = d.getByTestId('add-photo')
+    const frame = d.getByTestId('photo-frame')
     assert.equal(await frame.getAttribute('data-state'), 'big')
-    assert.match(await frame.innerText(), /Tap to take a photo/)
+    await d.locator('[data-cam=live]').waitFor()
+    await d.getByRole('button', { name: 'Take photo' }).waitFor()
     assert.ok((await frame.boundingBox()).height >= 150, 'big frame')
     const tip = d.getByTestId('photo-tip')
     assert.equal(await tip.innerText(), 'Tip: put a spoon or your hand in the shot for better portions.')
@@ -234,11 +237,11 @@ try {
   await step('photo + text: Add photo, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
     await snap(page)
     const d = dialog(page)
-    assert.equal(await d.getByTestId('add-photo').count(), 0, 'the frame shows the photo')
+    assert.equal(await d.getByTestId('photo-frame').count(), 0, 'the frame shows the photo')
     await d.getByRole('button', { name: 'Change' }).waitFor()
     await d.getByRole('button', { name: 'Remove photo' }).click()
-    await d.getByTestId('add-photo').waitFor()
-    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByTestId('add-photo').click()])
+    await d.getByTestId('photo-frame').waitFor()
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByRole('button', { name: 'Choose from gallery' }).click()])
     await chooser.setFiles(PLATE)
     await d.getByTestId('photo-added').waitFor()
     const est = d.getByRole('button', { name: /Estimate/ })

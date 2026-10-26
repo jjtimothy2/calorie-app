@@ -1,7 +1,8 @@
 // v1.5: AI photo estimate sheets (ported from Reed's mock). Photo + note -> estimate -> adjust -> log.
 // v1.6: AI estimate. Text, photo or both -> estimate -> adjust -> log. The AI's numbers are used as they are.
 // The photo is a downscaled data URL held in React state only; nothing here is saved except the logged entries.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { cameraAvailable, grabFrame, startCamera, stopStream } from '../lib/camera'
 import { FOODS } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
 import {
@@ -69,12 +70,23 @@ export function CameraIcon({ className = 'h-7 w-7' }: { className?: string }) {
   )
 }
 
-/** v1.6: the AI button's sparkle (one big four-point star and a small one). */
-export function SparkleIcon({ className = 'h-6 w-6' }: { className?: string }) {
+/** v1.6.3: the AI mark, one four-point star. `gradient` fills it green to orange (unique id per use); otherwise currentColor. */
+export function SparkleIcon({ className = 'h-6 w-6', gradient = false }: { className?: string; gradient?: boolean }) {
+  const id = `ai-star-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
-      <path d="M10 3c.5 3.6 2.4 5.5 6 6-3.6.5-5.5 2.4-6 6-.5-3.6-2.4-5.5-6-6 3.6-.5 5.5-2.4 6-6z" />
-      <path d="M18 13c.3 2 1.2 2.9 3 3.2-1.8.3-2.7 1.2-3 3.2-.3-2-1.2-2.9-3-3.2 1.8-.3 2.7-1.2 3-3.2z" />
+    <svg viewBox="0 0 24 24" className={className} fill={gradient ? `url(#${id})` : 'currentColor'} aria-hidden="true" data-star={gradient ? 'gradient' : 'solid'}>
+      {gradient && <defs><linearGradient id={id} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2F8F5B" /><stop offset="1" stopColor="#D9663F" /></linearGradient></defs>}
+      <path d="M12 1.5c.8 5.6 4.9 9.7 10.5 10.5-5.6.8-9.7 4.9-10.5 10.5C11.2 16.9 7.1 12.8 1.5 12 7.1 11.2 11.2 7.1 12 1.5z" />
+    </svg>
+  )
+}
+
+export function GalleryIcon({ className = 'h-6 w-6' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <circle cx="9" cy="9.5" r="1.8" />
+      <path d="M21 16l-5-5-9 9" />
     </svg>
   )
 }
@@ -109,6 +121,8 @@ type Props = {
   /** The last photo couldn't be read. */
   photoError: boolean
   onPickPhoto: () => void
+  /** v1.6.3: a frame from the live camera (full size; the parent downscales it like a picked file). */
+  onShot: (photo: Blob) => void
   onRemovePhoto: () => void
   onClose: () => void
   onQuickAdd: () => void
@@ -120,7 +134,7 @@ const Thumb = ({ photo, dim = false }: { photo: string | null; dim?: boolean }) 
   ? <img src={photo} alt="Your meal photo" className={`h-14 w-14 shrink-0 rounded-[14px] object-cover ${dim ? 'opacity-60' : ''}`} />
   : <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] border border-line bg-card text-g" aria-hidden="true"><SparkleIcon className="h-7 w-7" /></span>
 
-export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto, onClose, onQuickAdd, onFixKey, onLog }: Props) {
+export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRemovePhoto, onClose, onQuickAdd, onFixKey, onLog }: Props) {
   const [note, setNote] = useState('')
   const [phase, setPhase] = useState<Phase>({ k: 'input' })
   const noteRef = useRef<HTMLTextAreaElement>(null)
@@ -131,6 +145,54 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
   useEffect(() => { ctl.current?.abort(); setPhase({ k: 'input' }) }, [photo])
   const back = () => { ctl.current?.abort(); setPhase({ k: 'input' }) }
   const [textFirst, setTextFirst] = useState(false)
+
+  // v1.6.3 live camera in the big frame. Runs only while the big empty frame is on screen on the input step and the app
+  // is visible; the cleanup stops every track (text first, photo taken, loading/results/error, hidden, closed/unmounted).
+  // A refusal or failure falls back to the "Use a photo" strip and is remembered for the session (no re-prompt loop).
+  const [camFailed, setCamFailed] = useState(() => !cameraAvailable())
+  const [cam, setCam] = useState<'off' | 'starting' | 'live'>('off')
+  const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', on)
+    return () => document.removeEventListener('visibilitychange', on)
+  }, [])
+  const wantCam = phase.k === 'input' && !photo && !textFirst && !camFailed && visible
+  useEffect(() => {
+    if (!wantCam) return
+    let dead = false
+    let stream: MediaStream | null = null
+    const timers: number[] = []
+    setCam('starting')
+    startCamera().then((st) => {
+      if (dead) { stopStream(st); return }
+      stream = st
+      const v = videoRef.current
+      if (!v) return
+      // "live" (shutter enabled) once real frames arrive, so a tap never grabs an empty picture.
+      const ready = () => { if (!dead && v.videoWidth > 0) setCam('live') }
+      v.addEventListener('loadeddata', ready, { once: true })
+      v.addEventListener('playing', ready, { once: true })
+      v.srcObject = st
+      v.play().then(ready, () => {})
+      // WebKit can leave a stream attached while the sheet was still sliding in (off screen) without frames; re-attach
+      // a few times until frames flow.
+      for (const ms of [450, 1000, 1800, 3000]) timers.push(window.setTimeout(() => {
+        if (dead || v.videoWidth > 0) return
+        v.srcObject = null; v.srcObject = st
+        v.play().then(ready, () => {})
+      }, ms))
+    }).catch(() => { if (!dead) setCamFailed(true) })
+    return () => {
+      dead = true
+      timers.forEach(clearTimeout)
+      stopStream(stream)
+      if (videoRef.current) videoRef.current.srcObject = null
+      setCam('off')
+    }
+  }, [wantCam])
+  const shoot = () => { const v = videoRef.current; if (v) grabFrame(v).then(onShot, () => {}) }
   // v1.6.2: a photo, 2+ typed characters, or a chip.
   const ready = !!photo || note.trim().length >= 2 || NOTE_CHIPS.some((c) => noteHas(note, c))
 
@@ -183,42 +245,64 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
   // v1.6.2 photo-first sheet. The frame is big until the text field is tapped with no photo yet; then it folds into a
   // slim "Add a photo" strip (one element, its height animates, so the field and chips slide with it). A photo always
   // keeps it big. The textarea never remounts, so the v1.5.2 focus handling is untouched.
-  const strip = textFirst && !photo
+  // v1.6.3: no camera (refused, missing, failed) opens straight on the strip with "Use a photo" (file picker).
+  const strip = !photo && (textFirst || camFailed)
   const askWhat = strip
+  const big = !strip
   return (
     <Sheet label="AI estimate" onClose={onClose}>
-      <h2 className="title flex items-center gap-2 text-[26px] leading-tight"><SparkleIcon className="h-6 w-6 text-g" />AI estimate</h2>
+      <h2 className="title flex items-center gap-2 text-[26px] leading-tight"><SparkleIcon gradient className="h-6 w-6" />AI estimate</h2>
       {photo ? (
         <div className="frame-h relative shrink-0 overflow-hidden rounded-2xl border border-line bg-bg" data-testid="photo-added">
           <img src={photo} alt="Your meal photo" className={`h-full w-full object-cover ${loading ? 'opacity-60' : ''}`} />
           <span className="sr-only">Photo added</span>
           {!loading && <div className="absolute inset-x-2 bottom-2 flex justify-end gap-2">
-            <button type="button" onClick={onPickPhoto} className="tap rounded-full bg-card/95 px-4 py-2 text-[15px] font-bold text-g-ink shadow-sm">Change</button>
+            <button type="button" onClick={camFailed ? onPickPhoto : () => { setTextFirst(false); onRemovePhoto() }} className="tap rounded-full bg-card/95 px-4 py-2 text-[15px] font-bold text-g-ink shadow-sm">Change</button>
             <button type="button" onClick={onRemovePhoto} aria-label="Remove photo" className="tap grid h-10 w-10 place-items-center rounded-full bg-card/95 text-[18px] text-ink shadow-sm">✕</button>
           </div>}
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => { setTextFirst(false); onPickPhoto() }}
+        <div
           onTransitionEnd={(e) => { if (e.target === e.currentTarget && e.propertyName === 'height' && document.activeElement === noteRef.current) e.currentTarget.closest('[role=dialog]')?.querySelector<HTMLElement>('[data-keep-visible]')?.scrollIntoView({ block: 'nearest' }) }}
-          disabled={loading}
-          data-testid="add-photo"
+          data-testid="photo-frame"
           data-state={strip ? 'strip' : 'big'}
-          aria-label={strip ? 'Add a photo (optional)' : 'Tap to take a photo'}
-          className={`frame-anim relative block w-full shrink-0 overflow-hidden rounded-2xl text-left disabled:opacity-50 ${strip ? 'h-[56px] bg-card' : 'frame-h bg-bg'}`}
+          data-cam={camFailed ? 'none' : cam}
+          className={`frame-anim relative w-full shrink-0 overflow-hidden rounded-2xl ${strip ? 'h-[56px] bg-card' : 'frame-h bg-ink'} ${loading ? 'opacity-50' : ''}`}
         >
+          {/* Big: live preview with shutter and gallery. Kept mounted so the fold can crossfade. */}
+          <div aria-hidden={!big} className={`absolute inset-0 transition-opacity duration-[280ms] ease-out ${big ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+            <video ref={videoRef} playsInline muted autoPlay data-testid="camera-preview" className="h-full w-full object-cover" />
+            {cam !== 'live' && <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink text-center text-card">
+              <CameraIcon className="h-7 w-7 opacity-80" />
+              <span className="text-[15px] font-semibold opacity-90">Starting camera…</span>
+            </span>}
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
+            <div className="absolute inset-x-0 bottom-2.5 flex items-center justify-center">
+              <button type="button" onClick={onPickPhoto} disabled={!big || loading} aria-label="Choose from gallery" data-testid="gallery-btn" className="tap absolute left-3 grid h-11 w-11 place-items-center rounded-full bg-card/90 text-ink shadow-sm">
+                <GalleryIcon className="h-[22px] w-[22px]" />
+              </button>
+              <button type="button" onClick={shoot} disabled={!big || loading || cam !== 'live'} aria-label="Take photo" data-testid="shutter" className="tap grid h-[64px] w-[64px] place-items-center rounded-full border-4 border-card/95 shadow-[0_0_0_1px_rgba(0,0,0,0.3),0_2px_10px_rgba(0,0,0,0.4)] disabled:opacity-50">
+                <span className="h-[48px] w-[48px] rounded-full bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.25)]" />
+              </button>
+            </div>
+          </div>
           <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl border-2 border-dashed border-line transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'opacity-0'}`} />
-          <span aria-hidden="true" className={`absolute inset-0 flex flex-col items-center justify-center gap-2 text-center transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-0' : 'opacity-100'}`}>
-            <span className="grid h-14 w-14 place-items-center rounded-full border border-line bg-card text-g"><CameraIcon className="h-7 w-7" /></span>
-            <span className="text-[17px] font-bold">Tap to take a photo</span>
-            <span className="-mt-1.5 text-[14px] text-mute">Camera or library</span>
-          </span>
-          <span aria-hidden="true" className={`absolute inset-x-0 top-0 flex h-[56px] items-center gap-3 px-4 transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'opacity-0'}`}>
-            <CameraIcon className="h-6 w-6 shrink-0 text-g" />
-            <span className="text-[16px] font-bold">Add a photo <span className="font-normal text-mute">(optional)</span></span>
-          </span>
-        </button>
+          {/* Strip: text first folds here (tap = camera again); no camera opens here with "Use a photo" (tap = picker). */}
+          <button
+            type="button"
+            onClick={camFailed ? onPickPhoto : () => setTextFirst(false)}
+            disabled={!strip || loading}
+            aria-hidden={!strip}
+            data-testid="add-photo"
+            aria-label={camFailed ? 'Use a photo' : 'Add a photo (optional)'}
+            className={`absolute inset-x-0 top-0 flex h-[56px] w-full items-center gap-3 px-4 text-left transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          >
+            {camFailed ? <GalleryIcon className="h-6 w-6 shrink-0 text-g" /> : <CameraIcon className="h-6 w-6 shrink-0 text-g" />}
+            {camFailed
+              ? <span className="text-[16px] font-bold text-g-ink">Use a photo <span className="font-normal text-mute">(optional)</span></span>
+              : <span className="text-[16px] font-bold">Add a photo <span className="font-normal text-mute">(optional)</span></span>}
+          </button>
+        </div>
       )}
       {/* v1.6.1: a size reference in the shot gives better grams. Folds away with the frame. */}
       {!photo && (

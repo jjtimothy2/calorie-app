@@ -52,6 +52,15 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.6.3 Live camera in the AI sheet
+
+- The AI button is one four-point star (34 px in the 56 px cream button) filled green #2F8F5B to orange #D9663F. Each star gets its own gradient id (React useId). The sheet heading uses the gradient star; the small ones (Estimate, loading, Today label) are the same star in currentColor.
+- Opening the sheet starts the rear camera (getUserMedia, facingMode environment, no audio) as a live preview filling the big frame, with a round shutter and a small gallery button (file picker, no capture flag). The shutter draws the current frame to a canvas and it goes through the usual 1024 px JPEG downscale (never stored).
+- Text first folds the frame into the strip and stops the camera; tapping the strip unfolds it and restarts the camera. Change on a taken photo goes back to the live camera.
+- The camera only runs while the big empty frame is on screen: every track stops on close, text first, a photo, loading/results/errors, and when the app is hidden, and it restarts when you come back.
+- No camera (permission refused, no camera, no getUserMedia, or an error): the sheet opens on the thin strip with "Use a photo", which opens the file picker. A refusal is remembered until the app reloads, so there is no prompt loop.
+- Tests: tests/v163-camera.mjs (Chrome and iPhone WebKit with a mocked camera stream, tests/camera-mock.mjs); the other sheet tests use the mock too.
+
 ## v1.6.2 Photo-first AI sheet
 
 - Tapping the sparkle opens a big empty photo frame ("Tap to take a photo"), the spoon tip under it, an "Add a note (optional)" field, the chips and Estimate. The keyboard stays down.
