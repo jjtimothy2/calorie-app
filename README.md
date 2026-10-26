@@ -51,3 +51,10 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 - Home equation reads BMR + Movement + Exercise − Eaten = Balance; Movement is hidden only when the daily movement setting is off.
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
+
+## v1.4 History chart
+- Balance view: daily deficit/surplus bars plus a smooth 7-day average line of closed days with a soft fill; 0 and ± daily goal lines stay. One fixed y scale across the whole history.
+- Press and hold (150 ms) to scrub: snaps day by day, the header shows that day's balance, date and 7-day average; release brings the period header back.
+- Swipe sideways to page by 7 or 30 days (momentum, snap of 340 ms or less, never past today; instant with reduced motion). The day list follows the shown period. Vertical drags still scroll the page.
+- Haptics (`src/lib/haptics.ts`): `navigator.vibrate` on Android, the iOS 18+ `<input switch>` tick on iPhone, once per scrub day and once per swipe settle; silent if neither works.
+- Tests: `tests/v14-chart.mjs` (used by e2e and live), screenshots `node scripts/v14-shots.mjs`.

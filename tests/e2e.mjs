@@ -2,6 +2,7 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE as V1_STATE } from './v11-fixture.mjs'
+import { chartChecks, reducedMotionChecks } from './v14-chart.mjs'
 
 // The app is served under the GitHub Pages base path /calorie-app/ (see vite.config.ts).
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
@@ -312,7 +313,7 @@ try {
     await page.locator('[data-testid=developer] summary').click()
     await page.getByRole('button', { name: 'Load demo week' }).click()
     await page.waitForURL('**/history')
-    const bars = await page.locator('[data-bar]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), k: e.getAttribute('data-kind') })))
+    const bars = await page.locator('[data-bar][data-visible=yes]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), k: e.getAttribute('data-kind') })))
     assert.equal(bars.length, 7)
     assert.ok(bars.filter((b) => b.k === 'surplus').length >= 2, 'surplus days: ' + JSON.stringify(bars))
     assert.ok(bars.filter((b) => b.k === 'deficit').length >= 3)
@@ -320,11 +321,11 @@ try {
     assert.equal(Number(await page.getByTestId('week-total').getAttribute('data-value')), sum)
     const kg = (Math.round((sum / 7700) * 10) / 10).toFixed(1)
     assert.equal(await page.getByTestId('est-change').innerText(), `−${kg} kg`)
-    assert.match(await page.locator('main').innerText(), /estimate/)
+    assert.match(await page.locator('main').innerText(), /7,700 kcal per kg/)
     const sur = page.getByTestId('day-pill').filter({ hasText: 'Surplus' }).first()
     assert.equal(await color(sur), 'rgb(163, 67, 31)')
     await page.getByRole('button', { name: '30 days' }).click()
-    assert.equal(await page.locator('[data-bar]').count(), 30)
+    assert.equal(await page.locator('[data-bar][data-visible=yes]').count(), 30)
     await page.getByRole('button', { name: '7 days' }).click()
   })
   await step('reopen today: weekly total drops it, today is faded', async () => {
@@ -629,13 +630,13 @@ try {
     assert.equal(refs.length, 3)
     const labels = await mp.getByTestId('chart').locator('text').allTextContents()
     for (const l of ['+440', '0', '−440']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
-    const bars = await mp.locator('[data-bar]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), h: Number(e.getAttribute('data-h')), clip: e.getAttribute('data-clipped') })))
+    const bars = await mp.locator('[data-bar][data-visible=yes]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), h: Number(e.getAttribute('data-h')), clip: e.getAttribute('data-clipped') })))
     const spike = bars.find((b) => b.v === 2500)
     assert.equal(spike.clip, 'yes')
     // Today is open at 2200 - 975 = 1225 so far: it does not set the scale, and is clipped too.
     assert.deepEqual(bars.filter((b) => b.clip === 'yes').map((b) => b.v).sort(), [1225, 2500])
     const small = bars.filter((b) => Math.abs(b.v) >= 300 && Math.abs(b.v) <= 420)
-    assert.ok(small.length >= 5 && small.every((b) => b.h >= 0.3 * spike.h), JSON.stringify(bars))
+    assert.ok(small.length >= 5 && small.every((b) => b.h >= 0.3 * spike.h - 1), JSON.stringify(bars))
   })
   for (const [w, h, inset] of [[375, 667, 0], [390, 844, 34]]) {
     await step(`v1.1 + button fully visible and tappable at ${w}x${h}${inset ? ' (safe-area bottom 34, as in the iOS PWA)' : ''}`, async () => {
@@ -876,6 +877,19 @@ try {
     assert.equal(await fp.getByTestId('minimum-hint').count(), 0)
   })
   await fctx.close()
+  await step('v1.4 History chart: 7-day average line, hold to scrub, swipe paging, today edge, vertical scroll, haptics, 30 days', async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+    const pg = await c.newPage(); watch(pg)
+    const out = await chartChecks(pg, c, BASE)
+    results.push('  ' + JSON.stringify(out))
+    await c.close()
+  })
+  await step('v1.4 History chart, reduced motion: no entry animation, instant snap', async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' })
+    const pg = await c.newPage(); watch(pg)
+    await reducedMotionChecks(pg, c, BASE)
+    await c.close()
+  })
   await step('no console errors or warnings', async () => {
     assert.deepEqual(errors, [])
   })

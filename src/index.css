@@ -131,3 +131,11 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* v1.4: History trend chart entry */
+@keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.bar-grow { transform-box: fill-box; animation: bar-grow .5s cubic-bezier(.2, .8, .2, 1) both; }
+.trend-area { animation: fade-in .5s ease-out .35s both; }
+@keyframes dot-pop { from { transform: scale(.4); } to { transform: scale(1); } }
+.dot-pop { transform-box: fill-box; transform-origin: center; animation: dot-pop .14s ease-out; }
+@media (prefers-reduced-motion: reduce) { .bar-grow, .trend-area, .dot-pop { animation: none !important; } }
