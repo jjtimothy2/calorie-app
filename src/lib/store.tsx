@@ -45,6 +45,7 @@ type Action =
   | { type: 'updateEntry'; entry: Entry }
   | { type: 'deleteEntry'; id: string }
   | { type: 'toggleFav'; foodId: string }
+  | { type: 'removeFav'; foodId: string }
   | { type: 'addExercise'; entry: ExerciseEntry }
   | { type: 'updateExercise'; entry: ExerciseEntry }
   | { type: 'deleteExercise'; id: string }
@@ -193,6 +194,8 @@ function reducer(state: State, a: Action): State {
           ? state.favourites.filter((x) => x !== a.foodId)
           : [...state.favourites, a.foodId],
       }
+    case 'removeFav':
+      return state.favourites.includes(a.foodId) ? { ...state, favourites: state.favourites.filter((x) => x !== a.foodId) } : state
     case 'loadDemoWeek': {
       const today = dateKey()
       const closedDays = Object.fromEntries(Object.entries(state.closedDays).filter(([d]) => d === today || d < addDays(today, -6)))
@@ -266,7 +269,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setFoods(next)
     return true
   }, [setFoods])
-  const deleteMyFood = useCallback((id: string) => setFoods(foodsRef.current.filter((f) => f.id !== id)), [setFoods])
+  // v1.10.1: a deleted saved food also leaves Favourites.
+  const deleteMyFood = useCallback((id: string) => {
+    setFoods(foodsRef.current.filter((f) => f.id !== id))
+    rawDispatch({ type: 'removeFav', foodId: id })
+  }, [setFoods])
   const myFoodById = useMemo(() => new Map(myFoods.map((f) => [f.id, f])), [myFoods])
   // Track the calendar day so an open app rolls over (and auto-closes yesterday) at midnight.
   const [today, setToday] = useState(dateKey)

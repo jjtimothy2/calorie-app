@@ -159,6 +159,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       assert.doesNotMatch(await page.getByTestId('food-list').innerText(), /Mine|your food|my food/i)
       assert.equal(await page.getByTestId('mine-tag').count(), 0)
       assert.match(await first.getByRole('button').first().getAttribute('aria-label'), /^Bubur ayam, saved food, 1 serving, 320 kcal/)
+      await page.getByTestId('toast').waitFor({ state: 'detached', timeout: 8000 }) // keep the toast off the list in the shot
       await shot('saved-search')
       await first.getByRole('button', { name: /^Bubur ayam, saved food/ }).click()
       await dialog.getByTestId('saved-mark').waitFor()

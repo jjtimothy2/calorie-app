@@ -11,12 +11,12 @@ import { foodEmoji } from '../data/foodEmoji'
 import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
 import { entryFromFood, entryFromUserFood, newId, useStore } from '../lib/store'
 import { USER_SERVING, type UserFood } from '../lib/myFoods'
-import { SavedMark, MyFoodSheet } from '../components/MyFoodSheet'
+import { SavedMark, MyFoodSheet, MyFoodEditSheet, macroLine } from '../components/MyFoodSheet'
 import { readAi, type AiSettings } from '../lib/ai'
 import { downscalePhoto } from '../lib/photo'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
-type Tab = 'recent' | 'fav' | 'all'
+type Tab = 'recent' | 'fav' | 'mine' | 'all'
 
 export default function Log() {
   const { state, dispatch, recentFoodIds, today, myFoods, myFoodById } = useStore()
@@ -32,6 +32,9 @@ export default function Log() {
   const [picked, setPicked] = useState<Food | null>(null)
   const [pickedMine, setPickedMine] = useState<UserFood | null>(null)
   const [quick, setQuick] = useState(false)
+  // v1.10.1: My foods moved here from Me. New food (optionally named from the search text), edit and delete.
+  const [newFood, setNewFood] = useState<string | null>(null)
+  const [editMine, setEditMine] = useState<{ food: UserFood; del: boolean } | null>(null)
   const [toast, setToast] = useState<{ ids: string[]; text: string } | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const keyboard = useKeyboardOpen()
@@ -42,6 +45,11 @@ export default function Log() {
     window.clearTimeout(timer.current)
     setToast({ ids: [entry.id], text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
     timer.current = window.setTimeout(() => setToast(null), 4000)
+  }
+  const savedToast = (f: UserFood) => {
+    window.clearTimeout(timer.current)
+    setToast({ ids: [], text: `Saved ${f.name} to My foods` })
+    timer.current = window.setTimeout(() => setToast(null), 3000)
   }
   // v1.5: AI photo estimate. v1.6: AI estimate, photo optional. The photo is a downscaled data URL in memory only,
   // dropped when the sheet closes.
@@ -125,7 +133,9 @@ export default function Log() {
     const top = (f: Food) => fav.has(f.id) || mineAsFood.has(f.id)
     let pool: Food[] =
       tab === 'recent' ? recentFoodIds.map(anyFood).filter((f): f is Food => !!f)
-      : tab === 'fav' ? state.favourites.map((id) => FOOD_BY_ID.get(id)!).filter(Boolean)
+      // v1.10.1: saved foods can be favourites too (u_ ids). An id with no food behind it (an old backup) is skipped.
+      : tab === 'fav' ? state.favourites.map(anyFood).filter((f): f is Food => !!f)
+      : tab === 'mine' ? [...myFoods].sort((a, b) => b.updatedAt - a.updatedAt).map((m) => mineAsFood.get(m.id)!).filter(Boolean)
       : [...mineAsFood.values(), ...FOODS]
     const needle = q.trim().toLowerCase()
     if (needle) {
@@ -138,7 +148,7 @@ export default function Log() {
     }
     return pool.slice(0, 60)
 
-  }, [q, tab, state.favourites, recentFoodIds, mineAsFood])
+  }, [q, tab, state.favourites, recentFoodIds, mineAsFood, myFoods])
 
   const oneTap = (f: Food) => {
     const mine = myFoodById.get(f.id)
@@ -151,6 +161,8 @@ export default function Log() {
     if (mine) setPickedMine(mine)
     else setPicked(f)
   }
+
+  const quickLink = (row?: boolean) => <button type="button" className={`tap font-bold text-g-ink underline ${row ? 'min-h-11 px-1.5' : '-my-3 inline-block py-3'}`} onClick={() => setQuick(true)}>Quick add calories</button>
 
   return (
     <>
@@ -198,37 +210,67 @@ export default function Log() {
             aria-label="Search foods"
             placeholder="Search foods, e.g. tempe"
             value={q}
-            onChange={(e) => { setQ(e.target.value); if (e.target.value && tab !== 'all' && !q) setTab('all') }}
+            onChange={(e) => { setQ(e.target.value); if (e.target.value && tab !== 'all' && tab !== 'mine' && !q) setTab('all') }}
             className="w-full appearance-none bg-transparent text-[17px] outline-none placeholder:text-mute focus:outline-none focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
           />
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Food list">
-          <Chip on={tab === 'recent'} onClick={() => setTab('recent')}>Recent</Chip>
-          <Chip on={tab === 'fav'} onClick={() => setTab('fav')}>Favourites</Chip>
-          <Chip on={tab === 'all'} onClick={() => setTab('all')}>All foods</Chip>
+        {/* v1.10.1: four chips are wider than a phone, so the row scrolls sideways (the page never does). */}
+        <div className="chip-row -mx-5 flex shrink-0 gap-2 overflow-x-auto px-5" role="group" aria-label="Food list" data-testid="food-tabs">
+          <Chip className="shrink-0" on={tab === 'recent'} onClick={() => setTab('recent')}>Recent</Chip>
+          <Chip className="shrink-0" on={tab === 'fav'} onClick={() => setTab('fav')}>Favourites</Chip>
+          <Chip className="shrink-0" on={tab === 'mine'} onClick={(e) => { setTab('mine'); e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }} data-testid="tab-mine">My foods</Chip>
+          <Chip className="shrink-0" on={tab === 'all'} onClick={(e) => { setTab('all'); e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }}>All foods</Chip>
         </div>
-        <ul aria-label="Foods" data-testid="food-list">
+        {tab === 'mine' && (
+          <button type="button" onClick={() => setNewFood('')} className="tap -mb-1 flex min-h-12 items-center justify-center gap-2 rounded-[18px] border border-dashed border-line text-[16px] font-bold text-g-ink" data-testid="myfoods-new">
+            <span aria-hidden="true" className="text-[20px] leading-none">+</span>New food
+          </button>
+        )}
+        <ul aria-label={tab === 'mine' ? 'My foods' : 'Foods'} data-testid="food-list">
           {list.map((f) => (
             <li key={f.id} className="flex items-center justify-between gap-2 border-b border-line">
               <button type="button" className="flex flex-1 items-center gap-3 py-2.5 text-left" onClick={() => pick(f)} aria-label={`${f.name}${mineAsFood.has(f.id) ? ', saved food' : ''}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
                 <span className="tile" aria-hidden="true">{foodEmoji(f.name)}</span>
                 <span className="min-w-0">
                 <div className="text-base font-semibold">{state.favourites.includes(f.id) && <span aria-hidden="true" className="text-carbs">★ </span>}{f.name}{mineAsFood.has(f.id) && <SavedMark />}</div>
-                <div className="text-[13px] text-mute">{mineAsFood.has(f.id) ? f.servingLabel : `${f.servingLabel} (${f.grams} g)`}</div>
+                <div className="text-[13px] text-mute">{tab === 'mine' ? macroLine(f) : mineAsFood.has(f.id) ? f.servingLabel : `${f.servingLabel} (${f.grams} g)`}</div>
                 </span>
               </button>
+              {tab === 'mine' && myFoodById.get(f.id) ? (
+                <div className="flex items-center">
+                  <b className="num mr-1 text-[17px]">{f.kcal}</b>
+                  <button type="button" onClick={() => setEditMine({ food: myFoodById.get(f.id)!, del: false })} aria-label={`Edit ${f.name}`} data-testid="myfood-row-edit" className="tap grid h-11 w-11 place-items-center rounded-full text-mute">
+                    <PencilIcon className="h-5 w-5" />
+                  </button>
+                  <button type="button" onClick={() => setEditMine({ food: myFoodById.get(f.id)!, del: true })} aria-label={`Delete ${f.name}`} data-testid="myfood-row-delete" className="tap -mr-2 grid h-11 w-11 place-items-center rounded-full text-mute">
+                    <TrashIcon />
+                  </button>
+                </div>
+              ) : (
               <div className="flex items-center gap-3">
                 <b className="num text-[17px]">{f.kcal}</b>
                 <button type="button" onClick={() => oneTap(f)} aria-label={`Add one serving of ${f.name} to ${MEAL_LABEL[meal]}`} className="fab grid h-[34px] w-[34px] place-items-center rounded-full bg-g-soft text-[22px] font-bold text-g-soft-ink">+</button>
               </div>
+              )}
             </li>
           ))}
-          {list.length === 0 && (
-            <li className="py-6 text-center text-[15px] text-mute">
-              {tab === 'recent' && !q ? 'No recent foods yet.' : tab === 'fav' && !q ? 'No favourites yet. Tap ☆ on a food to save it.' : 'No match.'}{' '}
-              <button type="button" className="font-bold text-g-ink underline" onClick={() => setQuick(true)}>Quick add calories</button>
+          {list.length === 0 && (tab === 'mine' && !q.trim() ? (
+            <li className="py-6 text-center text-[15px] text-mute" data-testid="myfoods-empty">No saved foods yet. Tap New food, or give a quick add a name.</li>
+          ) : (
+            <li className="py-6 text-center text-[15px] text-mute" data-testid="list-empty">
+              {tab === 'recent' && !q ? <>No recent foods yet.{' '}{quickLink()}</> : tab === 'fav' && !q ? <>No favourites yet. Tap ☆ on a food to save it.{' '}{quickLink()}</> : (
+                // v1.10.1: two 44 px links on their own line, so they never overlap when the text wraps on a small phone.
+                <>
+                  <span className="block">No match.</span>
+                  <span className="mt-1 flex flex-wrap items-center justify-center gap-x-1">
+                    <button type="button" className="tap min-h-11 px-1.5 font-bold text-g-ink underline" onClick={() => setNewFood(q.trim())} data-testid="save-to-mine">Save to my foods</button>
+                    <span>or</span>
+                    {quickLink(true)}
+                  </span>
+                </>
+              )}
             </li>
-          )}
+          ))}
         </ul>
         <p className="mt-auto text-center text-xs text-mute">
           Tap + to add one serving instantly. Tap the row to change the amount.<br />Food values are illustrative.
@@ -260,10 +302,10 @@ export default function Log() {
       {toast && (
         <div role="status" className={`anim-fade ${bar ? 'bottom-above-qa' : 'bottom-safe'} absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg`} data-testid="toast">
           <span>{toast.text}</span>
-          <span className="flex gap-3">
+          {toast.ids.length > 0 && <span className="flex gap-3">
             <button type="button" className="font-bold underline" onClick={() => { for (const id of toast.ids) dispatch({ type: 'deleteEntry', id }); setToast(null) }}>Undo</button>
             <button type="button" className="font-bold text-g-soft" onClick={() => nav('/')}>Done</button>
-          </span>
+          </span>}
         </div>
       )}
       {exToast && (
@@ -302,6 +344,12 @@ export default function Log() {
           onFixKey={() => { setAiFlow(null); nav('/settings?ai=1') }}
           onLog={logAi}
         />
+      )}
+      {newFood !== null && (
+        <QuickAddSheet mode="new" name={newFood} onClose={() => setNewFood(null)} onDone={(f) => { setNewFood(null); savedToast(f) }} />
+      )}
+      {editMine && (
+        <MyFoodEditSheet key={editMine.food.id} food={editMine.food} startDelete={editMine.del} onClose={() => setEditMine(null)} />
       )}
       {quick && (
         <QuickAddSheet mode="add" meal={meal} date={today} remaining={remaining} onClose={() => setQuick(false)} onDone={(e) => { setQuick(false); showToast(e) }} />
@@ -393,4 +441,8 @@ function AiMenu({ pos, fromKeyboard, onClose, onTakePhoto, onFromLibrary, onType
       </button>
     </div>
   )
+}
+
+function TrashIcon() {
+  return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.8c0-.4.4-.8.8-.8h3.4c.4 0 .8.4.8.8V7M6.5 7l.8 12.2c.1.9.8 1.6 1.7 1.6h6c.9 0 1.6-.7 1.7-1.6L17.5 7" /></svg>
 }

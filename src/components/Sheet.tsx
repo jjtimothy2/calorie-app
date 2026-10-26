@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type FocusEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react'
 
 const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select'
 
@@ -89,16 +89,64 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
   )
 }
 
-/** Whole steps above 1, half steps below (0.5 minimum). */
-export function Stepper({ value, onChange, label, min = 0.5 }: { value: number; onChange: (n: number) => void; label: string; min?: number }) {
-  const inc = () => onChange(value < 1 ? value + 0.5 : value + 1)
-  const dec = () => onChange(Math.max(min, value <= 1 ? 0.5 : value - 1))
-  const btn = 'grid h-12 w-12 place-items-center rounded-xl border border-line bg-card text-2xl font-bold disabled:opacity-40'
+/** v1.10.1: a typed amount like "1.5", "0.75" or "1,5". Above 0, at most 99, rounded to 2 decimals. */
+export const MAX_QTY = 99
+export function parseQty(raw: string): number | null {
+  const t = raw.trim().replace(',', '.')
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(t)) return null
+  const n = Math.round(Number(t) * 100) / 100
+  return n > 0 && n <= MAX_QTY ? n : null
+}
+const qtyText = (n: number) => String(Math.round(n * 100) / 100)
+
+/**
+ * Whole steps above 1, half steps below (0.5 minimum for the minus button). v1.10.1: tap the amount to type any
+ * amount on the decimal keypad, e.g. 1.5 or 0.75. `unit` is one serving, shown beside the typed number.
+ */
+export function Stepper({ value, onChange, label, unit, min = 0.5 }: { value: number; onChange: (n: number) => void; label: string; unit?: string; min?: number }) {
+  const [typing, setTyping] = useState(false)
+  const [text, setText] = useState('')
+  const input = useRef<HTMLInputElement>(null)
+  const inc = () => onChange(Math.min(MAX_QTY, value < 1 ? Math.min(1, Math.floor(value * 2 + 1e-9) / 2 + 0.5) : Math.floor(value + 1e-9) + 1))
+  const dec = () => onChange(Math.max(min, value <= 1 ? 0.5 : Math.ceil(value - 1e-9) - 1))
+  const typed = parseQty(text)
+  const bad = typing && text.trim() !== '' && typed === null
+  const open = () => { setText(qtyText(value)); setTyping(true) }
+  useEffect(() => { if (typing) { input.current?.focus(); input.current?.select() } }, [typing])
+  const done = () => { if (typed !== null) onChange(typed); setTyping(false) }
+  const btn = 'grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-line bg-card text-2xl font-bold disabled:opacity-40'
   return (
-    <div className="flex items-center justify-between rounded-2xl bg-bg p-2">
-      <button type="button" className={btn} aria-label="Decrease amount" disabled={value <= min} onClick={dec}>−</button>
-      <b className="text-[22px]" aria-live="polite" data-testid="qty">{label}</b>
-      <button type="button" className={btn} aria-label="Increase amount" onClick={inc}>+</button>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-bg p-2">
+        <button type="button" className={btn} aria-label="Decrease amount" disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
+        {typing ? (
+          <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
+            <input
+              ref={input}
+              type="text"
+              inputMode="decimal"
+              enterKeyHint="done"
+              autoComplete="off"
+              aria-label="Servings"
+              aria-invalid={bad || undefined}
+              aria-describedby={bad ? 'qty-err' : undefined}
+              value={text}
+              onChange={(e) => { setText(e.target.value); const n = parseQty(e.target.value); if (n !== null) onChange(n) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); done() } }}
+              onBlur={done}
+              data-testid="qty-input"
+              className={`h-12 w-[84px] rounded-xl border-2 bg-card px-2 text-center text-[22px] font-bold ${bad ? 'border-danger' : 'border-ink'}`}
+            />
+            {unit && <span className="min-w-0 truncate text-[15px] font-semibold text-mute">× {unit}</span>}
+          </span>
+        ) : (
+          <button type="button" onClick={open} className="tap min-h-12 min-w-0 flex-1 rounded-xl px-2 text-[22px] font-bold" aria-label={`${label}. Tap to type an amount`} data-testid="qty-edit">
+            <b aria-live="polite" data-testid="qty">{label}</b>
+          </button>
+        )}
+        <button type="button" className={btn} aria-label="Increase amount" onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); inc() }}>+</button>
+      </div>
+      {bad && <p id="qty-err" role="alert" className="px-2 text-[14px] text-danger" data-testid="qty-err">Enter an amount above 0, like 1.5 or 0.75.</p>}
     </div>
   )
 }

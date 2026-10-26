@@ -172,6 +172,11 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 
 /* v1.8 onboarding welcome illustration (WelcomeArt.tsx): ring draws in, food pops in with a stagger, all under 1 s. */
 .welcome-art { display: block; width: 100%; height: auto; max-width: 350px; max-height: min(44vh, 370px); overflow: visible; }
+/* v1.10.1: Log's food list chips scroll sideways without a bar. */
+.chip-row { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chip-row::-webkit-scrollbar { display: none; }
+/* v1.10.1: room for the install hint on a short phone (iPhone SE). */
+@media (max-height: 700px) { .welcome-art { max-height: min(36vh, 370px); } }
 @keyframes wa-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .wa-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: wa-draw .7s cubic-bezier(.3, .7, .2, 1) .08s both; }
 @keyframes wa-pop { from { opacity: 0; transform: scale(.45); } to { opacity: 1; transform: none; } }

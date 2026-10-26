@@ -1,6 +1,6 @@
 // v1.9 My foods: a named quick add saves (or updates, de-duped by name, case and spaces ignored) a food in a NEW key
 // calorie-app:foods; calorie-app:v2 keeps its shape. Your foods show in Recent and Log search with a bookmark icon (v1.10, was a "Mine" tag; ids u_<id>)
-// and log like any food. Edit and delete them from Me; past entries are kept. Old foodId:null entries still render.
+// and log like any food. Edit and delete them from Log > My foods (v1.10.1, was a card in Me); past entries are kept. Old foodId:null entries still render.
 // Backup export includes the key, import restores it (an older backup without it clears it), reset clears it.
 // WebKit with touch at 390x844 and 375x667. Screenshots: screenshots/v19-*.png.
 // Usage: npm run build && npx vite preview --port 4174 & node tests/v19-myfoods.mjs
@@ -41,7 +41,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   }
   const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.waitForURL('**/log**') }
   const toHome = async () => { await page.goto(BASE + '/'); await page.getByTestId('eaten').waitFor() }
-  const toMe = async () => { await page.getByRole('link', { name: 'Me', exact: true }).click(); await page.getByTestId('myfoods-card').waitFor() }
+  const toMe = async () => { await page.goto(BASE + '/settings'); await page.getByRole('button', { name: 'Export backup' }).waitFor() }
+  // v1.10.1: My foods is a chip on Log (was a card in Me).
+  const toMine = async () => { await toHome(); await toLog(); await page.getByTestId('tab-mine').click(); await page.getByTestId('food-list').waitFor() }
   let v2Keys, foodId
 
   await step(`${tag} old entries (foodId null) render, no foods key until a food exists`, async () => {
@@ -49,7 +51,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     for (const n of ['Greek yoghurt with berries', 'Chicken rice', 'Banana']) await page.getByRole('button', { name: new RegExp(`^Edit ${n}`) }).waitFor()
     assert.equal(await page.evaluate((k) => localStorage.getItem(k), FOODS), null)
     v2Keys = Object.keys(await ls(V2)).sort()
-    await toMe()
+    await toMine()
     await page.getByTestId('myfoods-empty').waitFor()
   })
 
@@ -147,11 +149,11 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal((await foods()).find((f) => f.id === foodId).kcal, 500) // the food itself is untouched
   })
 
-  await step(`${tag} Me: edit a food (duplicate name refused), past entries unchanged`, async () => {
-    await toMe()
-    const card = page.getByTestId('myfoods-card')
+  await step(`${tag} My foods: edit a food (duplicate name refused), past entries unchanged`, async () => {
+    await toMine()
+    const card = page.getByTestId('food-list')
     assert.match(await card.innerText(), /Es teh manis[\s\S]*Mum's nasi goreng/) // newest first
-    await card.getByRole('button', { name: /Mum's nasi goreng/ }).click()
+    await card.getByRole('button', { name: "Edit Mum's nasi goreng" }).click()
     await page.fill('input[name=food-name]', ' es TEH manis ')
     await dialog.getByRole('button', { name: 'Save food' }).click()
     await dialog.getByTestId('myfood-error').waitFor()
@@ -166,12 +168,12 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal(m.length, 4)
     assert.ok(m.every((e) => e.name === "Mum's nasi goreng"))
     await card.getByText('Nasi goreng spesial').waitFor()
-    await card.evaluate((el) => el.scrollIntoView({ block: 'start' }))
     await shot('myfoods')
   })
 
   let backupText
   await step(`${tag} backup export includes calorie-app:foods`, async () => {
+    await toMe()
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()])
     backupText = readFileSync(await dl.path(), 'utf8')
     const j = JSON.parse(backupText)
@@ -179,10 +181,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.ok(!('calorie-app:ai' in j.data))
   })
 
-  await step(`${tag} Me: delete a food, past entries kept and still render`, async () => {
-    const card = page.getByTestId('myfoods-card')
-    await card.getByRole('button', { name: /Nasi goreng spesial/ }).click()
-    await dialog.getByTestId('myfood-delete').click()
+  await step(`${tag} My foods: delete a food, past entries kept and still render`, async () => {
+    await toMine()
+    await page.getByTestId('food-list').getByRole('button', { name: 'Delete Nasi goreng spesial' }).click()
     await dialog.getByTestId('myfood-delete-confirm').waitFor()
     await shot('myfoods-delete')
     await dialog.getByTestId('myfood-delete-confirm').click()
@@ -210,19 +211,20 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     return page.getByTestId('import-summary').innerText()
   }
   await step(`${tag} backup import restores your foods; an older backup clears them`, async () => {
-    await toHome(); await toMe()
+    await toMe()
     assert.match(await importFile(backupText, 'with-foods'), /2 saved foods/)
     await page.getByRole('button', { name: 'Replace my data' }).click()
     await page.waitForTimeout(300)
     assert.deepEqual((await foods()).map((f) => f.name).sort(), ['Es teh manis', 'Nasi goreng spesial'])
-    await page.goto(BASE + '/settings')
-    await page.getByTestId('myfoods-card').getByText('Nasi goreng spesial').waitFor()
+    await toMine()
+    await page.getByTestId('food-list').getByText('Nasi goreng spesial').waitFor()
+    await toMe()
     const old = JSON.parse(backupText); delete old.data[FOODS]
     assert.doesNotMatch(await importFile(JSON.stringify(old), 'no-foods'), /saved food/)
     await page.getByRole('button', { name: 'Replace my data' }).click()
     await page.waitForTimeout(300)
     assert.equal(await page.evaluate((k) => localStorage.getItem(k), FOODS), null)
-    await page.goto(BASE + '/settings')
+    await toMine()
     await page.getByTestId('myfoods-empty').waitFor()
     // Entries from the backup (including ones from deleted foods) still render.
     await toHome()
@@ -231,8 +233,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
 
   await step(`${tag} reset all data clears your foods`, async () => {
     await page.evaluate((k) => localStorage.setItem(k, JSON.stringify({ version: 1, foods: [{ id: 'u_x', name: 'Temp', kcal: 10, protein: 0, carbs: 0, fat: 0, createdAt: 1, updatedAt: 1 }] })), FOODS)
-    await page.reload(); await toMe()
-    await page.getByTestId('myfoods-card').getByText('Temp').waitFor()
+    await page.reload(); await toMine()
+    await page.getByTestId('food-list').getByText('Temp').waitFor()
+    await toMe()
     await page.evaluate(() => sessionStorage.setItem('reset', '1'))
     page.once('dialog', (d) => d.accept())
     await page.getByRole('button', { name: 'Reset all data' }).click()

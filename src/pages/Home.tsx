@@ -7,6 +7,8 @@ import { ProteinCard } from '../components/ProteinCard'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { SparkleIcon } from '../components/PhotoSheets'
 import { AiGroupSheet, groupRows, groupTitle } from '../components/AiGroupSheet'
+import { AddItemSheet } from '../components/AddItemSheet'
+import type { EntryGroup } from '../components/FoodSheet'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
@@ -14,7 +16,7 @@ import { Button, Card } from '../components/ui'
 import { dailyPlan, dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
-import { useStore } from '../lib/store'
+import { newId, useStore } from '../lib/store'
 import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry } from '../lib/types'
 
@@ -35,6 +37,24 @@ export default function Home() {
   // v1.10: an open AI meal (its groupId). Editing one of its items hides the sheet, and it comes back after.
   const [group, setGroup] = useState<string | null>(null)
   const groupItems = group ? entries.filter((e) => e.groupId === group) : []
+  // v1.10.1: Add item. From the breakdown, or from a single AI item's edit sheet (seed), which then becomes a group.
+  const [adding, setAdding] = useState<{ group: EntryGroup; title: string; meal: Entry['meal']; date: string; seed?: Entry } | null>(null)
+  const addToGroup = () => {
+    if (!group || !groupItems.length) return
+    const name = groupItems.find((e) => e.groupName)?.groupName
+    setAdding({ group: { id: group, ...(name ? { name } : {}) }, title: groupTitle(groupItems), meal: groupItems[0].meal, date: groupItems[0].date })
+  }
+  const addToSingle = (e: Entry) => {
+    setEditing(null)
+    setAdding({ group: { id: e.groupId ?? newId(), ...(e.groupName ? { name: e.groupName } : {}) }, title: e.groupName ?? e.name, meal: e.meal, date: e.date, seed: e })
+  }
+  const added = () => {
+    if (!adding) return
+    const seed = adding.seed && state.entries.find((x) => x.id === adding.seed!.id)
+    if (seed && seed.groupId !== adding.group.id) dispatch({ type: 'updateEntry', entry: { ...seed, groupId: adding.group.id } })
+    setAdding(null)
+    setGroup(adding.group.id)
+  }
   const dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
   // Food you can still eat today while hitting the daily goal.
   const left = day.balance - day.goal
@@ -158,10 +178,13 @@ export default function Home() {
       {editing && editing.foodId && FOOD_BY_ID.has(editing.foodId) ? (
         <FoodSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} />
       ) : editing ? (
-        <QuickAddSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} />
+        <QuickAddSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} onAddItem={editing.source === 'photo' && !group ? () => addToSingle(editing) : undefined} />
       ) : null}
-      {group && !editing && groupItems.length > 0 && (
-        <AiGroupSheet key={group} items={groupItems} onEdit={(e) => setEditing(e)} onClose={() => setGroup(null)} />
+      {group && !editing && !adding && groupItems.length > 0 && (
+        <AiGroupSheet key={group} items={groupItems} onEdit={(e) => setEditing(e)} onAdd={addToGroup} onClose={() => setGroup(null)} />
+      )}
+      {adding && (
+        <AddItemSheet group={adding.group} title={adding.title} meal={adding.meal} date={adding.date} remaining={left} onDone={added} onClose={() => setAdding(null)} />
       )}
       {editingEx && editingEx.activityId ? (
         <ExerciseEditSheet key={editingEx.id} entry={editingEx} onClose={() => setEditingEx(null)} />

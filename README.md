@@ -52,6 +52,18 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.10.1 Add item, favourite saved foods, typed servings, My foods on Log, install hint
+
+- The AI breakdown sheet has "+ Add item": pick a favourite, saved, recent or searched food, or Quick add, and it joins that meal (same groupId, groupName and meal). A single AI item gets "+ Add item to this meal" in its edit sheet; adding one turns it into a group of 2.
+- Saved foods have a favourite star like built-in foods, and show in Favourites. Deleting a saved food also takes it out of favourites. Favourite ids with no food behind them are skipped.
+- Tap the amount in any food sheet to type servings on the decimal keypad: 1.5, 0.75 or 1,5 all work. It must be above 0 (at most 99) and rounds to 2 decimals. Plus and minus still step by whole servings (half steps below 1).
+- Log has a My foods chip (the chip row scrolls sideways on small phones) with a New food button (the quick add form with Save, nothing is logged) and Edit and Delete on each row. "No match" now offers "Save to my foods" next to Quick add calories. The My foods card left Me.
+- The welcome screen shows an install hint: Share then Add to Home Screen on iPhone and iPad, an Install button when the browser offers one (beforeinstallprompt), or the browser menu otherwise. It is hidden when the app already runs from the Home Screen.
+- Gemini key setup says "Don't have a key? Get one free here", with "here" linking to Google AI Studio in a new tab.
+- Data: calorie-app:v2, calorie-app:ai and calorie-app:foods keep their shape. Favourites may now hold u_ ids (already a string list), and backups carry everything as before.
+- Fix: editing a built-in food in an AI meal keeps its group.
+- Tests: tests/v1101.mjs (390x844 and 375x667), plus updated v19-myfoods and v110. Screenshots: screenshots/v1101-*.
+
 ## v1.10 Watch question, saved food bookmark, AI meal groups
 
 - Onboarding asks "Do you wear a watch that tracks your burn?" after the goal. Yes turns daily movement off (includeMovement false), skips Activity, works the pace from resting burn and shows a note: add your watch's active calories each day with Quick add burn. No goes to Activity with movement on, as before. The pace you pick is kept, even when it lands on the floor (the example man with a watch: gentle 1,584, standard and faster 1,500 kcal).

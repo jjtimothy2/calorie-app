@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
 import App from './App'
 import { StoreProvider } from './lib/store'
+import './lib/install' // v1.10.1: catch beforeinstallprompt early
 import './index.css'
 
 // The single-file build runs from file://, so it routes with the URL hash.

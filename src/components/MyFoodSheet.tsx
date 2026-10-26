@@ -1,13 +1,12 @@
 // v1.9: "My foods". Log one of your own foods (or edit an entry made from one), and edit or delete the food itself.
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { foodEmoji } from '../data/foodEmoji'
 import { fmt, round1 } from '../lib/calc'
 import { formatAmount } from '../lib/amount'
 import { entryFromUserFood, useStore } from '../lib/store'
 import { USER_SERVING, type UserFood } from '../lib/myFoods'
 import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
-import { AfterThis, DeleteButton } from './FoodSheet'
+import { AfterThis, DeleteButton, FavStar, groupFields, type EntryGroup } from './FoodSheet'
 import { Sheet, Stepper } from './Sheet'
 import { Button, Chip } from './ui'
 
@@ -20,11 +19,11 @@ export function SavedMark({ className = 'ml-1.5 h-[15px] w-[15px] align-[-2px]' 
   )
 }
 
-const macroLine = (f: { protein: number; carbs: number; fat: number }) =>
+export const macroLine = (f: { protein: number; carbs: number; fat: number }) =>
   f.protein || f.carbs || f.fat ? `P ${round1(f.protein)} · C ${round1(f.carbs)} · F ${round1(f.fat)} g` : 'No macros'
 
 type Props =
-  | { mode: 'add'; food: UserFood; meal: Meal; date: string; remaining: number; onDone: (e: Entry) => void; onClose: () => void }
+  | { mode: 'add'; food: UserFood; meal: Meal; date: string; remaining: number; onDone: (e: Entry) => void; onClose: () => void; group?: EntryGroup }
   | { mode: 'edit'; food: UserFood; entry: Entry; remaining: number; onDone: () => void; onClose: () => void }
 
 export function MyFoodSheet(props: Props) {
@@ -42,7 +41,7 @@ export function MyFoodSheet(props: Props) {
 
   const save = () => {
     if (props.mode === 'add') {
-      const entry = entryFromUserFood(food, { meal, date: props.date, qty })
+      const entry = { ...entryFromUserFood(food, { meal, date: props.date, qty }), ...groupFields(props.group) }
       dispatch({ type: 'addEntry', entry })
       props.onDone(entry)
     } else {
@@ -59,9 +58,10 @@ export function MyFoodSheet(props: Props) {
           <h2 className="title text-[24px] leading-tight">{init ? init.name : food.name}<SavedMark className="ml-2 h-[18px] w-[18px] align-[1px]" /></h2>
           <div className="text-[15px] text-mute">{fmt(food.kcal)} kcal a serving</div>
         </div>
-        <button type="button" onClick={() => setEditing(true)} className="tap shrink-0 px-1 py-1 text-[15px] font-bold text-g-ink" data-testid="myfood-edit">Edit food</button>
+        <button type="button" onClick={() => setEditing(true)} className="tap -mt-1.5 min-h-11 shrink-0 px-1 text-[15px] font-bold text-g-ink" data-testid="myfood-edit">Edit food</button>
+        <FavStar id={food.id} />
       </div>
-      <Stepper value={qty} onChange={setQty} label={formatAmount(USER_SERVING, qty)} />
+      <Stepper value={qty} onChange={setQty} label={formatAmount(USER_SERVING, qty)} unit={USER_SERVING} />
       {props.mode === 'edit' && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Meal">
           {MEALS.map((m) => (
@@ -86,7 +86,7 @@ export function MyFoodSheet(props: Props) {
 const input = 'w-full rounded-xl border border-line bg-bg px-3 py-3 text-[17px]'
 
 /** Edit a food's name and numbers, or delete it. Past log entries are never changed. */
-export function MyFoodEditSheet({ food, onClose, onDeleted }: { food: UserFood; onClose: () => void; onDeleted?: () => void }) {
+export function MyFoodEditSheet({ food, onClose, onDeleted, startDelete = false }: { food: UserFood; onClose: () => void; onDeleted?: () => void; startDelete?: boolean }) {
   const { updateMyFood, deleteMyFood } = useStore()
   const [name, setName] = useState(food.name)
   const [kcal, setKcal] = useState(String(food.kcal))
@@ -94,7 +94,7 @@ export function MyFoodEditSheet({ food, onClose, onDeleted }: { food: UserFood; 
   const [c, setC] = useState(food.carbs ? String(food.carbs) : '')
   const [f, setF] = useState(food.fat ? String(food.fat) : '')
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(startDelete)
   const k = Math.round(Number(kcal))
   const valid = Number.isFinite(k) && k > 0 && k < 10000 && name.trim().length > 0
 
@@ -142,40 +142,5 @@ export function MyFoodEditSheet({ food, onClose, onDeleted }: { food: UserFood; 
         )}
       </form>
     </Sheet>
-  )
-}
-
-/** Me screen card: the user's own foods, newest change first. */
-export function MyFoodsCard() {
-  const { myFoods } = useStore()
-  const [open, setOpen] = useState<UserFood | null>(null)
-  const list = [...myFoods].sort((a, b) => b.updatedAt - a.updatedAt)
-  return (
-    <div className="rounded-[22px] border border-line bg-card p-4" data-testid="myfoods-card">
-      <h2 className="title text-[21px]">My foods</h2>
-      {list.length === 0 ? (
-        <p className="mt-1 text-[15px] text-mute" data-testid="myfoods-empty">Give a quick add a name and it's saved here, ready to find in search.</p>
-      ) : (
-        <>
-          <p className="text-[13px] text-mute">Saved from named quick adds. Tap one to edit or delete it.</p>
-          <ul className="mt-2" aria-label="My foods">
-            {list.map((f) => (
-              <li key={f.id}>
-                <button type="button" onClick={() => setOpen(f)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left" aria-label={`${f.name}, ${f.kcal} kcal. Edit or delete`}>
-                  <span className="tile" aria-hidden="true">{foodEmoji(f.name)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base font-semibold">{f.name}</span>
-                    <span className="block text-[13px] text-mute">{macroLine(f)}</span>
-                  </span>
-                  <b className="num text-[17px]">{fmt(f.kcal)}</b>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {/* The card sits inside the scrolling page; the sheet belongs to the app frame like every other sheet. */}
-      {open && createPortal(<MyFoodEditSheet key={open.id} food={open} onClose={() => setOpen(null)} />, document.getElementById('app-frame') ?? document.body)}
-    </div>
   )
 }

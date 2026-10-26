@@ -4,7 +4,6 @@ import { BodyFields, GoalFields, goalBlurb, PACE_LABEL, paceHint, targetSum, val
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
-import { MyFoodsCard } from '../components/MyFoodSheet'
 import { AiCard } from '../components/AiCard'
 import { clearAi } from '../lib/ai'
 import { Info } from '../components/Info'
@@ -138,7 +137,6 @@ export default function Settings() {
         <p role="status" className="text-center text-[15px] text-g-ink">{msg}</p>
       </form>
       <AiCard focus={params.get('ai') === '1'} />
-      <MyFoodsCard />
       <BackupCard />
       <Card className="flex flex-col gap-3">
         <h2 className="title text-[21px]">Data</h2>

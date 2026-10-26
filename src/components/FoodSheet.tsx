@@ -8,12 +8,36 @@ import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
 import { Sheet, Stepper } from './Sheet'
 import { Button, Chip, Illustrative } from './ui'
 
+/** v1.10.1: Add item in an AI meal's breakdown. The new entry joins that group. */
+export type EntryGroup = { id: string; name?: string }
+export const groupFields = (g?: EntryGroup) => (g ? { groupId: g.id, ...(g.name ? { groupName: g.name } : {}) } : {})
+/** Keep an edited entry's photo source and AI meal group. */
+export const keptFields = (e: Entry) => ({ ...(e.source ? { source: e.source } : {}), ...(e.groupId ? { groupId: e.groupId } : {}), ...(e.groupName ? { groupName: e.groupName } : {}) })
+
+/** v1.10.1: one star for built-in and saved foods, 44px target. */
+export function FavStar({ id }: { id: string }) {
+  const { state, dispatch } = useStore()
+  const fav = state.favourites.includes(id)
+  return (
+    <button
+      type="button"
+      aria-pressed={fav}
+      aria-label={fav ? 'Remove from favourites' : 'Add to favourites'}
+      onClick={() => dispatch({ type: 'toggleFav', foodId: id })}
+      className={`tap -mr-2 -mt-1.5 grid h-11 w-11 shrink-0 place-items-center text-[26px] leading-none ${fav ? 'text-carbs' : 'text-mute'}`}
+      data-testid="fav-star"
+    >
+      {fav ? '★' : '☆'}
+    </button>
+  )
+}
+
 type Props =
-  | { mode: 'add'; food: Food; meal: Meal; date: string; remaining: number; onDone: (e: Entry) => void; onClose: () => void }
+  | { mode: 'add'; food: Food; meal: Meal; date: string; remaining: number; onDone: (e: Entry) => void; onClose: () => void; group?: EntryGroup }
   | { mode: 'edit'; entry: Entry; remaining: number; onDone: () => void; onClose: () => void }
 
 export function FoodSheet(props: Props) {
-  const { state, dispatch } = useStore()
+  const { dispatch } = useStore()
   const food = props.mode === 'add' ? props.food : FOOD_BY_ID.get(props.entry.foodId!)!
   const servings = servingsFor(food)
   const init = props.mode === 'edit' ? props.entry : null
@@ -29,16 +53,16 @@ export function FoodSheet(props: Props) {
     () => ({ kcal: Math.round(food.kcal * mult * qty), p: food.protein * mult * qty, c: food.carbs * mult * qty, f: food.fat * mult * qty }),
     [food, mult, qty],
   )
-  const fav = state.favourites.includes(food.id)
   const qtyLabel = formatAmount(servingLabel, qty)
 
   const save = () => {
     const base = entryFromFood(food.id, { meal, date: props.mode === 'add' ? props.date : props.entry.date, mult, qty, servingLabel })
     if (props.mode === 'add') {
-      dispatch({ type: 'addEntry', entry: base })
-      props.onDone(base)
+      const entry = { ...base, ...groupFields(props.group) }
+      dispatch({ type: 'addEntry', entry })
+      props.onDone(entry)
     } else {
-      dispatch({ type: 'updateEntry', entry: { ...base, id: props.entry.id, createdAt: props.entry.createdAt, ...(props.entry.source ? { source: props.entry.source } : {}) } })
+      dispatch({ type: 'updateEntry', entry: { ...base, id: props.entry.id, createdAt: props.entry.createdAt, ...keptFields(props.entry) } })
       props.onDone()
     }
   }
@@ -51,15 +75,7 @@ export function FoodSheet(props: Props) {
           <h2 className="title text-[24px] leading-tight">{food.name}</h2>
           <div className="text-[15px] text-mute">{food.category}</div>
         </div>
-        <button
-          type="button"
-          aria-pressed={fav}
-          aria-label={fav ? 'Remove from favourites' : 'Add to favourites'}
-          onClick={() => dispatch({ type: 'toggleFav', foodId: food.id })}
-          className={`text-[24px] leading-none ${fav ? 'text-carbs' : 'text-mute'}`}
-        >
-          {fav ? '★' : '☆'}
-        </button>
+        <FavStar id={food.id} />
       </div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Serving size">
         {servings.map((s, i) => (
@@ -80,7 +96,7 @@ export function FoodSheet(props: Props) {
           />
         </label>
       )}
-      <Stepper value={qty} onChange={setQty} label={qtyLabel} />
+      <Stepper value={qty} onChange={setQty} label={qtyLabel} unit={servingLabel} />
       {props.mode === 'edit' && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Meal">
           {MEALS.map((m) => (

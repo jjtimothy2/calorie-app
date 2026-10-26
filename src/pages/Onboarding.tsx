@@ -5,6 +5,7 @@ import { RestoreLink } from '../components/Backup'
 import { Sheet } from '../components/Sheet'
 import { useCountUp } from '../components/motion'
 import { WelcomeArt } from '../components/WelcomeArt'
+import { useInstall } from '../lib/install'
 import { ACTIVITY, calcBmr, dailyPlan, fmt, KCAL_PER_KG, PACE, PACES, paceKcal } from '../lib/calc'
 import { normaliseProfile, useStore } from '../lib/store'
 import type { Activity, Goal, Sex } from '../lib/types'
@@ -111,6 +112,7 @@ export default function Onboarding() {
               <p className="mt-3 max-w-[290px] text-[18px] leading-snug text-mute">Know your daily calories in a minute. Everything stays on your phone.</p>
             </div>
             <div className="flex flex-col gap-2">
+              <InstallHint />
               <Button onClick={() => go('sex')} data-testid="ob-start">Get started</Button>
               <RestoreLink label="Restore a backup" />
             </div>
@@ -416,6 +418,31 @@ function HowSheet({ d, plan, watch, onClose }: { d: Draft; plan: Plan; watch: bo
       </div>
     </Sheet>
   )
+}
+
+/**
+ * v1.10.1: Add to Home Screen hint on the welcome screen. iOS gets Safari's steps; Chrome and Android get an Install
+ * button when the browser offers one, else a menu hint. Hidden when already running from the Home Screen.
+ */
+function InstallHint() {
+  const st = useInstall()
+  if (st.kind === 'hidden') return null
+  return (
+    <div className="mb-1 flex items-center gap-3 rounded-[18px] border border-line bg-card px-3.5 py-3 text-left" data-testid="ob-install" data-kind={st.kind}>
+      <span className="tile !h-10 !w-10 shrink-0 text-g">{st.kind === 'ios' ? <ShareIcon /> : <PlusSquareIcon />}</span>
+      <p className="min-w-0 flex-1 text-[14px] leading-snug text-mute">
+        <b className="block text-[15px] text-ink">{st.kind === 'prompt' ? 'Install the app' : 'Add to Home Screen'}</b>
+        {st.kind === 'ios' ? 'Tap Share, then Add to Home Screen.' : st.kind === 'prompt' ? 'Opens full screen and works offline.' : 'Open your browser menu, then Install app or Add to Home screen.'}
+      </p>
+      {st.kind === 'prompt' && (
+        <button type="button" onClick={() => { void st.install() }} className="tap min-h-11 shrink-0 rounded-full bg-g-soft px-4 text-[15px] font-bold text-g-soft-ink" data-testid="ob-install-btn">Install</button>
+      )}
+    </div>
+  )
+}
+
+function PlusSquareIcon() {
+  return <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M12 8.5v7M8.5 12h7" /></svg>
 }
 
 function ShareIcon() {

@@ -62,8 +62,7 @@ export function AiCard({ focus = false }: { focus?: boolean }) {
           {PROVIDERS.map((p) => <Chip key={p} on={provider === p} onClick={() => pick(p)}>{PROVIDER_LABEL[p]}</Chip>)}
         </div>
         <p className="-mt-1 text-[13px] text-mute">
-          Model: {MODELS[provider]}.{provider === 'gemini' ? ' Works with a free key.' : ''}{' '}
-          <a href={KEY_URL[provider]} target="_blank" rel="noreferrer noopener" className="font-semibold text-g-ink underline">Get a key</a>
+          Model: {MODELS[provider]}.{provider === 'gemini' ? ' Works with a free key.' : <>{' '}<a href={KEY_URL[provider]} target="_blank" rel="noreferrer noopener" className="font-semibold text-g-ink underline">Get a key</a></>}
         </p>
         <label className="flex flex-col gap-1.5 text-base font-semibold">
           <span>{PROVIDER_LABEL[provider]} API key</span>
@@ -88,6 +87,12 @@ export function AiCard({ focus = false }: { focus?: boolean }) {
             </button>
           </span>
         </label>
+        {provider === 'gemini' && (
+          <p className="-mt-1 text-[15px] leading-snug text-mute" data-testid="ai-key-help">
+            Don't have a key? Get one free{' '}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="-mx-1.5 -my-3 inline-block px-1.5 py-3 font-semibold text-g-ink underline" data-testid="ai-key-link">here</a>
+          </p>
+        )}
         <div className="flex gap-2">
           <Button className="flex-1" disabled={!trimmed || !dirty} onClick={save}>{stored && !dirty ? 'Saved' : 'Save'}</Button>
           <Button variant="ghost" className="flex-1" disabled={!trimmed || busy} onClick={test}>Test key</Button>

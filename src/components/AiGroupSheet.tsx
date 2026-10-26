@@ -38,7 +38,7 @@ export function groupTitle(items: Entry[]) {
   return items.length === 1 ? items[0].name : `${items[0].name} and ${items.length - 1} more`
 }
 
-export function AiGroupSheet({ items, onEdit, onClose }: { items: Entry[]; onEdit: (e: Entry) => void; onClose: () => void }) {
+export function AiGroupSheet({ items, onEdit, onAdd, onClose }: { items: Entry[]; onEdit: (e: Entry) => void; onAdd?: () => void; onClose: () => void }) {
   const { dispatch } = useStore()
   const [confirm, setConfirm] = useState(false)
   const t = sumEntries(items)
@@ -88,6 +88,11 @@ export function AiGroupSheet({ items, onEdit, onClose }: { items: Entry[]; onEdi
             )
           })}
         </ul>
+        {onAdd && (
+          <button type="button" onClick={onAdd} className="tap -mt-1 flex min-h-12 items-center justify-center gap-2 rounded-[18px] border border-dashed border-line text-[16px] font-bold text-g-ink" data-testid="ai-group-add">
+            <span aria-hidden="true" className="text-[20px] leading-none">+</span>Add item
+          </button>
+        )}
         <p className="-mt-1 text-center text-[13px] text-mute">Tap an item to change its amount or macros.</p>
         <Button variant="ghost" onClick={onClose}>Done</Button>
         {confirm ? (
