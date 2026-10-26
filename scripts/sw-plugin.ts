@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import type { Plugin } from 'vite'
 
 // Bumped per release (v1.1: new storage key and formulas). The content hash below changes on every build anyway.
-export const APP_VERSION = 'v1.4.2'
+export const APP_VERSION = 'v1.5'
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))
@@ -54,6 +54,7 @@ self.addEventListener('activate', (e) => {
 })
 self.addEventListener('fetch', (e) => {
   const req = e.request
+  // v1.5: AI calls (api.openai.com, generativelanguage.googleapis.com) are cross-origin POST/GET, so they never touch the cache.
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return
   if (req.mode === 'navigate') {
     // SPA: any route is the app shell. Network first so a new deploy shows up, cached shell when offline.

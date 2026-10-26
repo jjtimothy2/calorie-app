@@ -2,13 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
+import { CameraIcon, NoKeySheet, PhotoFlow, type LogItem } from '../components/PhotoSheets'
 import { Screen } from '../components/Layout'
 import { Button, Chip } from '../components/ui'
+import { Sheet } from '../components/Sheet'
 import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
 import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
-import { entryFromFood, useStore } from '../lib/store'
+import { entryFromFood, newId, useStore } from '../lib/store'
+import { readAi, type AiSettings } from '../lib/ai'
+import { downscalePhoto } from '../lib/photo'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
 type Tab = 'recent' | 'fav' | 'all'
@@ -26,7 +30,7 @@ export default function Log() {
   const [tab, setTab] = useState<Tab>(recentFoodIds.length ? 'recent' : 'all')
   const [picked, setPicked] = useState<Food | null>(null)
   const [quick, setQuick] = useState(false)
-  const [toast, setToast] = useState<{ entry: Entry; text: string } | null>(null)
+  const [toast, setToast] = useState<{ ids: string[]; text: string } | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const keyboard = useKeyboardOpen()
   const bar = !day.closed && !keyboard
@@ -34,7 +38,41 @@ export default function Log() {
 
   const showToast = (entry: Entry) => {
     window.clearTimeout(timer.current)
-    setToast({ entry, text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
+    setToast({ ids: [entry.id], text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
+    timer.current = window.setTimeout(() => setToast(null), 4000)
+  }
+  // v1.5: AI photo estimate. The photo is a downscaled data URL in memory only, dropped when the sheets close.
+  const online = useOnline()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [photo, setPhoto] = useState<{ url: string; ai: AiSettings } | null>(null)
+  const [noKey, setNoKey] = useState(false)
+  const [photoErr, setPhotoErr] = useState(false)
+  const openCamera = () => {
+    if (!online) return
+    if (!readAi()) { setNoKey(true); return }
+    fileRef.current?.click()
+  }
+  const onFile = async (file: File | undefined) => {
+    if (fileRef.current) fileRef.current.value = '' // same photo can be picked again
+    const ai = readAi()
+    if (!file || !ai) return
+    try { setPhoto({ url: await downscalePhoto(file), ai }) } catch { setPhotoErr(true); setPhoto(null) }
+  }
+  const logPhoto = (rows: LogItem[]) => {
+    const added: Entry[] = rows.map(({ item, grams }) => {
+      if (item.food) return { ...entryFromFood(item.food.id, { meal, date: today, mult: grams / item.food.grams, servingLabel: `${grams} g` }), source: 'photo' as const }
+      const r = grams / item.ai.grams
+      return {
+        id: newId(), date: today, meal, foodId: null, name: item.ai.name, servingLabel: `${grams} g`, servingMult: 1, qty: 1,
+        kcal: Math.round(item.ai.kcal * r), protein: +(item.ai.protein * r).toFixed(1), carbs: +(item.ai.carbs * r).toFixed(1), fat: +(item.ai.fat * r).toFixed(1),
+        createdAt: Date.now(), source: 'photo' as const,
+      }
+    })
+    for (const entry of added) dispatch({ type: 'addEntry', entry })
+    setPhoto(null)
+    window.clearTimeout(timer.current)
+    const kcal = added.reduce((a, e) => a + entryTotals(e).kcal, 0)
+    setToast({ ids: added.map((e) => e.id), text: `Added ${added.length} ${added.length === 1 ? 'item' : 'items'} from photo · ${fmt(kcal)} kcal` })
     timer.current = window.setTimeout(() => setToast(null), 4000)
   }
   const [exToast, setExToast] = useState<ExerciseEntry | null>(null)
@@ -162,8 +200,18 @@ export default function Log() {
       {/* v1.3.4: Quick add lives in a sticky full-width bar at the bottom of Log (Reed, option 1). Hidden when the
           day is closed, and while the on-screen keyboard is up so it never rides up over the list. */}
       {!day.closed && !keyboard && (
-        <div className="shrink-0 border-t border-line bg-bg px-5 pt-3 pb-safe-qa" data-testid="qa-bar">
-          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="tap flex w-full items-center justify-center gap-2 rounded-[18px] bg-ink p-4 text-[17px] font-bold text-bg shadow-[0_8px_20px_rgba(42,36,32,.22)]">
+        <div className="flex shrink-0 items-center gap-3 border-t border-line bg-bg px-5 pt-3 pb-safe-qa" data-testid="qa-bar">
+          {/* v1.5: AI photo estimate (Reed's mock). Food mode only. Offline it says so instead of opening anything. */}
+          {mode === 'food' && (online ? (
+            <button type="button" onClick={openCamera} aria-label="Estimate from a photo" data-testid="camera-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-ink">
+              <CameraIcon />
+            </button>
+          ) : (
+            <span role="note" data-testid="camera-offline" className="flex h-[56px] shrink-0 items-center gap-1.5 rounded-full border-2 border-dashed border-line px-3 text-[13px] font-semibold leading-tight text-mute">
+              <CameraIcon className="h-5 w-5" /><span>Needs<br />internet</span>
+            </span>
+          ))}
+          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="tap flex min-w-0 flex-1 items-center justify-center gap-2 rounded-[18px] bg-ink p-4 text-[17px] font-bold text-bg shadow-[0_8px_20px_rgba(42,36,32,.22)]">
             <span aria-hidden="true">⚡</span>{mode === 'food' ? 'Quick add calories' : 'Quick add burn'}
           </button>
         </div>
@@ -172,7 +220,7 @@ export default function Log() {
         <div role="status" className={`anim-fade ${bar ? 'bottom-above-qa' : 'bottom-safe'} absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg`} data-testid="toast">
           <span>{toast.text}</span>
           <span className="flex gap-3">
-            <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteEntry', id: toast.entry.id }); setToast(null) }}>Undo</button>
+            <button type="button" className="font-bold underline" onClick={() => { for (const id of toast.ids) dispatch({ type: 'deleteEntry', id }); setToast(null) }}>Undo</button>
             <button type="button" className="font-bold text-g-soft" onClick={() => nav('/')}>Done</button>
           </span>
         </div>
@@ -192,11 +240,44 @@ export default function Log() {
       {picked && (
         <FoodSheet key={picked.id} mode="add" food={picked} meal={meal} date={today} remaining={remaining} onClose={() => setPicked(null)} onDone={(e) => { setPicked(null); showToast(e) }} />
       )}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-input" onChange={(e) => onFile(e.target.files?.[0])} />
+      {noKey && <NoKeySheet onClose={() => setNoKey(false)} onSetup={() => nav('/settings?ai=1')} />}
+      {photoErr && (
+        <Sheet label="Photo problem" onClose={() => setPhotoErr(false)}>
+          <h2 className="title text-[24px]">Couldn’t open that photo</h2>
+          <p className="text-[16px] leading-snug">Try another photo, or take a new one. JPEG and PNG work everywhere.</p>
+          <Button data-autofocus onClick={() => { setPhotoErr(false); fileRef.current?.click() }}>Pick another photo</Button>
+          <button type="button" className="tap -mt-1 py-2 text-center text-[16px] font-bold text-g-ink underline" onClick={() => { setPhotoErr(false); setQuick(true) }}>Use Quick add instead</button>
+        </Sheet>
+      )}
+      {photo && (
+        <PhotoFlow
+          settings={photo.ai}
+          photo={photo.url}
+          onRetake={() => fileRef.current?.click()}
+          onClose={() => setPhoto(null)}
+          onQuickAdd={() => { setPhoto(null); setQuick(true) }}
+          onFixKey={() => { setPhoto(null); nav('/settings?ai=1') }}
+          onLog={logPhoto}
+        />
+      )}
       {quick && (
         <QuickAddSheet mode="add" meal={meal} date={today} remaining={remaining} onClose={() => setQuick(false)} onDone={(e) => { setQuick(false); showToast(e) }} />
       )}
     </>
   )
+}
+
+/** navigator.onLine, kept live. */
+function useOnline() {
+  const [on, setOn] = useState(() => typeof navigator === 'undefined' || navigator.onLine !== false)
+  useEffect(() => {
+    const up = () => setOn(true), down = () => setOn(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
+  }, [])
+  return on
 }
 
 /**

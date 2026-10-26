@@ -38,7 +38,7 @@ export function FoodSheet(props: Props) {
       dispatch({ type: 'addEntry', entry: base })
       props.onDone(base)
     } else {
-      dispatch({ type: 'updateEntry', entry: { ...base, id: props.entry.id, createdAt: props.entry.createdAt } })
+      dispatch({ type: 'updateEntry', entry: { ...base, id: props.entry.id, createdAt: props.entry.createdAt, ...(props.entry.source ? { source: props.entry.source } : {}) } })
       props.onDone()
     }
   }

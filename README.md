@@ -31,7 +31,7 @@ The app is built for the base path `/calorie-app/` (`base` in `vite.config.ts`).
 
 ## Backup
 
-Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie-counter", schema: 1, exportedAt, data: { every calorie-app:* key } }`. Import validates the file (app id, schema, state shape), shows a summary and asks before replacing anything; bad files get a friendly error and nothing changes. Restore also works from the first onboarding screen (new phone). "Last backup: X days ago" sits under the buttons; Home shows a dismissible reminder after 7 days without one. Backup bookkeeping lives in `calorie-app:backup` and is not exported. Load demo week is under Me > Developer.
+Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie-counter", schema: 1, exportedAt, data: { every calorie-app:* key } }`. Import validates the file (app id, schema, state shape), shows a summary and asks before replacing anything; bad files get a friendly error and nothing changes. Restore also works from the first onboarding screen (new phone). "Last backup: X days ago" sits under the buttons; Home shows a dismissible reminder after 7 days without one. Backup bookkeeping lives in `calorie-app:backup` and is not exported; neither is the AI key (`calorie-app:ai`). Load demo week is under Me > Developer.
 
 ## v1 Daily balance
 - Balance = BMR + daily movement + exercise - food. Positive is a deficit (green), negative a surplus (orange).
@@ -51,6 +51,16 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 - Home equation reads BMR + Movement + Exercise − Eaten = Balance; Movement is hidden only when the daily movement setting is off.
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
+
+## v1.5 AI photo estimate (bring your own key)
+
+- Log > Food: round camera button left of Quick add (hidden on closed days and with the keyboard up, like the bar). Offline it reads "Needs internet". No key yet: a set-up sheet with a button to Me.
+- Me > AI photo estimate: Gemini (default) or OpenAI, masked key with Show/Hide, Save, Test key (free model lookup, no tokens), Remove key. The key lives only in `localStorage["calorie-app:ai"]`: never in backups (export or restore), never logged, cleared by Reset all data.
+- Models are constants in `src/lib/ai.ts` (`MODELS`): `gemini-3.5-flash-lite` (on the Gemini free tier) and `gpt-6-luna`. Calls go straight from the browser (both providers allow CORS). OpenAI drops CORS headers on 401 from chat completions, so a network error while online is checked against `GET /v1/models` to tell "wrong key" from "no internet".
+- Flow: pick or take a photo (`input type=file accept=image/*`, no capture) -> downscaled in the browser to 1024 px JPEG -> optional note and chips (Shared, Half eaten, Extra sambal, Santan, No rice) -> strict JSON (dish, items with grams, kcal, protein, optional carbs, fat, confidence). Items that match our food list use our per-gram values; others keep the AI's numbers and are marked "AI estimate". Grams stepper, remove, then Log N items. Entries get `source: 'photo'` (optional field, old data unchanged). The photo is never stored.
+- Errors in plain words (wrong key, no internet, busy or out of credit, no food found, unreadable answer), each with Retake / Try again and Quick add.
+- The service worker only handles same-origin GETs, so API calls are never cached.
+- Tests: `tests/ai.mjs` (unit, `LIVE=1` also checks the Gemini request shape against the real API with a fake key) and `tests/v15-photo.mjs` (e2e, mocked providers). Screenshots: `node scripts/v15-shots.mjs` -> `screenshots/v15-*.png`.
 
 ## v1.4.2 Goal line and Protein chart
 

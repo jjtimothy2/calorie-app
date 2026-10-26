@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { BodyFields, GoalFields, goalBlurb, PACE_LABEL, paceHint, targetSum, validBody, type Draft } from '../components/ProfileFields'
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
+import { AiCard } from '../components/AiCard'
+import { clearAi } from '../lib/ai'
 import { Info } from '../components/Info'
 import { calcBmr, CARB_FLOOR, dailyPlan, fmt, macroPlan, movementKcal, PROTEIN_PER_KG, FAT_FLOOR_PER_KG } from '../lib/calc'
 import { useStore } from '../lib/store'
@@ -13,6 +15,7 @@ const numInput = 'w-28 rounded-xl border border-line bg-bg px-3 py-2 text-right 
 export default function Settings() {
   const { state, dispatch } = useStore()
   const nav = useNavigate()
+  const [params] = useSearchParams()
   const p = state.profile!
   // v1.3.3: no goal weight field; a stored goalWeightKg rides along untouched in ...p.
   const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal, pace: p.pace })
@@ -133,10 +136,11 @@ export default function Settings() {
         <Button type="submit" disabled={!ok}>Save changes</Button>
         <p role="status" className="text-center text-[15px] text-g-ink">{msg}</p>
       </form>
+      <AiCard focus={params.get('ai') === '1'} />
       <BackupCard />
       <Card className="flex flex-col gap-3">
         <h2 className="title text-[21px]">Data</h2>
-        <Button variant="danger" onClick={() => { if (confirm('Delete all data on this device? Export a backup first if you want to keep it.')) { dispatch({ type: 'reset' }); nav('/onboarding', { replace: true }) } }}>Reset all data</Button>
+        <Button variant="danger" onClick={() => { if (confirm('Delete all data on this device? Export a backup first if you want to keep it.')) { dispatch({ type: 'reset' }); clearAi(); nav('/onboarding', { replace: true }) } }}>Reset all data</Button>
       </Card>
       <details className="rounded-[22px] border border-line bg-card p-4 text-[15px]" data-testid="developer">
         <summary className="cursor-pointer font-bold">Developer</summary>

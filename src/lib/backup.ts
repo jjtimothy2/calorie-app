@@ -9,6 +9,9 @@ export const PREFIX = 'calorie-app:'
 export const STATE_KEY = 'calorie-app:v2'
 export const LEGACY_STATE_KEY = 'calorie-app:v1'
 export const META_KEY = 'calorie-app:backup' // { lastExportAt, dismissedAt }; device-local, never exported
+/** v1.5: the user's AI provider key. Same value as AI_KEY in ai.ts. Device-only: never exported, never restored. */
+export const AI_SECRET_KEY = 'calorie-app:ai'
+const DEVICE_ONLY = new Set([META_KEY, AI_SECRET_KEY])
 export const REMIND_DAYS = 7
 const DAY = 86_400_000
 
@@ -28,12 +31,12 @@ export function writeMeta(patch: Partial<BackupMeta>) {
   localStorage.setItem(META_KEY, JSON.stringify({ ...readMeta(), ...patch }))
 }
 
-/** Every calorie-app:* key except the backup bookkeeping, values parsed from JSON. */
+/** Every calorie-app:* key except device-only ones (backup bookkeeping, the AI key), values parsed from JSON. */
 export function makeBackup(now = new Date()): BackupFile {
   const data: Record<string, unknown> = {}
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i)!
-    if (!k.startsWith(PREFIX) || k === META_KEY || (k === LEGACY_STATE_KEY && localStorage.getItem(STATE_KEY))) continue
+    if (!k.startsWith(PREFIX) || DEVICE_ONLY.has(k) || (k === LEGACY_STATE_KEY && localStorage.getItem(STATE_KEY))) continue
     const raw = localStorage.getItem(k)!
     try { data[k] = JSON.parse(raw) } catch { data[k] = raw }
   }
@@ -90,7 +93,7 @@ export function parseBackup(text: string): Parsed {
 /** Writes non-state keys from a backup (the store writes the state itself after the restore action). */
 export function restoreExtraKeys(file: BackupFile) {
   for (const [k, v] of Object.entries(file.data)) {
-    if (!k.startsWith(PREFIX) || k === STATE_KEY || k === LEGACY_STATE_KEY || k === META_KEY) continue
+    if (!k.startsWith(PREFIX) || k === STATE_KEY || k === LEGACY_STATE_KEY || DEVICE_ONLY.has(k)) continue
     localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v))
   }
 }

@@ -40,6 +40,7 @@ export function QuickAddSheet(props: Props) {
       carbs: Number(c) || 0,
       fat: Number(f) || 0,
       createdAt: e ? e.createdAt : Date.now(),
+      ...(e?.source ? { source: e.source } : {}),
     }
     if (props.mode === 'add') {
       dispatch({ type: 'addEntry', entry })

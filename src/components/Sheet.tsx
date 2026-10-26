@@ -9,7 +9,7 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
       if (e.key === 'Tab' && ref.current) {
-        const f = ref.current.querySelectorAll<HTMLElement>('button, input, select, [tabindex]:not([tabindex="-1"])')
+        const f = ref.current.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
         if (!f.length) return
         const a = f[0], b = f[f.length - 1]
         if (e.shiftKey && document.activeElement === a) { e.preventDefault(); b.focus() }
