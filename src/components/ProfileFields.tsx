@@ -1,4 +1,4 @@
-import { ACTIVITY, DEFICIT_CAP, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
+import { ACTIVITY, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
 import type { Activity, Goal, Pace, Sex } from '../lib/types'
 import { Chip } from './ui'
 import { Info } from './Info'
@@ -53,7 +53,7 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
 
 const pct = (f: number) => `${Math.round((f - 1) * 1000) / 10}%`
 
-/** paceHint: one short grey line under the pace chips (the plan's capped daily deficit or surplus). */
+/** paceHint: one short grey line under the pace chips (the plan's real daily deficit or surplus). */
 export function GoalFields({ d, set, paceHint }: { d: Draft; set: (d: Draft) => void; paceHint?: string }) {
   return (
     <>
@@ -71,8 +71,7 @@ export function GoalFields({ d, set, paceHint }: { d: Draft; set: (d: Draft) => 
             Pace
             <Info title="Pace" id="pace">
               <p>How fast to aim for, per week. About {fmt(KCAL_PER_KG)} kcal is one kg of body weight, so 0.25 kg a week is roughly 275 kcal a day, 0.5 kg about 550 and 0.75 kg about 825.</p>
-              <p>The daily difference is capped at {DEFICIT_CAP * 100}% of your base (your BMR, plus daily movement when it is on).</p>
-              <p>The target also never goes under 1,500 kcal for men or 1,200 kcal for women (or under your BMR when movement is on), so near that floor the real deficit is smaller.</p>
+              <p>The target never goes under 1,500 kcal for men or 1,200 kcal for women (or under your BMR when movement is on), so near that floor the real deficit is smaller.</p>
             </Info>
           </legend>
           <div className="flex flex-wrap gap-2" data-testid="pace">
@@ -113,7 +112,7 @@ export function validBody(d: Body) {
   return d.age >= 14 && d.age <= 100 && d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
 }
 
-/** v1.3.3: the short line under the pace chips: the plan's actual daily deficit or surplus after the cap and floor. */
+/** v1.3.3: the short line under the pace chips: the plan's actual daily deficit or surplus after the floor. */
 export function paceHint(goal: Goal, plan: { planDeficit: number; atMinimum: boolean }) {
   if (goal === 'keep') return undefined
   if (plan.atMinimum) return "You're at the minimum intake"
@@ -134,14 +133,14 @@ export function targetSum(goal: Goal, plan: { bmr: number; movement: number; pla
   return s
 }
 
-/** Goal line from what the plan takes off (or adds to) its base, after the 20% cap and the v1.2 floor. */
-export function goalBlurb(goal: Goal, plan: { planDeficit: number; capped: boolean; floored: boolean; floor: number }) {
+/** Goal line from what the plan takes off (or adds to) its base, after the v1.2 floor (v1.8: no cap). */
+export function goalBlurb(goal: Goal, plan: { planDeficit: number; floored: boolean; floor: number }) {
   if (goal === 'keep') return plan.planDeficit < 0 ? `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit` : 'to keep your current weight'
   const kcal = Math.abs(plan.planDeficit)
   const min = `the ${fmt(plan.floor)} kcal minimum`
   if (goal === 'lose' && plan.planDeficit <= 0) return `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit`
   const kg = Math.round(((kcal * 7) / KCAL_PER_KG) * 20) / 20
   const verb = goal === 'lose' ? 'lose' : 'gain'
-  const note = plan.floored ? ` (held at ${min})` : plan.capped ? ' (capped at 20%)' : ''
+  const note = plan.floored ? ` (held at ${min})` : ''
   return `${fmt(kcal)} kcal a day ${goal === 'lose' ? 'deficit' : 'surplus'}, to ${verb} about ${kg} kg a week${note}`
 }

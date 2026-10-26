@@ -108,7 +108,7 @@ export default function Settings() {
                     BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
                     {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? (d.goal === 'gain' && !plan.floored ? ` + ${fmt(-plan.planDeficit)} surplus` : `, held at the ${fmt(plan.floor)} kcal minimum`) : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
                   </p>
-                  <p data-testid="pace-line">{d.goal === 'keep' ? (plan.atMinimum ? `Keep weight: ${goalBlurb(d.goal, plan)}.` : 'Keep weight: no deficit.') : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}Deficits are capped at 20% and the target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</p>
+                  <p data-testid="pace-line">{d.goal === 'keep' ? (plan.atMinimum ? `Keep weight: ${goalBlurb(d.goal, plan)}.` : 'Keep weight: no deficit.') : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}The target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</p>
                   <p>The minimum is 1,500 kcal for men and 1,200 kcal for women (and never under your BMR when daily movement is on). When your goal would take the target below it, the target stays at the minimum: you're at the minimum intake, the daily goal is 0, and your watch or exercise burn creates your deficit. Keep and Lose never show a surplus goal.</p>
                 </Info>
               </span>

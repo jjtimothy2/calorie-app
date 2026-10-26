@@ -52,6 +52,17 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.8 Onboarding, no deficit cap
+
+- New onboarding: a welcome screen (app name, one line, Get started, a Restore a backup link, and a plate-in-the-ring illustration drawn in inline SVG that stays still under prefers-reduced-motion). Then one question per screen with a progress bar: sex, age, height and weight, goal, activity, pace. Keep skips pace.
+- Pace chips show each option's real daily target, or "at the minimum" when the floor kicks in.
+- Target reveal: the number counts up (shown instantly under reduced motion), and the maths sits behind a "How we worked this out" sheet.
+- An optional extras screen follows: an Add to Home Screen tip and AI key setup (opens Me with the key field focused). Skip or Done goes to Home.
+- New profiles start with daily movement on (includeMovement true).
+- The 20% deficit cap is gone. The pace deficit is applied in full, down to the floor: 1,500 kcal for men, 1,200 for women, or BMR when movement is on. The "capped" copy is gone too.
+- Existing profiles are not re-onboarded and their movement setting is not changed. calorie-app:v2 and calorie-app:ai are unchanged, and closed days keep their stored numbers.
+- Tests: tests/v18-onboarding.mjs (example: man, 32, 175 cm, 92 kg, lightly active: gentle 2,281, standard 2,006, faster 1,859 kcal). Screenshots: screenshots/v18-*.
+
 ## v1.7.1 Three AI pills, no tap ring
 
 - The sparkle menu has three pills, bottom to top: Take photo (capture=environment, opens the rear camera directly), From library (no capture flag, opens the photo picker; iOS may show its small menu first) and Type it. Pickers open and the text field focuses inside the tap. Both photo paths land on the photo sheet with the note unfocused.

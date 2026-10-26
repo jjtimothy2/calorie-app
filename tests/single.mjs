@@ -24,17 +24,21 @@ try {
   await step('loads from file:// and routes with the hash', async () => {
     await page.goto(FILE)
     await page.waitForURL('**#/onboarding')
-    await page.getByRole('button', { name: 'Female' }).click()
+    await page.getByTestId('ob-start').click()
+    await page.getByTestId('ob-sex-female').click()
     await page.fill('input[name=age]', '30')
+    await page.getByTestId('ob-next').click()
     await page.fill('input[name=heightCm]', '165')
     await page.fill('input[name=weightKg]', '68')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Lose weight' }).click()
-    await page.getByLabel(/Light \(exercise/).check()
-    await page.getByRole('button', { name: 'See my target' }).click()
-    await page.getByRole('button', { name: 'Start logging' }).click()
+    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-goal-lose').click()
+    await page.getByTestId('ob-act-light').click()
+    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-target').waitFor()
+    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-skip').click()
     await page.waitForURL('**#/')
-    assert.equal(await num(page.getByTestId('eq-bmr')), 1400) // v1.3.1: movement off counts plain BMR
+    assert.equal(await num(page.getByTestId('eq-bmr')), 1400) // v1.8: new profiles count movement (525) on top of BMR
     assert.equal(await page.getByTestId('eq-base').count(), 0)
   })
   await step('v2: 110 g target, 75 g logged', async () => {

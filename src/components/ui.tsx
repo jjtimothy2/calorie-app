@@ -47,3 +47,12 @@ export function Dots({ step, total }: { step: number; total: number }) {
 export function Illustrative({ className = '' }: { className?: string }) {
   return <p className={`text-center text-xs text-mute ${className}`}>Illustrative data. Values are approximate.</p>
 }
+
+/** v1.8 onboarding: thin progress bar (replaces Dots there). value 0..1. */
+export function Progress({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="h-1 flex-1 overflow-hidden rounded-full bg-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
+      <div className="h-full rounded-full bg-g transition-[width] duration-500 ease-out" style={{ width: `${Math.max(4, value * 100)}%` }} />
+    </div>
+  )
+}

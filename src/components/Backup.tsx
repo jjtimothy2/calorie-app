@@ -75,12 +75,12 @@ export function BackupCard() {
 }
 
 /** On first run: bring data over from another device instead of starting fresh. */
-export function RestoreLink() {
+export function RestoreLink({ label = 'Restore from a backup' }: { label?: string }) {
   const nav = useNavigate()
   const imp = useImport(() => nav('/', { replace: true }))
   return (
     <div className="flex flex-col items-center gap-2">
-      <button type="button" className="px-2 py-1 text-[15px] font-bold text-g-ink" onClick={imp.pick}>Restore from a backup</button>
+      <button type="button" className="px-2 py-1 text-[15px] font-bold text-g-ink" onClick={imp.pick}>{label}</button>
       {imp.ui}
     </div>
   )

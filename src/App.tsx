@@ -4,7 +4,7 @@ import { useStore } from './lib/store'
 import History from './pages/History'
 import Home from './pages/Home'
 import Log from './pages/Log'
-import Onboarding from './pages/Onboarding'
+import Onboarding, { afterOnboarding } from './pages/Onboarding'
 import Settings from './pages/Settings'
 import Verdict from './pages/Verdict'
 import Nutrition from './pages/Nutrition'
@@ -16,7 +16,7 @@ export default function App() {
   return (
     <PhoneFrame>
       <Routes>
-        <Route path="/onboarding" element={has ? <Navigate to="/" replace /> : <Onboarding />} />
+        <Route path="/onboarding" element={has ? <Navigate to={afterOnboarding.to} replace /> : <Onboarding />} />
         <Route path="/" element={guard(<Home />)} />
         <Route path="/log" element={guard(<Log />)} />
         <Route path="/history" element={guard(<History />)} />

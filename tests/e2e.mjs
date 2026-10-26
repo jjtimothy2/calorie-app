@@ -50,47 +50,47 @@ try {
   const terms = () => page.locator('[data-testid=equation] [data-term]').evaluateAll((els) => els.map((e) => e.getAttribute('data-term')))
   const goHome = async () => { await page.getByRole('link', { name: 'Today', exact: true }).click(); await page.waitForURL(BASE + '/') }
 
-  await step('onboarding (v1.2, v1.3.3 no goal weight): pace, movement off by default plans from BMR (v1.3.1)', async () => {
+  await step('onboarding (v1.8 one question per screen): movement ON by default, no cap, activity before pace', async () => {
     await page.goto(BASE + '/')
     await page.waitForURL('**/onboarding')
-    await page.getByRole('button', { name: 'Female' }).click()
+    await page.getByTestId('ob-welcome').waitFor()
+    await page.getByTestId('ob-start').click()
+    await page.getByTestId('ob-sex-female').click()
+    await page.getByTestId('ob-age').waitFor()
     await page.fill('input[name=age]', '30')
+    await page.getByTestId('ob-next').click()
     await page.fill('input[name=heightCm]', '165')
     await page.fill('input[name=weightKg]', '68')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Lose weight' }).click()
-    await page.getByLabel(/Light \(exercise/).check()
-    // Pace chips (Standard is the default). v1.3.3: no goal weight field; the pace hint shows the real daily kcal.
-    assert.equal(await page.getByTestId('pace').getByRole('button').count(), 3)
-    assert.equal(await page.getByRole('button', { name: 'Standard 0.5 kg/wk' }).getAttribute('aria-pressed'), 'true')
+    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-goal-lose').click()
+    await page.getByTestId('ob-act-light').click()
+    // Pace chips (Standard is the default) show this person's real targets. v1.3.3: no goal weight field.
+    await page.getByTestId('ob-pace').waitFor()
+    assert.equal(await page.getByTestId('ob-pace').locator('button').count(), 3)
+    assert.equal(await page.getByTestId('ob-pace-standard').getAttribute('aria-pressed'), 'true')
     assert.equal(await page.locator('input[name=goalWeightKg]').count(), 0)
     assert.doesNotMatch(await page.locator('main').innerText(), /goal weight/i)
-    assert.equal(await page.getByTestId('pace-hint').innerText(), 'About 200 kcal a day') // BMR 1400 woman: 1400 - 1200 floor
-    await page.getByRole('button', { name: 'Keep weight' }).click()
-    assert.equal(await page.getByTestId('pace').count(), 0) // no pace when keeping weight
-    await page.getByRole('button', { name: 'Lose weight' }).click()
-    await page.getByRole('button', { name: 'See my target' }).click()
-    // BMR = 10*68 + 6.25*165 - 5*30 - 161 = 1400. v1.3.1 movement off: 1400 - min(550, 280) = 1120 -> held at the 1,200 floor.
-    assert.equal(await num(page.getByTestId('target')), 1200)
-    assert.match(await page.getByTestId('goal-line').innerText(), /200 kcal a day deficit.*\(held at the 1,200 kcal minimum\)/)
-    // v1.3.2: macros from maintenance (BMR 1400, movement off) at 68 kg: protein 109; fat max(350, 367.2) kcal = 41 g;
-    // carbs (1400 - 436 - 367.2) / 4 = 149. The 1,200 kcal target doesn't change them.
-    assert.match(await page.getByTestId('onboard-macros').innerText(), /protein 109 g, carbs 149 g, fat 41 g, set from your maintenance \(1,400 kcal\)/)
-    assert.match(await page.getByTestId('onboard-macros').innerText(), /starts from your BMR \(1,400\).*never goes under 1,200 kcal/)
-    assert.doesNotMatch(await page.getByTestId('onboard-macros').innerText(), /1\.2/)
-    await page.getByRole('button', { name: 'Start logging' }).click()
+    // BMR = 10*68 + 6.25*165 - 5*30 - 161 = 1400; light movement 525 -> burn 1925. Gentle 1650; Standard 1375 and
+    // Faster 1100 are both held at the BMR floor (1400, movement on); the goal stays 525, so neither is "at the minimum".
+    assert.match(await page.getByTestId('ob-pace-gentle').innerText(), /1,650 kcal/)
+    assert.match(await page.getByTestId('ob-pace-standard').innerText(), /1,400 kcal/)
+    assert.match(await page.getByTestId('ob-pace-faster').innerText(), /1,400 kcal/)
+    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-target').waitFor()
+    assert.equal(await num(page.getByTestId('target')), 1400)
+    assert.match(await page.getByTestId('floor-line').innerText(), /your resting burn \(1,400 kcal\)/)
+    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-extras').waitFor()
+    await page.getByTestId('ob-skip').click()
     await page.waitForURL(BASE + '/')
-    // v1.3.1: with movement off Home counts plain BMR 1,400, so the goal is the 200 deficit (1400 - 1200).
+    // v1.8: new profiles count daily movement, so Home shows BMR 1,400 + movement 525 and the goal is 525 (1925 - 1400).
     assert.equal(await num(page.getByTestId('eq-bmr')), 1400)
-    assert.equal(await page.getByTestId('eq-base').count(), 0)
-    assert.equal(await page.getByTestId('eq-movement').count(), 0) // movement default OFF for new profiles
-    assert.deepEqual(await terms(), ['BMR', 'Exercise', 'Eaten', 'Balance'])
-    assert.match(await page.getByTestId('ring-goal').innerText(), /goal 200/) // 1400 - 1200
-    assert.equal(await num(page.getByTestId('balance')), 1400)
-    assert.match(await page.getByTestId('equation').getAttribute('aria-label'), /^BMR 1,400 plus exercise 0/)
+    assert.equal(await num(page.getByTestId('eq-movement')), 525)
+    assert.match(await page.getByTestId('ring-goal').innerText(), /goal 525/)
+    assert.equal(await num(page.getByTestId('balance')), 1925)
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
     assert.equal(saved.version, 2)
-    assert.deepEqual([saved.profile.includeMovement, saved.profile.goalWeightKg, saved.profile.pace, saved.profile.target], [false, 68, 'standard', 1200])
+    assert.deepEqual([saved.profile.includeMovement, saved.profile.goalWeightKg, saved.profile.pace, saved.profile.target, saved.profile.bmrCustom], [true, 68, 'standard', 1400, false])
   })
   await step('settings: weight change recalculates BMR, custom BMR, movement toggle', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
@@ -100,18 +100,17 @@ try {
     assert.equal(await page.inputValue('input[name=bmr]'), '1400')
     await page.fill('input[name=bmr]', '1600')
     const sw = page.getByRole('switch', { name: /Include daily movement/ })
-    assert.equal(await sw.isChecked(), false)
-    // Reed's acceptance on the Me screen: movement on -> 2200 - 440 = 1760, off (v1.3.1) -> 1600 - 320 (20% cap) = 1280.
-    await sw.check()
-    assert.match(await sheetText(page, 'target', 'budget-line'), /BMR 1,600 \+ movement 600 − 440 deficit = 1,760 kcal/)
-    assert.equal(await page.getByTestId('settings-target').innerText(), '1,760 kcal')
+    assert.equal(await sw.isChecked(), true) // v1.8: new profiles start with movement on
+    // Reed's acceptance on the Me screen, v1.8 (no cap): movement on -> 2200 - 550 = 1650, off -> 1600 - 550 = 1050, held at 1,200.
+    assert.match(await sheetText(page, 'target', 'budget-line'), /BMR 1,600 \+ movement 600 − 550 deficit = 1,650 kcal/)
+    assert.equal(await page.getByTestId('settings-target').innerText(), '1,650 kcal')
     // v1.3.2: macros from maintenance 2200 at 68 kg: P109, fat 550 kcal = 61 g, carbs (2200 - 436 - 550) / 4 = 304.
     assert.equal(await page.getAttribute('input[name=macro-protein]', 'placeholder'), '109')
     assert.equal(await page.getAttribute('input[name=macro-fat]', 'placeholder'), '61')
     assert.equal(await page.getAttribute('input[name=macro-carbs]', 'placeholder'), '304')
-    assert.match(await sheetText(page, 'target', 'pace-line'), /capped at 20%/)
+    assert.doesNotMatch(await sheetText(page, 'target', 'pace-line'), /capped/)
     await sw.uncheck()
-    assert.match(await sheetText(page, 'target', 'budget-line'), /^BMR 1,600 − 320 deficit = 1,280 kcal/)
+    assert.match(await sheetText(page, 'target', 'budget-line'), /^BMR 1,600 − 400 deficit = 1,200 kcal/)
     const pl = await sheetText(page, 'target', 'pace-line')
     assert.match(pl, /starts from your BMR\./)
     assert.match(pl, /never goes under 1,200 kcal/)
@@ -126,7 +125,7 @@ try {
     assert.equal(await page.getByTestId('eq-base').count(), 0)
     assert.equal(await page.getByTestId('eq-movement').count(), 0) // hidden only because the toggle is off
     assert.deepEqual(await terms(), ['BMR', 'Exercise', 'Eaten', 'Balance'])
-    assert.match(await page.getByTestId('ring-goal').innerText(), /goal 320/) // 1600 - 1280 = the plan deficit
+    assert.match(await page.getByTestId('ring-goal').innerText(), /goal 400/) // 1600 - 1200 = the plan deficit (v1.8 no cap, floored)
   })
   await step('v1.3.1 Keep with movement off: balance goal 0 (break even, target = BMR 1,600)', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
@@ -141,15 +140,15 @@ try {
     await page.getByRole('button', { name: 'Save changes' }).click()
     await page.getByText('Saved.').waitFor()
     await goHome()
-    // Gain: 1600 + min(550, 320) = 1920, so the balance goal is a 320 surplus.
-    assert.deepEqual(await page.evaluate(() => { const p = JSON.parse(localStorage.getItem('calorie-app:v2')).profile; return [p.dailyGoal, p.target] }), [-320, 1920])
+    // Gain: 1600 + 550 = 2150 (v1.8 no cap), so the balance goal is a 550 surplus.
+    assert.deepEqual(await page.evaluate(() => { const p = JSON.parse(localStorage.getItem('calorie-app:v2')).profile; return [p.dailyGoal, p.target] }), [-550, 2150])
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     await page.getByRole('button', { name: 'Lose weight' }).click()
     await page.getByRole('button', { name: 'Save changes' }).click()
     await page.getByText('Saved.').waitFor()
     await goHome()
-    assert.match(await page.getByTestId('ring-goal').innerText(), /goal 320/)
-    assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')).profile)).dailyGoal, 320)
+    assert.match(await page.getByTestId('ring-goal').innerText(), /goal 400/)
+    assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')).profile)).dailyGoal, 400)
   })
   await step('acceptance (v1.3.1): BMR 1600 + 300 exercise - 1500 food = 400 deficit', async () => {
     await page.getByRole('link', { name: 'Add exercise' }).click()
@@ -191,8 +190,8 @@ try {
     assert.equal(await page.getByTestId('ring').getAttribute('data-state'), 'deficit')
     assert.equal(await color(page.getByTestId('balance')), GREEN)
     assert.equal(await page.getByTestId('eq-balance').innerText(), '400')
-    // Left to eat = balance - goal = 400 - 320 = 80 = target 1280 + 300 exercise - 1500 eaten.
-    assert.equal(await page.getByTestId('goal-progress').innerText(), '80 kcal past your 320 goal.')
+    // v1.8: balance 400 = goal 400 (target 1200 + 300 exercise - 1500 eaten = 0 left).
+    assert.equal(await page.getByTestId('goal-progress').innerText(), 'Right on your 400 goal.')
   })
   await step('log exercise: Food/Exercise switch, search, duration, intensity', async () => {
     await page.getByRole('button', { name: 'Log food' }).click()
@@ -287,7 +286,7 @@ try {
     assert.equal(await num(page.getByTestId('verdict-number')), 500)
     assert.equal(await page.getByTestId('verdict-text').innerText(), 'kcal deficit')
     assert.equal(await color(page.getByTestId('verdict-number')), GREEN)
-    assert.match(await page.getByTestId('verdict-message').innerText(), /60 kcal past your 440 goal/) // v1.1 goal: 2200 - 1760
+    assert.match(await page.getByTestId('verdict-message').innerText(), /You were 50 kcal short of your 550 goal/) // v1.8 goal: 2200 - 1650 (no cap)
     await page.screenshot({ path: OUT + 'v1-mobile-verdict.png' })
     await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')
@@ -372,7 +371,7 @@ try {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     const ph = (k) => page.locator(`input[name=macro-${k}]`).getAttribute('placeholder')
     assert.equal(await ph('protein'), '109') // 68 kg x 1.6 = 108.8
-    // maintenance 1600 + 600 = 2200 (not the 1,760 target): fat 25% = 550 kcal = 61 g; carbs (2200 - 436 - 550) / 4 = 304
+    // maintenance 1600 + 600 = 2200 (not the 1,650 target): fat 25% = 550 kcal = 61 g; carbs (2200 - 436 - 550) / 4 = 304
     assert.equal(await ph('fat'), '61')
     assert.equal(await ph('carbs'), '304')
     const rule = await sheetText(page, 'macros', 'macro-rule')
@@ -382,11 +381,11 @@ try {
     assert.equal(await ph('fat'), '44')
     assert.equal(await ph('carbs'), '191')
     assert.match(await sheetText(page, 'macros', 'macro-rule'), /1,600 kcal \(your BMR\)/)
-    // A fat override feeds carbs: (2200 - 436 - 70 x 9) / 4 = 283.5 -> 284; the calorie target stays 1,760.
+    // A fat override feeds carbs: (2200 - 436 - 70 x 9) / 4 = 283.5 -> 284; the calorie target stays 1,650.
     await page.getByRole('switch', { name: /Include daily movement/ }).check()
     await page.fill('input[name=macro-fat]', '70')
     assert.equal(await ph('carbs'), '284')
-    assert.equal(await page.getByTestId('settings-target').innerText(), '1,760 kcal')
+    assert.equal(await page.getByTestId('settings-target').innerText(), '1,650 kcal')
     await page.fill('input[name=macro-fat]', '')
     // v1.3.3: there is no goal weight field; protein follows the current weight.
     assert.equal(await page.locator('input[name=goalWeightKg]').count(), 0)
@@ -394,7 +393,7 @@ try {
     assert.equal(await ph('protein'), '128')
     await page.fill('input[name=weightKg]', '68')
     await page.fill('input[name=bmr]', '1600')
-    // Pace: Gentle 275 kcal fits under the 20% cap (440).
+    // Pace: Gentle 275 kcal (v1.8: no cap).
     await page.getByRole('button', { name: 'Gentle 0.25 kg/wk' }).click()
     assert.match(await sheetText(page, 'target', 'budget-line'), /− 275 deficit = 1,925 kcal/)
     assert.equal(await ph('carbs'), '304') // pace never moves macros
@@ -414,10 +413,10 @@ try {
     const ids = await page.locator('[data-testid^=info-]').evaluateAll((els) => els.map((e) => e.dataset.testid))
     assert.deepEqual(ids, ['info-pace', 'info-activity', 'info-bmr', 'info-target', 'info-macros'])
     assert.equal(await page.getByTestId('info-sex').count() + await page.getByTestId('info-goal').count() + await page.getByTestId('info-backup').count(), 0)
-    // Visible helper lines (68 kg woman, BMR 1600, light, Movement on, Lose Standard: 550 capped at 20% of 2,200 = 440).
-    assert.equal(await page.getByTestId('pace-hint').innerText(), 'About 440 kcal a day')
+    // Visible helper lines (68 kg woman, BMR 1600, light, Movement on, Lose Standard: 550, no cap in v1.8).
+    assert.equal(await page.getByTestId('pace-hint').innerText(), 'About 550 kcal a day')
     assert.equal(await page.getByTestId('movement-hint').innerText(), '+600 kcal a day. Leave off if you use a watch.')
-    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600 + 600 movement − 440 deficit')
+    assert.equal(await page.getByTestId('target-sum').innerText(), 'BMR 1,600 + 600 movement − 550 deficit')
     assert.match(await page.getByTestId('bmr-calculated').innerText(), /^Calculated/)
     assert.equal(await page.getByTestId('backup-hint').innerText(), "Stored only in this browser. Import replaces this device's data.")
     await page.getByRole('button', { name: 'Gentle 0.25 kg/wk' }).click()
@@ -450,7 +449,7 @@ try {
     await dlg.waitFor({ state: 'detached' })
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'About macro targets') // focus back on the (i)
     // Each sheet: content, Close button, focus back.
-    for (const [name, title, re] of [['About pace', 'Pace', /7,700 kcal[\s\S]*20%[\s\S]*never goes under 1,500 kcal/], ['About activity level', 'Activity level', /\+20%[\s\S]*\+90%/], ['About BMR', 'BMR', /Mifflin-St Jeor[\s\S]*type it here/], ['About daily target', 'Daily target', /1,500 kcal for men and 1,200 kcal for women[\s\S]*minimum intake/]]) {
+    for (const [name, title, re] of [['About pace', 'Pace', /never goes under 1,500 kcal/], ['About activity level', 'Activity level', /\+20%[\s\S]*\+90%/], ['About BMR', 'BMR', /Mifflin-St Jeor[\s\S]*type it here/], ['About daily target', 'Daily target', /1,500 kcal for men and 1,200 kcal for women[\s\S]*minimum intake/]]) {
       await page.getByRole('button', { name }).click()
       const d = page.getByRole('dialog', { name: title })
       assert.match(await d.innerText(), re, title)
@@ -467,7 +466,7 @@ try {
   await step('v2 acceptance: 110 g target, 75 g logged -> 35 g left and 75 of 110 g', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     await page.fill('input[name=macro-protein]', '110')
-    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '303') // (2200 - 440 - 550) / 4 = 302.5
+    assert.equal(await page.locator('input[name=macro-carbs]').getAttribute('placeholder'), '303') // maintenance macros: pace never moves them (v1.8: no cap)
     await page.getByRole('button', { name: 'Save changes' }).click()
     await page.getByText('Saved.').waitFor()
     await goHome()
@@ -615,7 +614,7 @@ try {
     assert.deepEqual(st.v2.closedDays, V1_STATE.closedDays)
     assert.deepEqual(st.v1, V1_STATE) // the 1.0 copy is left alone for an old cached app
     assert.equal(await num(mp.getByTestId('eq-movement')), 600)
-    assert.match(await mp.getByTestId('ring-goal').innerText(), /goal 440/)
+    assert.match(await mp.getByTestId('ring-goal').innerText(), /goal 550/)
     await mp.goto(BASE + '/nutrition')
     assert.match(await mp.getByTestId('targets-hint').innerText(), /maintenance, 2,200 kcal \(BMR plus movement\), at your current weight of 68 kg/)
     assert.doesNotMatch(await mp.locator('main').innerText(), /goal weight/) // v1.3.2: no goal-weight nudge
@@ -630,10 +629,10 @@ try {
     // top = 2,500 + 10% -> 2,750; bottom (v1.4.2) = biggest surplus 420 + 10% -> 500.
     assert.deepEqual([await svg.getAttribute('data-top'), await svg.getAttribute('data-bottom')], ['2750', '500'])
     const refs = await mp.locator('[data-ref]').evaluateAll((els) => els.map((e) => e.getAttribute('data-ref')))
-    assert.deepEqual(refs, ['0', '440'], 'v1.4.2: no mirrored -goal line')
+    assert.deepEqual(refs, ['0', '550'], 'v1.4.2: no mirrored -goal line')
     const labels = await mp.getByTestId('chart').locator('text').allTextContents()
-    for (const l of ['goal 440', '0']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
-    for (const l of ['+440', '−440']) assert.ok(!labels.includes(l), `no ${l} label`)
+    for (const l of ['goal 550', '0']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
+    for (const l of ['+550', '−550']) assert.ok(!labels.includes(l), `no ${l} label`)
     await mp.waitForTimeout(900)
     const g = await geometry(mp)
     const spike = g.bars.find((b) => b.v === 2500)
@@ -683,7 +682,7 @@ try {
   const bg = (loc) => loc.evaluate((el) => getComputedStyle(el).backgroundColor)
   await step('v1.2 empty state: calories card at 0%, grey split bar "Log food to see your split"', async () => {
     await seedWith([])
-    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 0 of 1,760 kcal, 0%')
+    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 0 of 1,650 kcal, 0%')
     assert.equal(await np.getByTestId('cal-over').count(), 0)
     assert.equal(await np.getByTestId('split-empty').innerText(), 'Log food to see your split')
     assert.equal(await np.getByTestId('split-empty').getAttribute('role'), 'img')
@@ -703,7 +702,7 @@ try {
     assert.equal(await np.getByTestId('split-mark').count(), 2)
     assert.equal(await sp.getByRole('img').getAttribute('aria-label'), 'Calories split: protein 25%, carbs 25%, fat 50%. Target protein 20%, carbs 55%, fat 25%.')
     assert.deepEqual(await Promise.all(['protein', 'carbs', 'fat'].map((k) => bg(np.getByTestId(`split-${k}`)))), ['rgb(200, 69, 111)', 'rgb(217, 164, 58)', 'rgb(79, 127, 214)']) // v1.3 palette: #C8456F, #D9A43A, #4F7FD6
-    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 1,601 of 1,760 kcal, 91%')
+    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 1,601 of 1,650 kcal, 97%')
     assert.equal(await np.getByTestId('protein-progress').innerText(), '100 of 109 g, 92%')
     assert.equal(await np.getByTestId('protein-ring-label').innerText(), 'of 109 g, 92%')
     assert.equal(await np.getByTestId('nutri-protein').count(), 0) // v1.2.1: no protein row, the split bar still has protein
@@ -713,21 +712,21 @@ try {
   })
   await step('v1.2 calories over target: % plus "+N kcal over" in darker grey, never orange', async () => {
     await seedWith([food('a', 1601, 100, 100, 89), food('b', 400, 0, 100, 0)])
-    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 2,001 of 1,760 kcal, 114% +241 kcal over')
+    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 2,001 of 1,650 kcal, 121% +351 kcal over')
     const over = np.getByTestId('cal-over')
     assert.equal(await color(over), 'rgb(69, 66, 60)')
     assert.notEqual(await color(over), ORANGE)
     const fills = await np.getByTestId('cal-card').locator('i').evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor))
     assert.ok(!fills.includes('rgb(229, 112, 75)') && !fills.includes(ORANGE) && !fills.includes('rgb(217, 102, 63)'), fills.join())
-    assert.equal(await np.getByTestId('cal-card').getAttribute('data-over'), '241')
-    assert.match(await np.getByTestId('cal-card').getByRole('progressbar').getAttribute('aria-label'), /2,001 of 1,760 kcal, 114%, 241 kcal over/)
+    assert.equal(await np.getByTestId('cal-card').getAttribute('data-over'), '351')
+    assert.match(await np.getByTestId('cal-card').getByRole('progressbar').getAttribute('aria-label'), /2,001 of 1,650 kcal, 121%, 351 kcal over/)
     // Exercise raises today's food target, as on Today (target + burned - eaten = left). v1.3.2: macro goals stay put.
     const macroText = () => Promise.all(['protein-progress', 'nutri-carbs-text', 'nutri-fat-text'].map((k) => np.getByTestId(k).innerText()))
     const splitTarget = () => np.getByTestId('split').getAttribute('data-target')
     const before = [await macroText(), await splitTarget()]
     await np.evaluate((t) => { const s = JSON.parse(localStorage.getItem('calorie-app:v2')); s.exercises.push({ id: 'x1', date: t, activityId: null, name: 'Run', minutes: 30, intensity: 'moderate', kcal: 300, createdAt: Date.now() }); localStorage.setItem('calorie-app:v2', JSON.stringify(s)) }, TODAY)
     await np.reload()
-    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 2,001 of 2,060 kcal, 97%')
+    assert.equal(await np.getByTestId('cal-text').innerText(), 'Eaten 2,001 of 1,950 kcal, 103% +51 kcal over')
     assert.match(await np.getByTestId('cal-note').innerText(), /includes 300 kcal of exercise, as on Today\. Macro goals stay the same\./)
     assert.deepEqual([await macroText(), await splitTarget()], before)
     assert.match((await macroText())[1], /of 304 g/)
@@ -735,7 +734,7 @@ try {
     assert.equal(await np.getByTestId('protein-left').innerText(), '9 g left') // Home: same fixed 109 g target
     await np.goto(BASE + '/nutrition')
   })
-  await step('v1.3.2 Movement off: Nutrition uses the 1280 target with maintenance macros P109 / C191 / F44; carbs under 100 g only hint', async () => {
+  await step('v1.3.2 Movement off: Nutrition uses the 1200 target with maintenance macros P109 / C191 / F44; carbs under 100 g only hint', async () => {
     await np.goto(BASE + '/settings')
     await np.getByRole('switch', { name: /Include daily movement/ }).uncheck()
     await np.fill('input[name=macro-carbs]', '60')
@@ -748,7 +747,7 @@ try {
     await np.getByRole('button', { name: 'Save changes' }).click()
     await np.getByText('Saved.').waitFor()
     await np.goto(BASE + '/nutrition')
-    assert.match(await np.getByTestId('cal-text').innerText(), /of 1,580 kcal/) // 1280 + 300 exercise
+    assert.match(await np.getByTestId('cal-text').innerText(), /of 1,500 kcal/) // 1200 + 300 exercise
     assert.match(await np.getByTestId('protein-progress').innerText(), /of 109 g/)
     assert.match(await np.getByTestId('nutri-carbs-text').innerText(), /of 191 g/)
     assert.match(await np.getByTestId('nutri-fat-text').innerText(), /of 44 g/)
@@ -761,7 +760,7 @@ try {
     await np.goto(BASE + '/nutrition')
     assert.match(await np.getByTestId('nutri-carbs-text').innerText(), /of 60 g/)
   })
-  await step('v1.3.1 Movement off: Home, Verdict, History use plain BMR and the 320 goal; closed days keep their numbers', async () => {
+  await step('v1.3.1 Movement off: Home, Verdict, History use plain BMR and the 400 goal; closed days keep their numbers', async () => {
     // Today here: 2,001 kcal eaten, 300 kcal run. v1.3.1 BMR 1600 + 300 - 2001 = -101 (a surplus).
     await np.goto(BASE + '/')
     const eq = np.getByTestId('equation')
@@ -771,9 +770,9 @@ try {
     assert.equal(await np.getByTestId('eq-base').count(), 0)
     assert.equal(await num(np.getByTestId('balance')), 101)
     assert.equal(await np.getByTestId('eq-balance').innerText(), '−101')
-    assert.match(await np.getByTestId('ring-goal').innerText(), /goal 320/)
+    assert.match(await np.getByTestId('ring-goal').innerText(), /goal 400/)
     assert.doesNotMatch(await np.locator('main').innerText(), /Base burn|× 1\.2/)
-    assert.equal(await np.getByTestId('goal-progress').innerText(), '421 kcal to go to your 320 goal.') // 320 - (-101)
+    assert.equal(await np.getByTestId('goal-progress').innerText(), '501 kcal to go to your 400 goal.') // 400 - (-101)
     await top(np)
     await np.screenshot({ path: OUT + 'v131-e2e-home-movement-off.png' })
     // Older closed days keep what they were closed with: one from v1.2 (BMR only, goal 64) and one from v1.3 (base burn 1920, goal 384).
@@ -792,14 +791,14 @@ try {
     assert.equal(await num(np.getByTestId('verdict-bmr')), 1600)
     assert.equal(await np.getByTestId('verdict-base').count(), 0)
     assert.doesNotMatch(await np.locator('main').innerText(), /× 1\.2/)
-    assert.equal(await np.getByTestId('verdict-message').innerText(), 'You were 421 kcal short of your 320 goal.')
+    assert.equal(await np.getByTestId('verdict-message').innerText(), 'You were 501 kcal short of your 400 goal.')
     const closed = await np.evaluate((d) => JSON.parse(localStorage.getItem('calorie-app:v2')).closedDays[d], TODAY)
-    assert.deepEqual([closed.baseBurn, closed.bmr, closed.movement, closed.balance, closed.goal], [undefined, 1600, 0, -101, 320])
+    assert.deepEqual([closed.baseBurn, closed.bmr, closed.movement, closed.balance, closed.goal], [undefined, 1600, 0, -101, 400])
     await np.goto(BASE + '/history')
     assert.equal(await np.locator(`[data-day="${TODAY}"]`).getByTestId('day-pill').innerText(), 'Surplus 101')
     assert.equal(await np.locator(`[data-bar="${TODAY}"]`).getAttribute('data-value'), '-101')
     const labels = await np.getByTestId('chart').locator('text').allTextContents()
-    assert.ok(labels.includes('goal 320'), `goal label in ${labels}`); assert.ok(!labels.includes('−320'), 'v1.4.2: no -goal label')
+    assert.ok(labels.includes('goal 400'), `goal label in ${labels}`); assert.ok(!labels.includes('−400'), 'v1.4.2: no -goal label')
     assert.equal(await np.locator(`[data-day="${OLD}"]`).getByTestId('day-pill').innerText(), 'Deficit 100')
     assert.equal(await np.locator(`[data-day="${LEGACY}"]`).getByTestId('day-pill').innerText(), 'Deficit 420')
     await np.goto(BASE + `/day/${OLD}`)
@@ -811,20 +810,20 @@ try {
     assert.equal(await num(np.getByTestId('verdict-number')), 420)
     assert.match(await np.locator('main').innerText(), /Burn \(BMR 1,600 × 1\.2, as closed\)/)
     assert.match(await np.getByTestId('verdict-message').innerText(), /your 384 goal/)
-    // Movement back on: the profile goal goes back to 440, but today's closed day keeps BMR 1600 / 320.
+    // Movement back on: the profile goal goes back to 550, but today's closed day keeps BMR 1600 / 400.
     await np.goto(BASE + '/settings')
     await np.getByRole('switch', { name: /Include daily movement/ }).check()
     await np.getByRole('button', { name: 'Save changes' }).click()
     await np.getByText('Saved.').waitFor()
     await np.goto(BASE + `/day/${TODAY}`)
     assert.equal(await num(np.getByTestId('verdict-bmr')), 1600)
-    assert.match(await np.getByTestId('verdict-message').innerText(), /320/)
+    assert.match(await np.getByTestId('verdict-message').innerText(), /400/)
     await np.goto(BASE + '/')
     assert.deepEqual(await termsOf(), ['BMR', 'Exercise', 'Eaten', 'Balance']) // closed day, frozen (movement 0)
     await np.getByRole('button', { name: 'Reopen day' }).click()
     assert.deepEqual(await termsOf(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Balance'])
     assert.equal(await num(np.getByTestId('balance')), 499) // 1600 + 600 + 300 - 2001, unchanged v1.1 maths
-    assert.match(await np.getByTestId('ring-goal').innerText(), /goal 440/)
+    assert.match(await np.getByTestId('ring-goal').innerText(), /goal 550/)
   })
   await nctx.close()
 

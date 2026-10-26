@@ -160,3 +160,23 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 .pill-press { -webkit-tap-highlight-color: transparent; }
 .pill-press:focus:not(:focus-visible) { outline: none; }
 .pill-press:active:not(:disabled) { transform: scale(.97); background-color: #efe7d8; transition-duration: .08s; }
+
+/* v1.8 onboarding (calmer flow): each step fades up gently. Reduced motion turns it off (rule above). */
+@keyframes step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.step-in { animation: step-in .32s cubic-bezier(.2, .7, .2, 1) both; }
+.opt { transition: transform .35s cubic-bezier(.34, 1.56, .64, 1), background-color .15s, border-color .15s; }
+.opt:active { transform: scale(.98); transition-duration: .08s; }
+/* Big number inputs: no spinners. */
+.big-num::-webkit-outer-spin-button, .big-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.big-num { -moz-appearance: textfield; appearance: textfield; }
+
+/* v1.8 onboarding welcome illustration (WelcomeArt.tsx): ring draws in, food pops in with a stagger, all under 1 s. */
+.welcome-art { display: block; width: 100%; height: auto; max-width: 350px; max-height: min(44vh, 370px); overflow: visible; }
+@keyframes wa-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.wa-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: wa-draw .7s cubic-bezier(.3, .7, .2, 1) .08s both; }
+@keyframes wa-pop { from { opacity: 0; transform: scale(.45); } to { opacity: 1; transform: none; } }
+.wa-pop { transform-box: fill-box; transform-origin: center; animation: wa-pop .3s cubic-bezier(.34, 1.56, .64, 1) both; }
+.wa-fade { animation: fade-in .3s ease-out .55s both; }
+@keyframes wa-steam { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.wa-steam { animation: wa-steam .35s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .wa-draw, .wa-pop, .wa-fade, .wa-steam { animation: none !important; } }

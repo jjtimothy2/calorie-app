@@ -1,4 +1,4 @@
-// Unit checks for v1.1 to v1.3.3 (v1.3.3: Keep at the floor has goal 0 too): daily target from pace (20% cap; plain BMR base with movement off since v1.3.1, a 1,500 / 1,200 kcal floor,
+// Unit checks for v1.1 to v1.3.3 (v1.3.3: Keep at the floor has goal 0 too): daily target from pace (no cap since v1.8, 20% before; plain BMR base with movement off since v1.3.1, a 1,500 / 1,200 kcal floor,
 // a Lose goal never under 0 since v1.3.2), macros (v1.3.2: fixed, built on maintenance at the current weight: protein 1.6 g/kg,
 // fat max(25% of maintenance, 0.6 g/kg), carbs the rest with a 100 g floor), chart scales, storage + backup migration.
 import { execSync } from 'node:child_process'
@@ -31,26 +31,27 @@ const ref = (maintenance, kg) => {
 
 // ---------- v1.3.2 acceptance (Reed + Jordy) ----------
 const male92 = { sex: 'male', bmr: 1900, activity: 'light', includeMovement: false, goal: 'lose', pace: 'standard', weightKg: 92, goalWeightKg: 80, macros: auto }
-t('v1.3.2 example: male 92 kg, BMR 1900, Movement off -> maintenance 1900, P147 F55 C204; target 1520, goal 380', () => {
+t('v1.3.2 example: male 92 kg, BMR 1900, Movement off -> maintenance 1900, P147 F55 C204; v1.8 target 1500 (floor), goal 400', () => {
   const p = dailyPlan(male92)
   assert.equal(p.maintenance, 1900)
   // Protein 1.6 x 92 = 147; fat max(475, 0.6 x 92 x 9 = 496.8) = 55 g; carbs (1900 - 588 - 496.8) / 4 = 204.
   assert.deepEqual([p.protein, p.fat, p.carbs], [147, 55, 204])
   assert.deepEqual([p.protein, p.fat, p.carbs], ref(1900, 92))
   assert.equal(p.adjusted, false)
-  assert.equal(p.target, 1520) // 1900 - min(550, 20% = 380); the calorie target is unchanged by the macro rule
-  assert.equal(p.dailyGoal, 380)
+  assert.equal(p.target, 1500) // v1.8: 1900 - 550 = 1350, held at the 1,500 floor (v1.7: 1520 with the 20% cap); macros don't move
+  assert.equal(p.dailyGoal, 400)
+  assert.equal(p.floored, true)
   assert.equal(p.atMinimum, false)
 })
-t('v1.3.2 example: same, Movement on (light) -> maintenance 2613, P147 F73 C343; target 2090, goal 523', () => {
+t('v1.3.2 example: same, Movement on (light) -> maintenance 2613, P147 F73 C343; v1.8 target 2063, goal 550', () => {
   const p = dailyPlan({ ...male92, includeMovement: true })
   assert.equal(p.movement, 713) // round(1900 x 0.375)
   assert.equal(p.maintenance, 2613)
   // Fat max(653.25, 496.8) = 73 g; carbs (2613 - 588 - 653.25) / 4 = 343.
   assert.deepEqual([p.protein, p.fat, p.carbs], [147, 73, 343])
   assert.deepEqual([p.protein, p.fat, p.carbs], ref(2613, 92))
-  assert.equal(p.target, 2090) // round(2613 - 522.6)
-  assert.equal(p.dailyGoal, 523)
+  assert.equal(p.target, 2063) // v1.8: 2613 - 550 (v1.7: round(2613 - 20% cap 522.6) = 2090)
+  assert.equal(p.dailyGoal, 550)
 })
 t('v1.3.2: macros follow maintenance, not the pace, goal or floor (same macros for lose, keep and gain)', () => {
   for (const includeMovement of [false, true]) {
@@ -82,22 +83,22 @@ t('v1.3.2: logged exercise never changes macro goals (Home and Nutrition read th
   assert.equal(v1.balance - v0.balance, 800)
   assert.equal(v1.goal, v0.goal)
 })
-t('v1.3.2: Reed profile (68 kg woman, BMR 1600) -> Movement on 1760 / P109 F61 C304, off 1280 / P109 F44 C191', () => {
+t('v1.3.2: Reed profile (68 kg woman, BMR 1600) -> Movement on 1650 / P109 F61 C304, off 1200 / P109 F44 C191 (v1.8 no cap)', () => {
   const on = dailyPlan(reed)
   assert.equal(on.movement, 600) // 1600 x 0.375
-  assert.equal(on.target, 1760) // 2200 - min(550, 20% = 440)
-  assert.equal(on.dailyGoal, 440)
-  assert.equal(on.capped, true)
+  assert.equal(on.target, 1650) // v1.8: 2200 - 550 (v1.7: 1760 with the 20% cap)
+  assert.equal(on.dailyGoal, 550)
+  assert.ok(!('capped' in on))
   assert.deepEqual([on.protein, on.fat, on.carbs], [109, 61, 304]) // maintenance 2200: fat 550 kcal, carbs 1214 / 4
   assert.deepEqual([on.protein, on.fat, on.carbs], ref(2200, 68))
   const off = dailyPlan({ ...reed, includeMovement: false })
   assert.equal(off.planBase, 1600)
-  assert.equal(off.target, 1280) // 1600 - min(550, 20% of BMR = 320)
-  assert.equal(off.planDeficit, 320)
-  assert.equal(off.floored, false)
+  assert.equal(off.target, 1200) // v1.8: 1600 - 550 = 1050, held at the 1,200 floor (v1.7: 1280)
+  assert.equal(off.planDeficit, 400)
+  assert.equal(off.floored, true)
   assert.deepEqual([off.protein, off.fat, off.carbs], [109, 44, 191]) // maintenance 1600: fat 400 kcal, carbs 764 / 4
-  assert.equal(off.dailyGoal, 320)
-  for (const sex of ['female', 'male']) assert.deepEqual([dailyPlan({ ...reed, sex }).target, dailyPlan({ ...reed, sex }).dailyGoal], [1760, 440])
+  assert.equal(off.dailyGoal, 400)
+  for (const sex of ['female', 'male']) assert.deepEqual([dailyPlan({ ...reed, sex }).target, dailyPlan({ ...reed, sex }).dailyGoal], [1650, 550])
 })
 
 // ---------- Floors and the Lose goal (v1.3.2) ----------
@@ -107,14 +108,14 @@ t('floor: 1,500 kcal for men, 1,200 for women; anything else gets 1,200', () => 
   assert.equal(targetFloor(undefined), 1200)
   assert.equal(targetFloor('other'), 1200)
   assert.equal(dailyPlan({ ...reed, includeMovement: false, goal: 'keep' }).target, 1600)
-  assert.equal(dailyPlan({ ...reed, includeMovement: false, goal: 'gain' }).target, 1920) // + min(550, 320)
+  assert.equal(dailyPlan({ ...reed, includeMovement: false, goal: 'gain' }).target, 2150) // v1.8: + 550, no cap
 })
 t('v1.3.2 floor Lose: goal = base - floor when the floor applies (male BMR 1600 -> 1500, goal 100)', () => {
   const m = dailyPlan({ ...reed, sex: 'male', includeMovement: false })
   assert.deepEqual([m.target, m.floored, m.planDeficit, m.dailyGoal, m.atMinimum], [1500, true, 100, 100, false])
-  const f = dailyPlan({ ...reed, bmr: 1400, includeMovement: false }) // 1400 - 280 = 1120 -> 1200 floor
+  const f = dailyPlan({ ...reed, bmr: 1400, includeMovement: false }) // 1400 - 550 = 850 -> 1200 floor
   assert.deepEqual([f.target, f.floored, f.dailyGoal, f.atMinimum], [1200, true, 200, false])
-  const on = dailyPlan({ ...reed, sex: 'male', bmr: 1300, activity: 'sedentary' }) // base 1560, 1560 - 312 = 1248 -> 1500
+  const on = dailyPlan({ ...reed, sex: 'male', bmr: 1300, activity: 'sedentary' }) // base 1560, 1560 - 550 = 1010 -> 1500
   assert.deepEqual([on.target, on.floored, on.dailyGoal, on.atMinimum], [1500, true, 60, false])
 })
 t('v1.3.2 floor Lose: base at or under the floor -> goal 0 and atMinimum, never a surplus', () => {
@@ -127,7 +128,7 @@ t('v1.3.2 floor Lose: base at or under the floor -> goal 0 and atMinimum, never 
   assert.equal(normaliseProfile({ age: 70, sex: 'male', heightCm: 160, weightKg: 55, activity: 'light', goal: 'lose', bmr: 1200, bmrCustom: true, includeMovement: false }).dailyGoal, 0)
   // v1.3.3: Keep at the base (not floored) is not at the minimum; Gain is never clamped.
   assert.equal(dailyPlan({ ...reed, bmr: 1200, includeMovement: false, goal: 'keep' }).atMinimum, false)
-  assert.equal(dailyPlan({ ...reed, sex: 'male', bmr: 1200, includeMovement: false, goal: 'gain' }).dailyGoal, 1200 - 1500)
+  assert.equal(dailyPlan({ ...reed, sex: 'male', bmr: 1200, includeMovement: false, goal: 'gain' }).dailyGoal, 1200 - 1750) // v1.8: 1200 + 550, no cap (v1.7: 1440 lifted to 1500)
   // Sweep: a Lose goal is never negative, and 0 only when the floor holds the whole base.
   for (const sex of ['female', 'male']) for (const bmr of [900, 1100, 1200, 1300, 1500, 1700, 2000]) for (const includeMovement of [true, false]) for (const pace of ['gentle', 'standard', 'faster']) {
     const p = dailyPlan({ ...reed, sex, bmr, includeMovement, pace, activity: 'sedentary' })
@@ -181,15 +182,15 @@ const day = '2026-10-24'
 const food = (date, kcal) => ({ id: 'f' + kcal, date, meal: 'lunch', foodId: null, name: 'x', servingLabel: '1', servingMult: 1, qty: 1, kcal, protein: 0, carbs: 0, fat: 0, createdAt: 1 })
 const run = (date, kcal) => ({ id: 'r' + kcal, date, activityId: null, name: 'run', minutes: 30, intensity: 'moderate', kcal, createdAt: 2 })
 const prof = (x) => normaliseProfile({ age: 34, sex: 'female', heightCm: 168, weightKg: 68, activity: 'light', goal: 'lose', bmr: 1600, bmrCustom: true, pace: 'standard', ...x })
-t('v1.3.1 acceptance: Movement off balance goal Keep = 0, Lose = +320, Gain = -320', () => {
+t('v1.3.1 acceptance: Movement off balance goal Keep = 0, Lose = +400 (floored), Gain = -550 (v1.8 no cap)', () => {
   assert.equal(prof({ includeMovement: false, goal: 'keep' }).dailyGoal, 0) // no implied surplus: target = BMR = Home burn
   assert.equal(prof({ includeMovement: false, goal: 'keep' }).target, 1600)
   const lose = prof({ includeMovement: false })
-  assert.equal(lose.target, 1280)
-  assert.equal(lose.dailyGoal, 320) // was 384 in v1.3
-  assert.equal(dailyPlan(lose).planDeficit, 320)
-  assert.equal(prof({ includeMovement: false, goal: 'gain' }).target, 1920)
-  assert.equal(prof({ includeMovement: false, goal: 'gain' }).dailyGoal, -320) // 1600 - 1920
+  assert.equal(lose.target, 1200) // v1.8: 1050 held at the floor (1280 in v1.3.1 to v1.7)
+  assert.equal(lose.dailyGoal, 400) // was 384 in v1.3, 320 in v1.3.1 to v1.7
+  assert.equal(dailyPlan(lose).planDeficit, 400)
+  assert.equal(prof({ includeMovement: false, goal: 'gain' }).target, 2150)
+  assert.equal(prof({ includeMovement: false, goal: 'gain' }).dailyGoal, -550) // 1600 - 2150
   for (const goal of ['lose', 'keep', 'gain']) for (const pace of ['gentle', 'standard', 'faster']) {
     const p = dailyPlan({ ...reed, includeMovement: false, goal, pace })
     assert.equal(p.dailyGoal, p.planDeficit, `${goal} ${pace}`)
@@ -200,13 +201,13 @@ t('v1.3.1: Home burn is plain BMR with Movement off (no base burn), BMR + moveme
   assert.equal(homeBase({ bmr: 1600, activity: 'light', includeMovement: true }), 2200)
   assert.equal(homeBase({ bmr: 1401, activity: 'light', includeMovement: false }), 1401)
   const off = prof({ includeMovement: false })
-  const d = liveDay({ entries: [food(day, 1280)], exercises: [] }, off, day)
+  const d = liveDay({ entries: [food(day, 1200)], exercises: [] }, off, day)
   assert.equal(d.baseBurn, undefined)
   assert.ok(!('baseBurn' in d))
   assert.equal(d.movement, 0)
-  assert.equal(d.balance, 320) // eat exactly the target -> right on the goal
-  assert.equal(d.goal, 320)
-  assert.equal(goalMessage(d.balance, d.goal, true), 'Right on your 320 goal. Nice work.')
+  assert.equal(d.balance, 400) // eat exactly the target -> right on the goal
+  assert.equal(d.goal, 400)
+  assert.equal(goalMessage(d.balance, d.goal, true), 'Right on your 400 goal. Nice work.')
   assert.equal(dayBase(d), 1600)
   const keep = liveDay({ entries: [food(day, 1600)], exercises: [] }, prof({ includeMovement: false, goal: 'keep' }), day)
   assert.equal(keep.balance, 0)
@@ -217,19 +218,19 @@ t('v1.3.1: Home burn is plain BMR with Movement off (no base burn), BMR + moveme
   assert.equal(ex.balance, 1600 + 300 - 1000)
   assert.equal(ex.balance - ex.goal, off.target + 300 - 1000)
 })
-t('v1.2.1: Movement on is unchanged (no base burn, BMR + movement, goal 440)', () => {
+t('v1.2.1: Movement on is unchanged (no base burn, BMR + movement, goal 550 since v1.8)', () => {
   const on = prof({ includeMovement: true })
-  const d = liveDay({ entries: [food(day, 1760)], exercises: [] }, on, day)
+  const d = liveDay({ entries: [food(day, 1650)], exercises: [] }, on, day)
   assert.equal(d.baseBurn, undefined)
-  assert.equal(d.balance, 440)
-  assert.equal(d.goal, 440)
+  assert.equal(d.balance, 550)
+  assert.equal(d.goal, 550)
   assert.equal(prof({ includeMovement: true, goal: 'keep' }).dailyGoal, 0)
   assert.ok(!('baseBurn' in summarise(d, false)))
 })
 t('v1.3.1: closing a Movement-off day freezes BMR and goal; older closed days (incl. v1.3 base burn) keep theirs', () => {
   const off = prof({ includeMovement: false })
   const s = summarise(liveDay({ entries: [food(day, 1500)], exercises: [] }, off, day), false)
-  assert.deepEqual([s.baseBurn, s.bmr, s.balance, s.goal], [undefined, 1600, 100, 320])
+  assert.deepEqual([s.baseBurn, s.bmr, s.balance, s.goal], [undefined, 1600, 100, 400])
   assert.ok(!('baseBurn' in s))
   const oldDay = { bmr: 1600, movement: 0, burned: 0, eaten: 1500, balance: 100, goal: 64, protein: 0, closedAt: 1, auto: true } // closed under v1.2
   const v13Day = { bmr: 1600, movement: 0, baseBurn: 1920, burned: 0, eaten: 1500, balance: 420, goal: 384, protein: 0, closedAt: 2, auto: true } // closed under v1.3
@@ -238,29 +239,29 @@ t('v1.3.1: closing a Movement-off day freezes BMR and goal; older closed days (i
   assert.deepEqual([v.balance, v.goal, v.baseBurn, dayBase(v)], [100, 64, undefined, 1600]) // untouched
   const v13 = dayView(state, '2026-10-21')
   assert.deepEqual([v13.balance, v13.goal, v13.baseBurn, dayBase(v13)], [420, 384, 1920, 1920]) // not recomputed
-  assert.deepEqual([dayView(state, '2026-10-23').goal, dayView(state, '2026-10-23').balance], [320, 100])
+  assert.deepEqual([dayView(state, '2026-10-23').goal, dayView(state, '2026-10-23').balance], [400, 100])
   // Loading old state (a v1.3 Movement-off profile stored with target 1536 / goal 384) re-derives the profile only.
   const m = migrateState({ version: 2, ...state, profile: { ...off, target: 1536, dailyGoal: 384 } })
-  assert.deepEqual([m.profile.target, m.profile.dailyGoal], [1280, 320])
+  assert.deepEqual([m.profile.target, m.profile.dailyGoal], [1200, 400])
   assert.deepEqual(m.closedDays['2026-10-22'], oldDay)
   assert.deepEqual(m.closedDays['2026-10-21'], v13Day)
 })
 
 // ---------- Target rules ----------
-t('pace: Gentle 275, Standard 550, Faster 825 kcal, capped at 20% of BMR + movement, movement on never under BMR', () => {
-  const big = { ...reed, bmr: 2000, activity: 'active' } // movement 1450, base 3450, cap 690
+t('pace: Gentle 275, Standard 550, Faster 825 kcal, no cap since v1.8 (20% before), movement on never under BMR', () => {
+  const big = { ...reed, bmr: 2000, activity: 'active' } // movement 1450, base 3450 (no cap since v1.8)
   assert.equal(dailyPlan({ ...big, pace: 'gentle' }).target, 3450 - 275)
   assert.equal(dailyPlan({ ...big, pace: 'standard' }).target, 3450 - 550)
-  assert.equal(dailyPlan({ ...big, pace: 'faster' }).target, 3450 - 690)
-  assert.equal(dailyPlan({ ...big, pace: 'faster' }).capped, true)
-  const sed = { ...reed, bmr: 1500, activity: 'sedentary' } // base 1800, 20% = 360 -> 1440 < BMR
+  assert.equal(dailyPlan({ ...big, pace: 'faster' }).target, 3450 - 825) // v1.7: 3450 - 690 (20% cap)
+  assert.ok(!('capped' in dailyPlan({ ...big, pace: 'faster' })))
+  const sed = { ...reed, bmr: 1500, activity: 'sedentary' } // base 1800 - 550 = 1250 < BMR
   assert.equal(dailyPlan(sed).target, 1500) // movement on keeps the v1.1 BMR floor
-  assert.equal(dailyPlan({ ...sed, includeMovement: false }).target, 1200) // off (v1.3.1): 1500 - 300 = 1200, right on the floor
+  assert.equal(dailyPlan({ ...sed, includeMovement: false }).target, 1200) // off: 1500 - 550 = 950, held at the 1,200 floor
   assert.equal(dailyPlan({ ...reed, goal: 'keep' }).target, 2200)
   assert.equal(dailyPlan({ ...reed, goal: 'keep' }).dailyGoal, 0)
   assert.equal(dailyPlan({ ...reed, goal: 'gain', pace: 'gentle' }).target, 2475)
-  assert.equal(dailyPlan({ ...reed, goal: 'gain', pace: 'faster' }).target, 2640) // surplus capped at 440 too
-  assert.equal(dailyPlan({ ...reed, goal: 'gain', pace: 'faster' }).dailyGoal, -440)
+  assert.equal(dailyPlan({ ...reed, goal: 'gain', pace: 'faster' }).target, 3025) // v1.8: + 825, no cap (v1.7: 2640)
+  assert.equal(dailyPlan({ ...reed, goal: 'gain', pace: 'faster' }).dailyGoal, -825)
 })
 // ---------- Carb floor ----------
 t('carbs never under 100 g for any profile (sweep of 30-200 kg, BMR 800-3000, every pace and goal, movement on/off)', () => {
@@ -310,7 +311,7 @@ t('overrides are used as typed', () => {
   assert.equal(dailyPlan({ ...reed, macros: { ...auto, carbs: 60 } }).carbs, 60)
   // v1.3.2: a big typed fat no longer lifts the calorie target (v1.3.1 raised 1280 to 1358 for 70 g fat).
   const fat70 = dailyPlan({ ...reed, includeMovement: false, macros: { ...auto, fat: 70 } })
-  assert.deepEqual([fat70.target, fat70.fat, fat70.protein, fat70.carbs], [1280, 70, 109, 134]) // carbs (1600 - 436 - 630) / 4 = 133.5
+  assert.deepEqual([fat70.target, fat70.fat, fat70.protein, fat70.carbs], [1200, 70, 109, 134]) // v1.8 target: floor (no cap) // carbs (1600 - 436 - 630) / 4 = 133.5
 
 })
 
@@ -363,8 +364,8 @@ t('migration v1 -> v2: Movement kept, goal weight = current weight, pace Standar
   assert.equal(s.profile.bmr, 1600) // custom BMR kept
   assert.equal(s.profile.bmrCustom, true)
   assert.deepEqual(s.profile.macros, { protein: null, carbs: null, fat: 70 }) // overrides kept
-  assert.equal(s.profile.target, 1760)
-  assert.equal(s.profile.dailyGoal, 440)
+  assert.equal(s.profile.target, 1650) // v1.8: no cap (1760 / 440 before)
+  assert.equal(s.profile.dailyGoal, 550)
   assert.deepEqual(s.entries, entries)
   assert.deepEqual(s.exercises, exercises)
   assert.deepEqual(s.closedDays, closedDays) // frozen days keep their old goal of 500
@@ -372,11 +373,11 @@ t('migration v1 -> v2: Movement kept, goal weight = current weight, pace Standar
   assert.equal(JSON.stringify(v1), snapshot) // input not mutated
   const off = migrateState({ ...v1, profile: { ...v1Profile, includeMovement: false } })
   assert.equal(off.profile.includeMovement, false)
-  // v1.3.1: re-derived on load from plain BMR (1600 - 320 = 1280), no storage change. v1.3.2: the typed 70 g fat no
+  // v1.3.1: re-derived on load from plain BMR (v1.8: 1600 - 550 = 1050, held at 1,200; 1280 with the old cap), no storage change. v1.3.2: the typed 70 g fat no
   // longer raises the target (it was 1358 in v1.3.1), since macros are built on maintenance, not on the target.
-  assert.equal(off.profile.target, 1280)
-  assert.equal(off.profile.dailyGoal, 320)
-  assert.equal(migrateState({ ...v1, profile: { ...v1Profile, includeMovement: false, macros: auto } }).profile.target, 1280)
+  assert.equal(off.profile.target, 1200)
+  assert.equal(off.profile.dailyGoal, 400)
+  assert.equal(migrateState({ ...v1, profile: { ...v1Profile, includeMovement: false, macros: auto } }).profile.target, 1200)
   // v0 profile without the movement field keeps the old behaviour (movement counted).
   const { includeMovement, bmr, bmrCustom, dailyGoal, ...v0 } = v1Profile
   const m0 = migrateState({ ...v1, profile: v0 })

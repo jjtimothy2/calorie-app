@@ -92,7 +92,6 @@ export const PROTEIN_MIN_PER_KG = 1.2 // protein is lowered towards this before 
 export const FAT_SHARE = 0.25 // of maintenance calories (v1.3.2; of the daily target before)
 export const FAT_FLOOR_PER_KG = 0.6 // of current weight; fat never defaults below this
 export const CARB_FLOOR = 100 // g
-export const DEFICIT_CAP = 0.2 // of the plan base (BMR + movement, or BMR with Movement off)
 
 export const PACE: Record<Pace, { label: string; kg: number }> = {
   gentle: { label: 'Gentle', kg: 0.25 },
@@ -144,7 +143,7 @@ export function splitMacros(maintenance: number, weightKg: number, o: MacroOverr
 
 export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'weightKg' | 'macros'>
 
-/** Pace in kcal a day before the cap (7,700 kcal per kg). */
+/** Pace in kcal a day (7,700 kcal per kg). v1.8: no cap, only the floor below limits it. */
 export const paceKcal = (pace: Pace) => (PACE[pace].kg * KCAL_PER_KG) / 7
 
 /**
@@ -156,7 +155,7 @@ export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 
 /**
  * Daily target.
  * Plan base: BMR + movement when Movement is on, plain BMR when it is off (v1.3.1; v1.2 to v1.3 used BMR x 1.2).
- * Lose: base - pace kcal, the deficit capped at 20% of the plan base. Gain: the same pace as a surplus, capped at 20%.
+ * Lose: base - pace kcal. Gain: base + pace kcal. v1.8 dropped the 20% cap (v1.1 to v1.7), so the floor is the only limit.
  * Keep: the plan base.
  * Floor (v1.2): never under 1,500 kcal (men) / 1,200 (women). With Movement on the v1.1 BMR floor is kept as well,
  * so nothing changes there.
@@ -175,11 +174,10 @@ export function dailyPlan(p: PlanInput) {
   const base = p.bmr + movement
   const planBase = Math.round(p.includeMovement ? base : p.bmr)
   const want = paceKcal(p.pace)
-  const cap = DEFICIT_CAP * planBase
   const floor = p.includeMovement ? Math.max(p.bmr, targetFloor(p.sex)) : targetFloor(p.sex)
   let target = planBase
-  if (p.goal === 'lose') target = Math.round(planBase - Math.min(want, cap))
-  if (p.goal === 'gain') target = Math.round(planBase + Math.min(want, cap))
+  if (p.goal === 'lose') target = Math.round(planBase - want)
+  if (p.goal === 'gain') target = Math.round(planBase + want)
   const floored = target < floor
   target = Math.max(floor, target)
   const planDeficit = planBase - target
@@ -189,7 +187,6 @@ export function dailyPlan(p: PlanInput) {
     bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, floor, floored, target, dailyGoal,
     atMinimum: p.goal !== 'gain' && floored && dailyGoal === 0,
     protein: m.protein, carbs: m.carbs, fat: m.fat, macroKcal: m.kcal, adjusted: m.adjusted,
-    capped: p.goal !== 'keep' && want > cap,
   }
 }
 

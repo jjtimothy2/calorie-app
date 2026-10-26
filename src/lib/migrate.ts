@@ -8,7 +8,7 @@ type ProfileIn = Partial<Profile> & Pick<Profile, 'age' | 'sex' | 'heightCm' | '
 /**
  * Fill every profile field and derive target + dailyGoal from the v1.1 plan.
  * Missing fields from older data: includeMovement keeps its saved value (true if it was never saved, as v0 always
- * counted movement), goalWeightKg = current weight, pace = standard. New profiles set includeMovement: false.
+ * counted movement), goalWeightKg = current weight, pace = standard. New profiles set includeMovement: true (v1.8, false before).
  */
 export function normaliseProfile(p: ProfileIn): Profile {
   const bmr = typeof p.bmr === 'number' && p.bmr > 0 ? p.bmr : calcBmr(p)
