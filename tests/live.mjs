@@ -23,6 +23,7 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.fill('input[name=heightCm]', '165'); await page.fill('input[name=weightKg]', '68'); await page.getByTestId('ob-next').click()
   await page.getByTestId('ob-goal-lose').click()
   await page.getByTestId('ob-act-light').click()
+  await page.getByTestId('ob-pace').waitFor()
   assert.equal(await page.getByTestId('ob-pace').getByRole('button').count(), 3) // pace picker (v1.1+)
   await page.getByTestId('ob-next').click()
   assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1400) // v1.8: movement on, 1925 - 550 = 1375, held at BMR 1,400
@@ -51,7 +52,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.6\.3-[0-9a-f]{12}'/) // v1.6.3 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.8-[0-9a-f]{12}'/) // v1.8 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()
