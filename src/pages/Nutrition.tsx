@@ -1,3 +1,4 @@
+import { isUserFoodId } from '../lib/myFoods'
 import { useState } from 'react'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
@@ -175,19 +176,20 @@ function SplitBar({ grams, targets }: { grams: { protein: number; carbs: number;
 
 /** Group entries by food (or quick add name) and rank by protein. */
 function topSources(entries: Entry[], n = 5) {
-  const map = new Map<string, { name: string; label: string; protein: number; servingLabel: string; qty: number; same: boolean }>()
+  const map = new Map<string, { name: string; label: string; protein: number; servingLabel: string; qty: number; same: boolean; mine: boolean }>()
   for (const e of entries) {
     const k = e.foodId ?? 'q:' + e.name
     const p = entryTotals(e).protein
     const cur = map.get(k)
     if (cur) { cur.protein += p; cur.same &&= cur.servingLabel === e.servingLabel; cur.qty += e.qty }
-    else map.set(k, { name: e.name, label: '', protein: p, servingLabel: e.servingLabel, qty: e.qty, same: !!e.foodId })
+    else map.set(k, { name: e.name, label: '', protein: p, servingLabel: e.servingLabel, qty: e.qty, same: !!e.foodId, mine: isUserFoodId(e.foodId) })
   }
   return [...map.values()]
     .filter((x) => x.protein >= 0.5)
     .sort((a, b) => b.protein - a.protein)
     .slice(0, n)
-    .map((x) => ({ ...x, label: x.same ? `${x.name}, ${formatAmount(x.servingLabel, x.qty)}` : x.name }))
+    // v1.9: one serving of your own food reads as just its name, like the quick add it came from.
+    .map((x) => ({ ...x, label: x.same && !(x.mine && x.qty === 1) ? `${x.name}, ${formatAmount(x.servingLabel, x.qty)}` : x.name }))
 }
 
 export default function Nutrition() {

@@ -52,6 +52,16 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.9 My foods
+
+- A named quick add saves your food to My foods, kept in a new key, calorie-app:foods ({ version: 1, foods }). Unnamed quick adds stay one-off. calorie-app:v2 and calorie-app:ai are unchanged, and no foods key is written until you save one.
+- Names are de-duped (case and extra spaces ignored): adding the same name again updates that food's numbers and keeps its id and first name. The quick add form says whether it will save or update.
+- Your foods use ids u_<id> and show in Recent and Log search with a Mine tag (ranked with favourites). One tap logs a serving; the row opens a sheet with an amount stepper.
+- Me has a My foods card: tap a food to edit its name and numbers or delete it. A clash with another food's name is refused. Edits apply next time; past entries are never changed, and deleting a food keeps them.
+- Entries from your foods edit their own numbers on Today (amount kept), with an Edit food link. Old entries (foodId null) render as before.
+- Backup export includes your foods, import restores them, and a backup without them clears them (import replaces everything). Reset all data clears them.
+- Tests: tests/v19-myfoods.mjs. Screenshots: screenshots/v19-*.
+
 ## v1.8 Onboarding, no deficit cap
 
 - New onboarding: a welcome screen (app name, one line, Get started, a Restore a backup link, and a plate-in-the-ring illustration drawn in inline SVG that stays still under prefers-reduced-motion). Then one question per screen with a progress bar: sex, age, height and weight, goal, activity, pace. Keep skips pace.

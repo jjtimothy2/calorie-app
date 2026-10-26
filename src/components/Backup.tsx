@@ -41,6 +41,7 @@ function useImport(after: () => void) {
           <p className="text-[15px] text-mute" data-testid="import-summary">
             {isNaN(pending.summary.exportedAt.getTime()) ? 'Backup' : `Backup from ${pending.summary.exportedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
             {': '}{plural(pending.summary.days, 'day')}, {plural(pending.summary.entries, 'food entry', 'food entries')}, {plural(pending.summary.exercises, 'workout')}
+            {pending.summary.foods > 0 ? `, ${plural(pending.summary.foods, 'saved food')}` : ''}
             {pending.state.profile ? ', with your profile' : ''}.
           </p>
           {hasData && <p className="text-[15px] font-semibold">This replaces everything currently on this device.</p>}

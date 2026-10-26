@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
-import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Profile, type State } from './types'
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
+import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Macros, type Meal, type Profile, type State } from './types'
+import { editFood, FOODS_KEY, foodsFile, readFoods, upsertFood, USER_SERVING, type UserFood } from './myFoods'
 import { FOOD_BY_ID, FOODS } from '../data/foods'
 import { exerciseKcal, ACTIVITY_BY_ID } from '../data/activities'
 import { addDays, dateKey, liveDay, summarise } from './calc'
@@ -77,6 +78,14 @@ export function entryFromFood(foodId: string, opts: Pick<Entry, 'meal' | 'date'>
     carbs: f.carbs * mult,
     fat: f.fat * mult,
     createdAt: Date.now(),
+  }
+}
+
+/** v1.9: an entry from one of the user's own foods. Values are per serving, like a built-in food at mult 1. */
+export function entryFromUserFood(f: UserFood, opts: { meal: Meal; date: string; qty?: number }): Entry {
+  return {
+    id: newId(), date: opts.date, meal: opts.meal, foodId: f.id, name: f.name, servingLabel: USER_SERVING, servingMult: 1, qty: opts.qty ?? 1,
+    kcal: f.kcal, protein: f.protein, carbs: f.carbs, fat: f.fat, createdAt: Date.now(),
   }
 }
 
@@ -208,14 +217,57 @@ function reducer(state: State, a: Action): State {
   }
 }
 
-type Ctx = { state: State; dispatch: React.Dispatch<Action>; recentFoodIds: string[]; today: string }
+type FoodInput = Macros & { name: string }
+type Ctx = {
+  state: State
+  dispatch: React.Dispatch<Action>
+  /** Built-in and user food ids (u_...), most recent first. */
+  recentFoodIds: string[]
+  today: string
+  /** v1.9: the user's own foods (calorie-app:foods), oldest first. */
+  myFoods: UserFood[]
+  myFoodById: Map<string, UserFood>
+  /** Save a named quick add as a user food (same name updates it). Returns the saved food. */
+  saveMyFood: (f: FoodInput) => UserFood
+  /** Returns false when the name is already used by another of the user's foods. */
+  updateMyFood: (id: string, f: FoodInput) => boolean
+  /** Past entries are kept; they stay in the log as they were. */
+  deleteMyFood: (id: string) => void
+}
 const StoreCtx = createContext<Ctx | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, load)
+  const [state, rawDispatch] = useReducer(reducer, undefined, load)
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
+  // v1.9: user foods live next to the state, under their own key. Nothing is written until there is a food, so a
+  // device that never saves one keeps exactly the keys it had.
+  const [myFoods, setMyFoods] = useState<UserFood[]>(readFoods)
+  const foodsRef = useRef(myFoods)
+  const setFoods = useCallback((f: UserFood[]) => { foodsRef.current = f; setMyFoods(f) }, [])
+  useEffect(() => {
+    if (myFoods.length || localStorage.getItem(FOODS_KEY) !== null) localStorage.setItem(FOODS_KEY, JSON.stringify(foodsFile(myFoods)))
+  }, [myFoods])
+  const dispatch = useCallback((a: Action) => {
+    rawDispatch(a)
+    // A restore has already written the backup's foods (restoreExtraKeys); a reset clears them.
+    if (a.type === 'restore') setFoods(readFoods())
+    if (a.type === 'reset') { localStorage.removeItem(FOODS_KEY); setFoods([]) }
+  }, [setFoods])
+  const saveMyFood = useCallback((f: FoodInput) => {
+    const r = upsertFood(foodsRef.current, f, newId)
+    setFoods(r.foods)
+    return r.food
+  }, [setFoods])
+  const updateMyFood = useCallback((id: string, f: FoodInput) => {
+    const next = editFood(foodsRef.current, id, f)
+    if (!next) return false
+    setFoods(next)
+    return true
+  }, [setFoods])
+  const deleteMyFood = useCallback((id: string) => setFoods(foodsRef.current.filter((f) => f.id !== id)), [setFoods])
+  const myFoodById = useMemo(() => new Map(myFoods.map((f) => [f.id, f])), [myFoods])
   // Track the calendar day so an open app rolls over (and auto-closes yesterday) at midnight.
   const [today, setToday] = useState(dateKey)
   useEffect(() => {
@@ -229,15 +281,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const seen = new Set<string>()
     const out: string[] = []
     for (const e of [...state.entries].sort((a, b) => b.createdAt - a.createdAt)) {
-      if (e.foodId && !seen.has(e.foodId) && FOOD_BY_ID.has(e.foodId)) {
+      if (e.foodId && !seen.has(e.foodId) && (FOOD_BY_ID.has(e.foodId) || myFoodById.has(e.foodId))) {
         seen.add(e.foodId)
         out.push(e.foodId)
       }
       if (out.length >= 8) break
     }
     return out
-  }, [state.entries])
-  return <StoreCtx.Provider value={{ state, dispatch, recentFoodIds, today }}>{children}</StoreCtx.Provider>
+  }, [state.entries, myFoodById])
+  const value = useMemo(
+    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood }),
+    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood],
+  )
+  return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }
 
 export function useStore() {

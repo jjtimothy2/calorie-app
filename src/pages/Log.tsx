@@ -9,7 +9,9 @@ import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
 import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
-import { entryFromFood, newId, useStore } from '../lib/store'
+import { entryFromFood, entryFromUserFood, newId, useStore } from '../lib/store'
+import { USER_SERVING, type UserFood } from '../lib/myFoods'
+import { MineTag, MyFoodSheet } from '../components/MyFoodSheet'
 import { readAi, type AiSettings } from '../lib/ai'
 import { downscalePhoto } from '../lib/photo'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
@@ -17,7 +19,7 @@ import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '..
 type Tab = 'recent' | 'fav' | 'all'
 
 export default function Log() {
-  const { state, dispatch, recentFoodIds, today } = useStore()
+  const { state, dispatch, recentFoodIds, today, myFoods, myFoodById } = useStore()
   const [params, setParams] = useSearchParams()
   const nav = useNavigate()
   const meal = (MEALS as string[]).includes(params.get('meal') ?? '') ? (params.get('meal') as Meal) : defaultMeal()
@@ -28,6 +30,7 @@ export default function Log() {
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<Tab>(recentFoodIds.length ? 'recent' : 'all')
   const [picked, setPicked] = useState<Food | null>(null)
+  const [pickedMine, setPickedMine] = useState<UserFood | null>(null)
   const [quick, setQuick] = useState(false)
   const [toast, setToast] = useState<{ ids: string[]; text: string } | null>(null)
   const timer = useRef<number | undefined>(undefined)
@@ -110,29 +113,40 @@ export default function Log() {
     setParams(next, { replace: true })
   }
 
+  // v1.9: the user's own foods sit in the same list as built-in foods (Recent, search, All foods) with a Mine tag.
+  const mineAsFood = useMemo(() => new Map(myFoods.map((m) => [m.id, { id: m.id, name: m.name, category: 'My foods', servingLabel: USER_SERVING, grams: 0, kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat } as Food])), [myFoods])
+  const anyFood = (id: string) => FOOD_BY_ID.get(id) ?? mineAsFood.get(id)
   const list = useMemo(() => {
     const fav = new Set(state.favourites)
     const recentRank = new Map(recentFoodIds.map((id, i) => [id, i]))
+    const top = (f: Food) => fav.has(f.id) || mineAsFood.has(f.id)
     let pool: Food[] =
-      tab === 'recent' ? recentFoodIds.map((id) => FOOD_BY_ID.get(id)!)
+      tab === 'recent' ? recentFoodIds.map(anyFood).filter((f): f is Food => !!f)
       : tab === 'fav' ? state.favourites.map((id) => FOOD_BY_ID.get(id)!).filter(Boolean)
-      : FOODS
+      : [...mineAsFood.values(), ...FOODS]
     const needle = q.trim().toLowerCase()
     if (needle) {
       pool = pool.filter((f) => f.name.toLowerCase().includes(needle) || f.category.toLowerCase().includes(needle))
       const score = (f: Food) =>
-        (fav.has(f.id) ? 0 : 10) + (recentRank.has(f.id) ? 0 : 5) + (f.name.toLowerCase().startsWith(needle) ? 0 : 2)
+        (top(f) ? 0 : 10) + (recentRank.has(f.id) ? 0 : 5) + (f.name.toLowerCase().startsWith(needle) ? 0 : 2)
       pool = [...pool].sort((a, b) => score(a) - score(b) || a.name.localeCompare(b.name))
     } else if (tab === 'all') {
-      pool = [...pool].sort((a, b) => (fav.has(b.id) ? 1 : 0) - (fav.has(a.id) ? 1 : 0) || (recentRank.get(a.id) ?? 99) - (recentRank.get(b.id) ?? 99))
+      pool = [...pool].sort((a, b) => (top(b) ? 1 : 0) - (top(a) ? 1 : 0) || (recentRank.get(a.id) ?? 99) - (recentRank.get(b.id) ?? 99))
     }
     return pool.slice(0, 60)
-  }, [q, tab, state.favourites, recentFoodIds])
+
+  }, [q, tab, state.favourites, recentFoodIds, mineAsFood])
 
   const oneTap = (f: Food) => {
-    const entry = entryFromFood(f.id, { meal, date: today })
+    const mine = myFoodById.get(f.id)
+    const entry = mine ? entryFromUserFood(mine, { meal, date: today }) : entryFromFood(f.id, { meal, date: today })
     dispatch({ type: 'addEntry', entry })
     showToast(entry)
+  }
+  const pick = (f: Food) => {
+    const mine = myFoodById.get(f.id)
+    if (mine) setPickedMine(mine)
+    else setPicked(f)
   }
 
   return (
@@ -193,11 +207,11 @@ export default function Log() {
         <ul aria-label="Foods" data-testid="food-list">
           {list.map((f) => (
             <li key={f.id} className="flex items-center justify-between gap-2 border-b border-line">
-              <button type="button" className="flex flex-1 items-center gap-3 py-2.5 text-left" onClick={() => setPicked(f)} aria-label={`${f.name}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
+              <button type="button" className="flex flex-1 items-center gap-3 py-2.5 text-left" onClick={() => pick(f)} aria-label={`${f.name}${mineAsFood.has(f.id) ? ' (my food)' : ''}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
                 <span className="tile" aria-hidden="true">{foodEmoji(f.name)}</span>
                 <span className="min-w-0">
-                <div className="text-base font-semibold">{state.favourites.includes(f.id) && <span aria-hidden="true" className="text-carbs">★ </span>}{f.name}</div>
-                <div className="text-[13px] text-mute">{f.servingLabel} ({f.grams} g)</div>
+                <div className="text-base font-semibold">{state.favourites.includes(f.id) && <span aria-hidden="true" className="text-carbs">★ </span>}{f.name}{mineAsFood.has(f.id) && <MineTag />}</div>
+                <div className="text-[13px] text-mute">{mineAsFood.has(f.id) ? `${f.servingLabel} · your food` : `${f.servingLabel} (${f.grams} g)`}</div>
                 </span>
               </button>
               <div className="flex items-center gap-3">
@@ -263,6 +277,9 @@ export default function Log() {
       )}
       {picked && (
         <FoodSheet key={picked.id} mode="add" food={picked} meal={meal} date={today} remaining={remaining} onClose={() => setPicked(null)} onDone={(e) => { setPicked(null); showToast(e) }} />
+      )}
+      {pickedMine && (
+        <MyFoodSheet key={pickedMine.id} mode="add" food={pickedMine} meal={meal} date={today} remaining={remaining} onClose={() => setPickedMine(null)} onDone={(e) => { setPickedMine(null); showToast(e) }} />
       )}
       <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-input" onChange={(e) => onFile(e.target.files?.[0], 'library')} />
       <input ref={captureRef} type="file" accept="image/*" capture="environment" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-capture" onChange={(e) => onFile(e.target.files?.[0], 'camera')} />

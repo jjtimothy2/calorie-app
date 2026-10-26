@@ -1,5 +1,6 @@
 // Backup and restore. All data lives in this browser's localStorage, so a JSON file is the only way to move or keep it.
 import type { State } from './types'
+import { FOODS_KEY, parseFoods } from './myFoods'
 
 export const APP_ID = 'calorie-counter'
 /** File format. 2 since app v1.1 (state v2); schema 1 files (state v1) still restore and are migrated. */
@@ -17,7 +18,7 @@ const DAY = 86_400_000
 
 export type BackupFile = { app: typeof APP_ID; schema: number; exportedAt: string; data: Record<string, unknown> }
 export type BackupMeta = { lastExportAt: number | null; dismissedAt: number | null }
-export type Parsed = { ok: true; file: BackupFile; state: State; summary: { days: number; entries: number; exercises: number; exportedAt: Date } } | { ok: false; error: string }
+export type Parsed = { ok: true; file: BackupFile; state: State; summary: { days: number; entries: number; exercises: number; foods: number; exportedAt: Date } } | { ok: false; error: string }
 
 export function readMeta(): BackupMeta {
   try {
@@ -87,11 +88,13 @@ export function parseBackup(text: string): Parsed {
   const exportedAt = new Date(typeof j.exportedAt === 'string' ? j.exportedAt : NaN)
   const state = { favourites: [], ...s } as unknown as State
   const days = new Set([...state.entries.map((e) => e.date), ...state.exercises.map((e) => e.date)]).size
-  return { ok: true, file: j as BackupFile, state, summary: { days, entries: state.entries.length, exercises: state.exercises.length, exportedAt } }
+  return { ok: true, file: j as BackupFile, state, summary: { days, entries: state.entries.length, exercises: state.exercises.length, foods: parseFoods(j.data[FOODS_KEY]).length, exportedAt } }
 }
 
 /** Writes non-state keys from a backup (the store writes the state itself after the restore action). */
 export function restoreExtraKeys(file: BackupFile) {
+  // v1.9: "replaces everything" includes the user's own foods, so a backup made before v1.9 (no foods key) clears them.
+  if (!(FOODS_KEY in file.data)) localStorage.removeItem(FOODS_KEY)
   for (const [k, v] of Object.entries(file.data)) {
     if (!k.startsWith(PREFIX) || k === STATE_KEY || k === LEGACY_STATE_KEY || DEVICE_ONLY.has(k)) continue
     localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v))
