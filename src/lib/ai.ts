@@ -2,6 +2,7 @@
 // Pure module (no React, no runtime imports) so unit tests can compile and run it on Node.
 // The key lives in its own localStorage entry, never inside calorie-app:v2, never in a backup, never logged.
 import type { Food } from '../data/foods'
+import { formatAmount } from './amount'
 
 export type Provider = 'openai' | 'gemini'
 export type AiSettings = { provider: Provider; key: string }
@@ -229,6 +230,13 @@ export function itemMacros(it: Pick<PhotoItem, 'food' | 'ai'>, grams: number): P
 }
 /** Stepper size: 5 g for small items (sambal), 10 g otherwise. */
 export const gramStep = (g: number) => (g < 50 ? 5 : 10)
+
+/** v1.5.1: portion in the food's own serving words, to the nearest quarter ("1 cup cooked", "1.25 thighs"). Empty for AI-only items (grams are in the stepper). */
+export function portionLabel(it: Pick<PhotoItem, 'food'>, grams: number): string {
+  if (!it.food || !(grams > 0)) return ''
+  const q = Math.max(0.25, Math.round((grams / it.food.grams) * 4) / 4)
+  return formatAmount(it.food.servingLabel, q)
+}
 
 // ---------- Requests ----------
 export function openaiBody(dataUrl: string, note: string, foodNames: string[]) {

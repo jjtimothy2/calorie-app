@@ -184,7 +184,7 @@ try {
     assert.ok(body.generationConfig?.responseFormat || body.generationConfig, 'JSON output requested')
   })
 
-  await step('results: dish, note echo, our per-gram values for matched items, AI numbers for the rest, live stepper, remove', async () => {
+  await step('results: dish, note echo, our per-gram values for matched items, AI numbers for the rest, carbs/fat lines and total pills, no-wrap rule, live stepper, remove', async () => {
     const d = dialog(page)
     assert.equal(await d.getByTestId('photo-dish').innerText(), 'Nasi ayam goreng')
     assert.match(await d.getByTestId('photo-note').innerText(), /Your note: .*Extra sambal/i)
@@ -199,12 +199,48 @@ try {
     assert.equal(await row('Dragonfruit salsa').getAttribute('data-matched'), 'no')
     assert.match(await d.getByTestId('photo-total').innerText(), /^602/)
     assert.match(await d.innerText(), /Estimates are rough\. Adjust before logging\./)
+    // v1.5.1: carbs and fat beside protein, in the macro ink colours, with screen-reader words.
+    // What a sighted user sees (screen-reader-only words removed, hidden portion skipped).
+    const seen = (el) => { const c = el.cloneNode(true); c.querySelectorAll('.sr-only').forEach((x) => x.remove()); if (el.querySelector('[data-testid=item-portion]')?.offsetParent === null) c.querySelector('[data-testid=item-portion]')?.remove(); return c.textContent.replace(/\s+/g, ' ').trim() }
+    const macros = async (n) => row(n).getByTestId('item-macros').evaluate(seen)
+    const vis = async (n) => (await macros(n)).replace(/.* · /, '')
+    assert.equal(await row('Ayam goreng').getByTestId('item-protein').locator('[aria-hidden="true"]').innerText(), '26P')
+    assert.match(await macros('Ayam goreng'), /^1 thigh · 26P 6C 21F$/)
+    assert.match(await macros('Sambal'), /^1 tbsp · 0P 2C 2F$/)
+    assert.match(await vis('Nasi putih'), /^4P 42C 0F$/, 'matched: our per-gram values, not the model\'s 99 g protein')
+    assert.equal(await vis('Dragonfruit salsa'), '1P 13C 0F', 'unmatched: the AI numbers')
+    assert.equal(await row('Dragonfruit salsa').getByTestId('item-portion').count(), 0, 'AI-only items have no portion label')
+    assert.equal((await row('Ayam goreng').getByTestId('item-protein').locator('.sr-only').textContent()).replace(/,$/, ''), '26 g protein')
+    assert.equal((await row('Ayam goreng').getByTestId('item-carbs').locator('.sr-only').textContent()).replace(/,$/, ''), '6 g carbs')
+    assert.equal(await row('Ayam goreng').getByTestId('item-fat').locator('.sr-only').textContent(), '21 g fat')
+    const ink = await row('Ayam goreng').getByTestId('item-macros').evaluate((el) => ['protein', 'carbs', 'fat'].map((k) => getComputedStyle(el.querySelector(`[data-testid=item-${k}]`)).color))
+    assert.deepEqual(ink, ['rgb(194, 51, 106)', 'rgb(138, 95, 0)', 'rgb(47, 98, 201)'], 'protein/carbs/fat text inks')
+    const totals = async () => Promise.all(['protein', 'carbs', 'fat'].map((k) => d.getByTestId(`total-${k}`).innerText()))
+    assert.deepEqual(await totals(), ['31 g Protein', '63 g Carbs', '24 g Fat'])
+    // No-wrap rule at 390 and 375: each macro line stays on one line at 15 px; the portion goes first if it doesn't fit.
+    for (const width of [390, 375]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 667 })
+      await page.waitForTimeout(150)
+      const lines = await d.getByTestId('item-macros').evaluateAll((els) => els.map((el) => ({ fs: getComputedStyle(el).fontSize, h: el.getBoundingClientRect().height, over: el.scrollWidth > el.clientWidth + 0.5, lh: parseFloat(getComputedStyle(el).lineHeight) || 0, rects: el.getClientRects().length, text: el.textContent })))
+      assert.equal(lines.length, 4)
+      for (const l of lines) {
+        assert.equal(l.fs, '15px', `${width}: text never shrinks`)
+        assert.ok(!l.over, `${width}: "${l.text}" overflows`)
+        assert.ok(l.h < 26, `${width}: "${l.text}" wraps (${l.h}px)`)
+      }
+      assert.ok(await row('Ayam goreng').getByTestId('item-portion').isVisible(), `${width}: short portion label is kept`)
+      assert.ok(!(await row('Nasi putih').getByTestId('item-portion').isVisible()), `${width}: long portion label is dropped instead of wrapping`)
+    }
+    await page.setViewportSize({ width: 390, height: 844 })
     await d.getByRole('button', { name: 'More Nasi putih (white rice)' }).click()
     assert.equal(await row('Nasi putih').getByTestId('item-grams').innerText(), '160 g')
     assert.match(await row('Nasi putih').getByTestId('item-kcal').innerText(), /^205/)
     assert.match(await d.getByTestId('photo-total').innerText(), /^615/)
+    assert.equal(await vis('Nasi putih'), '4P 45C 0F', 'carbs follow the stepper')
+    assert.deepEqual(await totals(), ['31 g Protein', '66 g Carbs', '24 g Fat'], 'total pills follow the stepper')
     await d.getByRole('button', { name: 'Less Sambal' }).click()
     assert.equal(await row('Sambal').getByTestId('item-grams').innerText(), '10 g', 'small items step by 5 g')
+    assert.equal(await macros('Sambal'), '0.75 tbsp · 0P 1C 2F', 'portion and macros follow the stepper')
     await d.getByRole('button', { name: 'Remove Sambal' }).click()
     assert.equal(await rows.count(), 3)
     await d.getByRole('button', { name: 'Log 3 items' }).waitFor()

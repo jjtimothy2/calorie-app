@@ -66,6 +66,17 @@ await t('toPhotoItems + itemMacros: matched rows use our per-gram values, others
   assert.deepEqual(ai.itemMacros(perk, 60), { kcal: 150, protein: 3, carbs: 15, fat: 9 })
   assert.deepEqual(ai.itemMacros(perk, 120), { kcal: 300, protein: 6, carbs: 30, fat: 18 }, 'stepper scales AI numbers per gram')
   assert.equal(ai.gramStep(20), 5); assert.equal(ai.gramStep(180), 10)
+  // v1.5.1: carbs and fat come from our list too.
+  assert.ok(Math.abs(r.carbs - nasi.carbs / nasi.grams * 180) < 1e-9 && Math.abs(r.fat - nasi.fat / nasi.grams * 180) < 1e-9, 'rice carbs/fat from our list')
+})
+
+await t('portionLabel (v1.5.1): serving words to the nearest quarter, none for AI-only items', () => {
+  const food = (n) => ({ food: byName(n) })
+  assert.equal(ai.portionLabel(food('Nasi putih (white rice)'), 150), '1 cup cooked')
+  assert.equal(ai.portionLabel(food('Nasi putih (white rice)'), 200), '1.25 cups cooked')
+  assert.equal(ai.portionLabel(food('Ayam goreng'), 240), '2 thighs')
+  assert.equal(ai.portionLabel(food('Sambal'), 5), '0.25 tbsp', 'never shows 0')
+  assert.equal(ai.portionLabel({ food: null }, 80), '')
 })
 
 await t('note chips toggle in and out of the note', () => {

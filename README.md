@@ -52,6 +52,14 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.5.1 Photo results show carbs and fat
+
+- Each item's second line is portion, then protein, carbs and fat in the Nutrition colours, e.g. `1 thigh · 26P 6C 21F`. Screen readers hear "26 g protein, 6 g carbs, 21 g fat".
+- Food-list items use our per-gram values for all macros; AI-only items use the AI's. Everything follows the grams stepper.
+- The Total row has kcal with Protein, Carbs and Fat pills under it.
+- If an item line would wrap (390 or 375 px), the portion label is dropped; text never shrinks.
+- Screenshots: `screenshots/v151-results-*.png` (`node scripts/v151-shots.mjs` with the preview server running).
+
 ## v1.5 AI photo estimate (bring your own key)
 
 - Log > Food: round camera button left of Quick add (hidden on closed days and with the keyboard up, like the bar). Offline it reads "Needs internet". No key yet: a set-up sheet with a button to Me.

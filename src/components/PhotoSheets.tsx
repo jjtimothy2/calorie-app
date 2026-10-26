@@ -1,11 +1,11 @@
 // v1.5: AI photo estimate sheets (ported from Reed's mock). Photo + note -> estimate -> adjust -> log.
 // The photo is a downscaled data URL held in React state only; nothing here is saved except the logged entries.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FOODS } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
 import {
-  AiError, MODELS, PROVIDER_LABEL, errorText, estimatePhoto, gramStep, itemMacros, noteHas, toPhotoItems, toggleNoteChip,
-  type AiErrorKind, type AiSettings, type PhotoItem,
+  AiError, MODELS, PROVIDER_LABEL, errorText, estimatePhoto, gramStep, itemMacros, noteHas, portionLabel, toPhotoItems, toggleNoteChip,
+  type AiErrorKind, type AiSettings, type PhotoItem, type PhotoMacros,
 } from '../lib/ai'
 import { fmt } from '../lib/calc'
 import { Sheet } from './Sheet'
@@ -15,6 +15,49 @@ export const NOTE_CHIPS = ['Shared', 'Half eaten', 'Extra sambal', 'Santan', 'No
 const FOOD_NAMES = FOODS.map((f) => f.name)
 const sb = 'grid h-8 w-8 place-items-center rounded-lg border border-line bg-card text-xl font-bold disabled:opacity-40'
 const ghost = '!w-auto shrink-0 border border-line !bg-card px-5 !text-ink'
+
+const MACROS = [
+  { k: 'protein', letter: 'P', word: 'protein', ink: 'text-protein-ink', pill: 'bg-protein-soft text-protein-ink' },
+  { k: 'carbs', letter: 'C', word: 'carbs', ink: 'text-carbs-ink', pill: 'bg-carbs-soft text-carbs-ink' },
+  { k: 'fat', letter: 'F', word: 'fat', ink: 'text-fat-ink', pill: 'bg-fat-soft text-fat-ink' },
+] as const
+
+/** v1.5.1: "1 cup cooked · 4P 42C 0F" on one line. If it would wrap, the portion is dropped first (text never shrinks). */
+function MacroLine({ portion, m }: { portion: string; m: PhotoMacros }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [fits, setFits] = useState(true)
+  const text = `${portion}|${MACROS.map((x) => fmt(m[x.k])).join(',')}`
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => {
+      el.dataset.measure = '1' // show the portion while measuring
+      const over = el.scrollWidth > el.clientWidth + 0.5
+      delete el.dataset.measure
+      setFits(!over)
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [text])
+  return (
+    <span ref={ref} className="group block overflow-hidden whitespace-nowrap text-[15px] font-semibold" data-testid="item-macros">
+      {portion && (
+        <span className={`text-mute group-data-[measure]:!inline ${fits ? '' : 'hidden'}`} data-testid="item-portion">
+          {portion}<span aria-hidden="true"> · </span><span className="sr-only">, </span>
+        </span>
+      )}
+      {MACROS.map((x, i) => (
+        <span key={x.k} className={x.ink} data-testid={`item-${x.k}`}>
+          {i > 0 && ' '}
+          <span aria-hidden="true">{fmt(m[x.k])}{x.letter}</span>
+          <span className="sr-only">{`${fmt(m[x.k])} g ${x.word}${i < 2 ? ',' : ''}`}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
 
 export function CameraIcon({ className = 'h-7 w-7' }: { className?: string }) {
   return (
@@ -32,7 +75,7 @@ export function NoKeySheet({ onClose, onSetup }: { onClose: () => void; onSetup:
       <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-bg text-ink"><CameraIcon className="h-8 w-8" /></div>
       <h2 className="title text-center text-[26px] leading-tight">Estimate from a photo</h2>
       <p className="text-center text-[16px] leading-snug text-mute">
-        Snap your plate and an AI lists what’s on it with rough calories and protein. You check the amounts, then log.
+        Snap your plate and an AI lists what’s on it with rough calories, protein, carbs and fat. You check the amounts, then log.
       </p>
       <ul className="flex flex-col gap-2 rounded-xl bg-bg px-4 py-3 text-[15px] leading-snug">
         <li>🔑 Uses your own Gemini or OpenAI API key. A free Gemini key from Google AI Studio works.</li>
@@ -154,7 +197,7 @@ export function PhotoFlow({ settings, photo, onRetake, onClose, onQuickAdd, onFi
 function Results({ dish, items, photo, note, onRetake, onClose, onLog }: { dish: string; items: PhotoItem[]; photo: string; note: string; onRetake: () => void; onClose: () => void; onLog: (rows: LogItem[]) => void }) {
   const [rows, setRows] = useState(() => items.map((it) => ({ it, g: it.grams })))
   const view = rows.map((r) => ({ ...r, m: itemMacros(r.it, r.g), step: gramStep(r.it.grams) }))
-  const total = view.reduce((a, r) => ({ kcal: a.kcal + r.m.kcal, p: a.p + r.m.protein }), { kcal: 0, p: 0 })
+  const total = view.reduce<PhotoMacros>((a, r) => ({ kcal: a.kcal + r.m.kcal, protein: a.protein + r.m.protein, carbs: a.carbs + r.m.carbs, fat: a.fat + r.m.fat }), { kcal: 0, protein: 0, carbs: 0, fat: 0 })
   const set = (key: string, d: number) => setRows((x) => x.map((r) => (r.it.key === key ? { ...r, g: Math.max(gramStep(r.it.grams), r.g + d) } : r)))
   const remove = (key: string) => setRows((x) => x.filter((r) => r.it.key !== key))
   const n = rows.length
@@ -178,8 +221,8 @@ function Results({ dish, items, photo, note, onRetake, onClose, onLog }: { dish:
               <button type="button" onClick={() => remove(r.it.key)} aria-label={`Remove ${r.it.name}`} className="tap -mr-1 grid h-8 w-8 place-items-center rounded-full text-[18px] text-mute">✕</button>
             </div>
             <div className="flex items-center justify-between gap-3 pl-[52px]">
-              <div className="min-w-0 leading-tight">
-                <span className="block whitespace-nowrap text-[15px] font-semibold text-protein-ink">{fmt(r.m.protein)} g protein</span>
+              <div className="min-w-0 flex-1 leading-tight">
+                <MacroLine portion={portionLabel(r.it, r.g)} m={r.m} />
                 <span className="block text-[13px] text-mute">{r.it.food ? 'From our food list' : 'AI estimate'}</span>
               </div>
               <div className="flex items-center gap-1 rounded-xl bg-bg p-1">
@@ -192,12 +235,18 @@ function Results({ dish, items, photo, note, onRetake, onClose, onLog }: { dish:
         ))}
         {!n && <li className="py-3 text-center text-[15px] text-mute">All items removed. Retake, or close and use Quick add.</li>}
       </ul>
-      <div className="flex items-baseline justify-between">
-        <span className="text-[17px] font-semibold">Total</span>
-        <span className="flex items-baseline gap-3">
-          <span className="text-[15px] font-semibold text-protein-ink">{fmt(total.p)} g protein</span>
-          <b className="num text-[24px]" data-testid="photo-total">{fmt(total.kcal)} <span className="font-sans text-[14px] font-normal text-mute">kcal</span></b>
-        </span>
+      <div className="flex items-start justify-between gap-3">
+        <span className="pt-1 text-[17px] font-semibold">Total</span>
+        <div className="flex flex-col items-end gap-1.5">
+          <b className="num text-[24px] leading-none" data-testid="photo-total">{fmt(total.kcal)} <span className="font-sans text-[14px] font-normal text-mute">kcal</span></b>
+          <ul aria-label="Total macros" className="flex flex-wrap justify-end gap-1.5">
+            {MACROS.map((x) => (
+              <li key={x.k} className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${x.pill}`} data-testid={`total-${x.k}`}>
+                {fmt(total[x.k])} g {x.word[0].toUpperCase() + x.word.slice(1)}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
       <p className="-mt-2 text-center text-[14px] text-mute">Estimates are rough. Adjust before logging.</p>
       <div className="flex gap-2.5">
