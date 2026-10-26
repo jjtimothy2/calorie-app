@@ -1,13 +1,15 @@
 // v1.4: History balance chart with a 7-day average line, press-and-hold scrubbing and
 // swipe paging, modelled on Apple Health's weight chart. Bars keep the v1.3 design.
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { balanceScale, fmt } from '../lib/calc'
+import { fmt } from '../lib/calc'
 import { haptic } from '../lib/haptics'
-import { monotonePath, runs } from '../lib/trend'
+import { barLabel, monotonePath, runs, trendScale } from '../lib/trend'
 import { reducedMotion } from './motion'
 
 export type TrendDay = { key: string; label: string; tick: boolean; value: number | null; open?: boolean; avg: number | null }
 
+// Rough bold-digit width (Inter-like): digits ~0.6em, commas and dots ~0.3em.
+const textW = (t: string, fs: number) => [...t].reduce((w, c) => w + (/[,.]/.test(c) ? 0.3 : 0.6), 0) * fs
 const signed = (n: number) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `−${fmt(-n)}` : '0')
 const HOLD_MS = 150
 const SLOP = 8
@@ -28,8 +30,6 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   const W = 350, left = 40, labelH = 22, top = 10
   const plotW = W - left
   const plotH = height - labelH - top - 6
-  const half = plotH / 2
-  const zero = top + half
   const N = days.length
   const slot = plotW / n
   const gap = n > 10 ? 3 : 10
@@ -38,17 +38,46 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   const tx = (p: number) => -(N - n * (p + 1)) * slot
   const start = N - n * (page + 1), end = start + n - 1
 
-  // One static scale for the whole history so the y axis never jumps while paging.
+  // v1.4.1: one fixed, lopsided scale for the whole history (never jumps while paging, never cuts off a closed day).
+  // Room is kept above and below for value labels that sit outside short bars.
+  const compact = n > 10
   const closedVals = days.flatMap((d) => (d.value == null || d.open ? [] : [d.value]))
-  const S = balanceScale(closedVals.length ? closedVals : days.flatMap((d) => (d.value == null ? [] : [d.value])), goal)
-  const k = half / S
-  const yOf = (v: number) => zero - Math.max(-S, Math.min(S, v)) * k
+  const { top: sTop, bottom: sBot } = trendScale(closedVals, goal)
+  const S = sTop
+  const padT = compact ? 26 : 18, padB = compact ? 26 : 18
+  const k = (plotH - padT - padB) / (sTop + sBot)
+  const zero = top + padT + sTop * k
+  const plotBottom = top + plotH
+  const yOf = (v: number) => zero - v * k // unclamped: the 7-day average of closed days always fits the scale
+  const zf = (zero - top) / plotH
   const cx = (i: number) => left + i * slot + slot / 2
 
   const linePath = useMemo(() => runs(days.map((d, i) => (d.avg == null ? null : ([cx(i), yOf(d.avg)] as [number, number]))))
     .map((r) => monotonePath(r)).join(''), [days, n, S]) // eslint-disable-line react-hooks/exhaustive-deps
   const areaPath = useMemo(() => runs(days.map((d, i) => (d.avg == null ? null : ([cx(i), yOf(d.avg)] as [number, number]))))
     .map((r) => `${monotonePath(r)}L${r[r.length - 1][0].toFixed(2)},${zero}L${r[0][0].toFixed(2)},${zero}Z`).join(''), [days, n, S]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const geom = (d: TrendDay, i: number) => {
+    const x = left + i * slot + gap / 2
+    const v = d.value ?? 0
+    const surplus = v < 0
+    const room = surplus ? plotBottom - zero : zero - top // today's open bar may pass the scale: it runs to the plot edge
+    const h = d.value == null ? 0 : Math.max(4, Math.min(Math.abs(v) * k, room))
+    const over = d.value != null && Math.abs(v) * k > room
+    const vis = i >= start && i <= end
+    const dim = scrub != null && scrub !== i
+    const label = d.value != null && Math.round(v) !== 0 ? barLabel(v, compact) : null
+    // Label inside the bar when it fits, otherwise just above a deficit bar or just below a surplus bar.
+    const fs = compact ? 8.5 : 11
+    const need = compact ? label ? label.length * fs * 0.62 + 8 : 0 : 22
+    const inside = label != null && h >= need && (compact || bw >= textW(label, fs) + 4)
+    const lx = x + bw / 2
+    const barEnd = surplus ? zero + h : zero - h
+    let ly: number
+    if (compact) ly = inside ? (surplus ? barEnd - 4 : barEnd + 4) : (surplus ? barEnd + 3 : barEnd - 3) // rotated -90, reads bottom to top
+    else ly = inside ? (surplus ? barEnd - 7 : barEnd + 16) : (surplus ? barEnd + 14 : barEnd - 5)
+    return { x, v, surplus, h, over, vis, dim, label, fs, inside, lx, ly }
+  }
 
   const svgRef = useRef<SVGSVGElement>(null)
   const stripRef = useRef<SVGGElement>(null)
@@ -177,14 +206,15 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   return (
     <div {...handlers} tabIndex={0} aria-label="Balance chart. Press and hold to see a day. Swipe or use the arrow keys to change period."
       className="relative -mx-1 select-none rounded-xl outline-offset-2 [-webkit-touch-callout:none]" style={{ touchAction: 'pan-y' }} data-testid="trend-chart" data-page={page}>
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid="chart" data-scale={S}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid="chart" data-scale={S} data-top={sTop} data-bottom={sBot}
+        data-zero={zero.toFixed(2)} data-k={k.toFixed(6)} data-plot-top={top} data-plot-bottom={plotBottom}>
         <defs>
           <clipPath id="trend-clip"><rect x={left} y={0} width={plotW} height={height} /></clipPath>
           <linearGradient id="trend-fill" gradientUnits="userSpaceOnUse" x1="0" y1={top} x2="0" y2={top + plotH}>
-            <stop offset=".2" stopColor="var(--color-g)" stopOpacity=".42" />
-            <stop offset=".5" stopColor="var(--color-g)" stopOpacity=".06" />
-            <stop offset=".5" stopColor="var(--color-over)" stopOpacity=".06" />
-            <stop offset=".8" stopColor="var(--color-over)" stopOpacity=".42" />
+            <stop offset={(zf * 0.35).toFixed(3)} stopColor="var(--color-g)" stopOpacity=".42" />
+            <stop offset={zf.toFixed(3)} stopColor="var(--color-g)" stopOpacity=".06" />
+            <stop offset={zf.toFixed(3)} stopColor="var(--color-over)" stopOpacity=".06" />
+            <stop offset={(zf + (1 - zf) * 0.65).toFixed(3)} stopColor="var(--color-over)" stopOpacity=".42" />
           </linearGradient>
         </defs>
         {refs.map((r) => {
@@ -192,7 +222,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
           return (
             <g key={r} data-ref={r}>
               <line x1={left - 4} x2={W} y1={y} y2={y} stroke="var(--color-ink)" strokeOpacity={r === 0 ? 0.22 : 0.16} strokeWidth={r === 0 ? 1.5 : 1.25} strokeDasharray={r === 0 ? undefined : '4 4'} />
-              {(r === 0 || g0 * k >= 13) && <text x={left - 8} y={y + 4} textAnchor="end" fontSize="11" fill="var(--color-mute)">{signed(r)}</text>}
+              {(r === 0 || g0 * k >= 10.5) && <text x={left - 8} y={y + (r === 0 ? 4 : r > 0 ? 2 : 6)} textAnchor="end" fontSize={r === 0 || g0 * k >= 13 ? 11 : 10} fill="var(--color-mute)">{signed(r)}</text>}
             </g>
           )
         })}
@@ -200,31 +230,35 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
           <g ref={stripRef} transform={`translate(${tx(page).toFixed(2)} 0)`}>
             <path d={areaPath} fill="url(#trend-fill)" className="trend-area" />
             {days.map((d, i) => {
-              const x = left + i * slot + gap / 2
-              const v = d.value ?? 0
-              const h = d.value == null ? 0 : Math.max(4, Math.min(Math.abs(v), S) * k)
-              const surplus = v < 0
-              const vis = i >= start && i <= end
-              const dim = scrub != null && scrub !== i
+              const { x, v, surplus, h, over, vis, dim } = geom(d, i)
               return (
                 <g key={d.key} data-bar={d.key} data-value={d.value == null ? '' : Math.round(v)} data-kind={d.value == null ? 'empty' : surplus ? 'surplus' : 'deficit'}
-                  data-clipped={d.value != null && Math.abs(v) > S ? 'yes' : 'no'} data-h={Math.round(h)} data-visible={vis ? 'yes' : 'no'}>
+                  data-clipped="no" data-over={over ? 'yes' : 'no'} data-h={Math.round(h)} data-hx={h.toFixed(2)} data-y0={(surplus ? zero : zero - h).toFixed(2)} data-y1={(surplus ? zero + h : zero).toFixed(2)}
+                  data-open={d.open ? 'yes' : 'no'} data-visible={vis ? 'yes' : 'no'}>
                   {d.value != null && (
                     <rect x={x} y={surplus ? zero : zero - h} width={bw} height={h} rx={Math.min(8, bw / 2, h / 2)}
                       fill={surplus ? 'var(--color-over)' : 'var(--color-g)'} opacity={(d.open ? 0.5 : 1) * (dim ? 0.32 : 1)}
                       className="bar-grow" style={{ transformOrigin: surplus ? 'top' : 'bottom', animationDelay: vis ? `${(i - start) * (n > 10 ? 12 : 45)}ms` : '0ms', transition: 'opacity .12s' }} />
-                  )}
-                  {d.value != null && Math.abs(v) > S && (
-                    <g data-cap opacity={dim ? 0.32 : 1}>
-                      <rect x={x - 2} y={surplus ? zero + h - 1 : zero - h - 2} width={bw + 4} height={3} rx={1.5} fill="var(--color-ink)" fillOpacity=".55" />
-                      {bw >= 14 && <text x={x + bw / 2} y={surplus ? zero + h - 8 : zero - h + 16} textAnchor="middle" fontSize={bw < 30 ? 9 : 11} fontWeight="700" fill="white">{fmt(Math.abs(v))}</text>}
-                    </g>
                   )}
                   {d.tick && <text x={x + bw / 2} y={height - 4} textAnchor="middle" fontSize="13" fill={scrub === i ? 'var(--color-ink)' : 'var(--color-mute)'} fontWeight={scrub === i ? 700 : 400}>{d.label}</text>}
                 </g>
               )
             })}
             <path ref={lineRef} d={linePath} fill="none" stroke="var(--color-ink)" strokeOpacity=".82" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" data-testid="trend-line" />
+            <g data-testid="bar-labels" pointerEvents="none">
+              {days.map((d, i) => {
+                const { surplus, vis, dim, label, fs, inside, lx, ly } = geom(d, i)
+                if (label == null) return null
+                const anchor = compact ? (inside !== surplus ? 'end' : 'start') : 'middle'
+                return (
+                  <text key={d.key} data-label-for={d.key} data-label={inside ? 'inside' : 'outside'} x={lx} y={ly} fontSize={fs} fontWeight="700" className="bar-label"
+                    fill={inside ? (d.open ? (surplus ? 'var(--color-over-ink)' : 'var(--color-g-ink)') : 'white') : 'var(--color-ink)'} fillOpacity={dim ? 0.32 : inside ? 1 : 0.8}
+                    stroke={inside ? undefined : 'var(--color-card)'} strokeWidth={inside ? undefined : 3} strokeOpacity={dim ? 0.32 : 1} paintOrder="stroke" strokeLinejoin="round"
+                    textAnchor={anchor} dominantBaseline={compact ? 'central' : undefined} transform={compact ? `rotate(-90 ${lx} ${ly})` : undefined}
+                    style={{ animationDelay: vis ? `${(i - start) * (n > 10 ? 12 : 45) + 300}ms` : '0ms', transition: 'fill-opacity .12s' }}>{label}</text>
+                )
+              })}
+            </g>
             {sel && scrub != null && (
               <g data-testid="scrub-indicator" pointerEvents="none">
                 <line x1={cx(scrub)} x2={cx(scrub)} y1={top - 6} y2={top + plotH} stroke="var(--color-ink)" strokeOpacity=".55" strokeWidth="1.25" />

@@ -38,3 +38,24 @@ export function runs<T>(items: (T | null)[]): T[][] {
   if (cur.length) out.push(cur)
   return out
 }
+
+/**
+ * v1.4.1 lopsided, fixed y scale for the balance chart (one scale for all history, so paging never jumps).
+ * top fits the biggest closed-day deficit, bottom the bigger of the biggest closed surplus or the goal line,
+ * each with ~10% headroom rounded up to 50 kcal, so no closed day is ever cut off.
+ * Open days (today) do not set the scale: the chart lets them run to the plot edge.
+ */
+export function trendScale(closed: number[], goal: number): { top: number; bottom: number } {
+  const g = Math.abs(goal)
+  const up = (n: number) => Math.max(50, Math.ceil((n * 1.1) / 50) * 50)
+  const maxDef = Math.max(0, ...closed)
+  const maxSur = Math.max(0, ...closed.map((v) => -v))
+  return { top: up(Math.max(maxDef, g)), bottom: up(Math.max(maxSur, g)) }
+}
+
+/** Short bar label: '380', '1,559' (7 days) or '380', '1.6k' (30 days). */
+export function barLabel(v: number, compact: boolean): string {
+  const a = Math.round(Math.abs(v))
+  if (compact && a >= 1000) return `${(a / 1000).toFixed(a >= 9950 ? 0 : 1)}k`
+  return a.toLocaleString('en-US')
+}

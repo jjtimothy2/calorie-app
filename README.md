@@ -52,6 +52,13 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.4.1 History chart scale fix
+- Fixed, lopsided y scale for the whole history (`trendScale` in `src/lib/trend.ts`): top = biggest closed-day deficit + ~10%, bottom = bigger of the biggest closed surplus or the goal + ~10% (rounded up to 50). No closed day is ever cut off; paging never changes the scale.
+- No cap mark. Bars and the 7-day average line use the same unclamped scale, so heights are in proportion (3,232 is 2.07x 1,559).
+- Today's open bar may pass the scale (it starts near full BMR): it runs to the top edge of the plot and keeps its number.
+- Every non-zero bar shows its value: inside the bar when it fits, otherwise just above (deficit) or below (surplus). 30 days uses short vertical labels (380, 1.6k). Labels sit above the average line.
+- Tests: `tests/v141-chart.mjs` (Jordy's week: Sat 1,001, Sun 3,232, Mon 1,559 open, goal 337), screenshots `node scripts/v141-shots.mjs`.
+
 ## v1.4 History chart
 - Balance view: daily deficit/surplus bars plus a smooth 7-day average line of closed days with a soft fill; 0 and ± daily goal lines stay. One fixed y scale across the whole history.
 - Press and hold (150 ms) to scrub: snaps day by day, the header shows that day's balance, date and 7-day average; release brings the period header back.

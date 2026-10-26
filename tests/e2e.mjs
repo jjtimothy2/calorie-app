@@ -3,6 +3,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE as V1_STATE } from './v11-fixture.mjs'
 import { chartChecks, reducedMotionChecks } from './v14-chart.mjs'
+import { geometry, v141Checks } from './v141-chart.mjs'
 
 // The app is served under the GitHub Pages base path /calorie-app/ (see vite.config.ts).
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
@@ -622,21 +623,22 @@ try {
     assert.equal(await mp.getByRole('button', { name: 'Standard 0.5 kg/wk' }).getAttribute('aria-pressed'), 'true')
     assert.equal(await mp.getByRole('switch', { name: /Include daily movement/ }).isChecked(), true)
   })
-  await step('v1.1 chart: symmetric scale, the +2,500 spike is clipped, small days stay readable', async () => {
+  await step('v1.4.1 chart: lopsided fixed scale fits the +2,500 spike, nothing clipped, every bar labelled', async () => {
     await mp.goto(BASE + '/history')
     const svg = mp.getByTestId('chart')
-    assert.equal(await svg.getAttribute('data-scale'), '1000') // robust max ignores the spike; 2 x 440 -> 1000
+    // top = 2,500 + 10% -> 2,750; bottom = max(420 surplus, 440 goal) + 10% -> 500.
+    assert.deepEqual([await svg.getAttribute('data-top'), await svg.getAttribute('data-bottom')], ['2750', '500'])
     const refs = await mp.locator('[data-ref]').evaluateAll((els) => els.map((e) => e.getAttribute('data-ref')))
     assert.equal(refs.length, 3)
     const labels = await mp.getByTestId('chart').locator('text').allTextContents()
     for (const l of ['+440', '0', '−440']) assert.ok(labels.includes(l), `label ${l} in ${labels}`)
-    const bars = await mp.locator('[data-bar][data-visible=yes]').evaluateAll((els) => els.map((e) => ({ v: Number(e.getAttribute('data-value')), h: Number(e.getAttribute('data-h')), clip: e.getAttribute('data-clipped') })))
-    const spike = bars.find((b) => b.v === 2500)
-    assert.equal(spike.clip, 'yes')
-    // Today is open at 2200 - 975 = 1225 so far: it does not set the scale, and is clipped too.
-    assert.deepEqual(bars.filter((b) => b.clip === 'yes').map((b) => b.v).sort(), [1225, 2500])
-    const small = bars.filter((b) => Math.abs(b.v) >= 300 && Math.abs(b.v) <= 420)
-    assert.ok(small.length >= 5 && small.every((b) => b.h >= 0.3 * spike.h - 1), JSON.stringify(bars))
+    await mp.waitForTimeout(900)
+    const g = await geometry(mp)
+    const spike = g.bars.find((b) => b.v === 2500)
+    assert.equal(spike.over, 'no')
+    // Today is open at 2200 - 975 = 1225 so far: drawn to scale, not clipped.
+    assert.equal(g.bars.find((b) => b.v === 1225).over, 'no')
+    assert.equal(await mp.locator('[data-cap]').count(), 0)
   })
   for (const [w, h, inset] of [[375, 667, 0], [390, 844, 34]]) {
     await step(`v1.1 + button fully visible and tappable at ${w}x${h}${inset ? ' (safe-area bottom 34, as in the iOS PWA)' : ''}`, async () => {
@@ -882,6 +884,12 @@ try {
     const pg = await c.newPage(); watch(pg)
     const out = await chartChecks(pg, c, BASE)
     results.push('  ' + JSON.stringify(out))
+    await c.close()
+  })
+  await step('v1.4.1 History chart: Jordy week to scale (3,232 vs 1,559), labels on every bar, surplus week, 30 days, open day past the scale', async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+    const pg = await c.newPage(); watch(pg)
+    results.push('  ' + JSON.stringify(await v141Checks(pg, c, BASE)))
     await c.close()
   })
   await step('v1.4 History chart, reduced motion: no entry animation, instant snap', async () => {

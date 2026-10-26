@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import assert from 'node:assert/strict'
 const out = 'node_modules/.tmp/calc'
 rmSync(out, { recursive: true, force: true })
-execSync(`npx tsc --ignoreConfig --outDir ${out} src/lib/calc.ts src/lib/migrate.ts src/lib/backup.ts --module esnext --target es2022 --skipLibCheck --lib es2022,dom`)
+execSync(`npx tsc --ignoreConfig --outDir ${out} src/lib/calc.ts src/lib/migrate.ts src/lib/backup.ts src/lib/trend.ts --module esnext --target es2022 --skipLibCheck --lib es2022,dom`)
 // Node needs file extensions on ESM imports: rename to .mjs and patch relative imports.
 for (const f of readdirSync(out).filter((f) => f.endsWith('.js'))) {
   const src = readFileSync(`${out}/${f}`, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.mjs'")
@@ -324,6 +324,18 @@ t('balance scale: robust symmetric scale, the +2,500 spike is clipped', () => {
   assert.equal(balanceScale([2500, 2400, 300], 500), 2500) // two big days set the scale
   assert.equal(balanceScale([], 300), 1000)
   assert.equal(balanceScale([-1800, 200, 100], 0), 500) // surplus spike clipped too
+})
+const { trendScale, barLabel, rolling } = await load('trend')
+t('v1.4.1 trend scale: lopsided, fixed, closed days never cut off; labels', () => {
+  assert.deepEqual(trendScale([1001, 3232, 410, -820, 45], 337), { top: 3600, bottom: 950 }) // Jordy: 3,232 + 10% -> 3,600
+  assert.deepEqual(trendScale([300, -100], 337), { top: 400, bottom: 400 }) // goal line + 10% both sides
+  assert.deepEqual(trendScale([], 0), { top: 50, bottom: 50 })
+  assert.deepEqual(trendScale([-2000, 500], 500), { top: 550, bottom: 2200 })
+  for (const v of [1001, 3232, 45, -820, 9999]) { const s = trendScale([v, 100], 337); assert.ok(v <= s.top && -v <= s.bottom && v * 1.09 <= s.top + (v < 0 ? Infinity : 0)) }
+  assert.deepEqual([barLabel(3232, false), barLabel(-820, false), barLabel(45, true), barLabel(1559, true), barLabel(-60, true)], ['3,232', '820', '45', '1.6k', '60'])
+  // The 7-day average never exceeds the biggest closed value, so it always fits the scale unclamped.
+  const vals = [1001, 3232, null, 410]; const top = trendScale(vals.filter((v) => v != null), 337).top
+  assert.ok(rolling(vals).every((a) => a == null || a <= top))
 })
 t('protein scale: max(1.25 x target, biggest value)', () => {
   assert.equal(proteinScale([60, 90], 100), 125)

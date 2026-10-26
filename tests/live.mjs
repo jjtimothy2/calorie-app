@@ -2,6 +2,7 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { chartChecks } from './v14-chart.mjs'
+import { v141Checks } from './v141-chart.mjs'
 const BASE = (process.argv[2] ?? 'https://jjtimothy2.github.io/calorie-app').replace(/\/$/, '')
 const OUT = new URL('../screenshots/', import.meta.url).pathname
 const errors = [], results = []
@@ -46,7 +47,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.4-[0-9a-f]{12}'/) // v1.4 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.4\.1-[0-9a-f]{12}'/) // v1.4.1 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()
@@ -124,6 +125,12 @@ await step('v1.4 History chart: average line, hold to scrub, swipe paging, today
   const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
   const p = await c.newPage(); watch(p)
   results.push('  ' + JSON.stringify(await chartChecks(p, c, BASE)))
+  await c.close()
+})
+await step('v1.4.1 History chart: Jordy week to scale, labels on every bar, surplus week, 30 days, open day past the scale, no cap line', async () => {
+  const c = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const p = await c.newPage(); watch(p)
+  results.push('  ' + JSON.stringify(await v141Checks(p, c, BASE)))
   await c.close()
 })
 if (errors.length) results.push(...errors.map((e) => '  ' + e))
