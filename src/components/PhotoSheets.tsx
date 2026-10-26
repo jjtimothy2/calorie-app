@@ -11,6 +11,7 @@ import {
   scaleLine,
 } from '../lib/ai'
 import { fmt } from '../lib/calc'
+import { FADE_MS, effectiveTransition, type TextTransition } from '../lib/ui'
 import { Sheet } from './Sheet'
 import { Button, Chip } from './ui'
 
@@ -158,7 +159,9 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRem
     document.addEventListener('visibilitychange', on)
     return () => document.removeEventListener('visibilitychange', on)
   }, [])
-  const wantCam = phase.k === 'input' && !photo && !textFirst && !camFailed && visible
+  // v1.6.4: the camera keeps running for the fade after text first (hold), then the cleanup stops every track.
+  const [hold, setHold] = useState(false)
+  const wantCam = phase.k === 'input' && !photo && (!textFirst || hold) && !camFailed && visible
   useEffect(() => {
     if (!wantCam) return
     let dead = false
@@ -192,6 +195,41 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRem
       setCam('off')
     }
   }, [wantCam])
+  // v1.6.4 text-first transition. 'fade' (default): the frame takes its strip size in one layout change while a still of
+  // the last camera frame fades out over 200 ms and the strip fades in; the stream is stopped only after the fade (stopping
+  // it mid-motion stutters on iPhone). 'snap' (or Reduce Motion): everything swaps at once and the keyboard does all the
+  // moving. Nothing animates height, so the only big motion on screen is the keyboard and the sheet riding it.
+  const [trans, setTrans] = useState<TextTransition>(effectiveTransition)
+  const [fading, setFading] = useState(false)
+  const stillRef = useRef<HTMLCanvasElement>(null)
+  const fadeTimer = useRef(0)
+  useEffect(() => () => clearTimeout(fadeTimer.current), [])
+  const freeze = () => {
+    const v = videoRef.current, c = stillRef.current
+    if (!v || !c || !v.videoWidth) return false
+    const k = Math.min(1, 720 / v.videoWidth)
+    c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k)
+    const g = c.getContext('2d')
+    if (!g) return false
+    g.drawImage(v, 0, 0, c.width, c.height)
+    c.dataset.drawn = String(performance.now())
+    return true
+  }
+  const toText = () => {
+    if (photo || textFirst || camFailed) return
+    const m = effectiveTransition()
+    setTrans(m)
+    if (m === 'fade') setFading(freeze())
+    setHold(true)
+    setTextFirst(true)
+    clearTimeout(fadeTimer.current)
+    fadeTimer.current = window.setTimeout(() => {
+      setFading(false); setHold(false)
+      if (document.activeElement === noteRef.current) noteRef.current?.closest('[role=dialog]')?.querySelector<HTMLElement>('[data-keep-visible]')?.scrollIntoView({ block: 'nearest' })
+    }, FADE_MS)
+  }
+  const toCamera = () => { clearTimeout(fadeTimer.current); setFading(false); setHold(false); setTrans(effectiveTransition()); setTextFirst(false) }
+  const dur = trans === 'fade' ? 'duration-200' : 'duration-0'
   const shoot = () => { const v = videoRef.current; if (v) grabFrame(v).then(onShot, () => {}) }
   // v1.6.2: a photo, 2+ typed characters, or a chip.
   const ready = !!photo || note.trim().length >= 2 || NOTE_CHIPS.some((c) => noteHas(note, c))
@@ -242,9 +280,9 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRem
   }
 
   const loading = phase.k === 'loading'
-  // v1.6.2 photo-first sheet. The frame is big until the text field is tapped with no photo yet; then it folds into a
-  // slim "Add a photo" strip (one element, its height animates, so the field and chips slide with it). A photo always
-  // keeps it big. The textarea never remounts, so the v1.5.2 focus handling is untouched.
+  // v1.6.2 photo-first sheet. The frame is big until the text field is tapped with no photo yet; then it becomes a slim
+  // "Add a photo" strip (v1.6.4: crossfade or instant swap, never a height animation). A photo always keeps it big. The
+  // textarea never remounts, so the v1.5.2 focus handling is untouched.
   // v1.6.3: no camera (refused, missing, failed) opens straight on the strip with "Use a photo" (file picker).
   const strip = !photo && (textFirst || camFailed)
   const askWhat = strip
@@ -257,27 +295,30 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRem
           <img src={photo} alt="Your meal photo" className={`h-full w-full object-cover ${loading ? 'opacity-60' : ''}`} />
           <span className="sr-only">Photo added</span>
           {!loading && <div className="absolute inset-x-2 bottom-2 flex justify-end gap-2">
-            <button type="button" onClick={camFailed ? onPickPhoto : () => { setTextFirst(false); onRemovePhoto() }} className="tap rounded-full bg-card/95 px-4 py-2 text-[15px] font-bold text-g-ink shadow-sm">Change</button>
+            <button type="button" onClick={camFailed ? onPickPhoto : () => { toCamera(); onRemovePhoto() }} className="tap rounded-full bg-card/95 px-4 py-2 text-[15px] font-bold text-g-ink shadow-sm">Change</button>
             <button type="button" onClick={onRemovePhoto} aria-label="Remove photo" className="tap grid h-10 w-10 place-items-center rounded-full bg-card/95 text-[18px] text-ink shadow-sm">✕</button>
           </div>}
         </div>
       ) : (
         <div
-          onTransitionEnd={(e) => { if (e.target === e.currentTarget && e.propertyName === 'height' && document.activeElement === noteRef.current) e.currentTarget.closest('[role=dialog]')?.querySelector<HTMLElement>('[data-keep-visible]')?.scrollIntoView({ block: 'nearest' }) }}
           data-testid="photo-frame"
           data-state={strip ? 'strip' : 'big'}
+          data-trans={trans}
+          data-fading={fading ? 'true' : undefined}
           data-cam={camFailed ? 'none' : cam}
           className={`frame-anim relative w-full shrink-0 overflow-hidden rounded-2xl ${strip ? 'h-[56px] bg-card' : 'frame-h bg-ink'} ${loading ? 'opacity-50' : ''}`}
         >
-          {/* Big: live preview with shutter and gallery. Kept mounted so the fold can crossfade. */}
-          <div aria-hidden={!big} className={`absolute inset-0 transition-opacity duration-[280ms] ease-out ${big ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+          {/* Big: live preview with shutter and gallery. Kept mounted so it can crossfade into the strip. */}
+          <div aria-hidden={!big} data-testid="camera-layer" className={`absolute inset-0 transition-opacity ${dur} ease-out ${big ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
             <video ref={videoRef} playsInline muted autoPlay data-testid="camera-preview" className="h-full w-full object-cover" />
-            {cam !== 'live' && <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink text-center text-card">
+            {/* v1.6.4: the frozen last frame, shown over the video while the layer fades out. */}
+            <canvas ref={stillRef} data-testid="camera-still" aria-hidden="true" className={`absolute inset-0 h-full w-full object-cover ${fading ? '' : 'hidden'}`} />
+            {cam !== 'live' && !fading && <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink text-center text-card">
               <CameraIcon className="h-7 w-7 opacity-80" />
               <span className="text-[15px] font-semibold opacity-90">Starting camera…</span>
             </span>}
-            <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
-            <div className="absolute inset-x-0 bottom-2.5 flex items-center justify-center">
+            <span aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent ${big ? '' : 'invisible'}`} />
+            <div className={`absolute inset-x-0 bottom-2.5 flex items-center justify-center ${big ? '' : 'invisible'}`}>
               <button type="button" onClick={onPickPhoto} disabled={!big || loading} aria-label="Choose from gallery" data-testid="gallery-btn" className="tap absolute left-3 grid h-11 w-11 place-items-center rounded-full bg-card/90 text-ink shadow-sm">
                 <GalleryIcon className="h-[22px] w-[22px]" />
               </button>
@@ -286,16 +327,16 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRem
               </button>
             </div>
           </div>
-          <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl border-2 border-dashed border-line transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'opacity-0'}`} />
+          <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl border-2 border-dashed border-line transition-opacity ${dur} ease-out ${strip ? 'opacity-100' : 'opacity-0'}`} />
           {/* Strip: text first folds here (tap = camera again); no camera opens here with "Use a photo" (tap = picker). */}
           <button
             type="button"
-            onClick={camFailed ? onPickPhoto : () => setTextFirst(false)}
+            onClick={camFailed ? onPickPhoto : toCamera}
             disabled={!strip || loading}
             aria-hidden={!strip}
             data-testid="add-photo"
             aria-label={camFailed ? 'Use a photo' : 'Add a photo (optional)'}
-            className={`absolute inset-x-0 top-0 flex h-[56px] w-full items-center gap-3 px-4 text-left transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+            className={`absolute inset-x-0 top-0 flex h-[56px] w-full items-center gap-3 px-4 text-left transition-opacity ${dur} ease-out ${strip ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
           >
             {camFailed ? <GalleryIcon className="h-6 w-6 shrink-0 text-g" /> : <CameraIcon className="h-6 w-6 shrink-0 text-g" />}
             {camFailed
@@ -304,22 +345,26 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onShot, onRem
           </button>
         </div>
       )}
-      {/* v1.6.1: a size reference in the shot gives better grams. Folds away with the frame. */}
+      {/* v1.6.1: a size reference in the shot gives better grams. v1.6.4: goes in the same single layout change (no fold). */}
       {!photo && (
-        <div className={`-mt-1.5 grid transition-[grid-template-rows,opacity] duration-[280ms] ease-out ${strip ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`} aria-hidden={strip}>
+        <div className={`-mt-1.5 grid ${strip ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`} aria-hidden={strip}>
           <p className="overflow-hidden px-1 text-[13px] leading-snug text-mute [text-wrap:balance]" data-testid="photo-tip">Tip: put a spoon or your hand in the shot for better portions.</p>
         </div>
       )}
       <div className="-mb-1.5 grid px-1 text-[15px] font-bold" data-testid="note-label">
-        <span aria-hidden={askWhat} className={`col-start-1 row-start-1 transition-opacity duration-[280ms] ease-out ${askWhat ? 'opacity-0' : 'opacity-100'}`}>Add a note <span className="font-normal text-mute">(optional)</span></span>
-        <span aria-hidden={!askWhat} className={`col-start-1 row-start-1 transition-opacity duration-[280ms] ease-out ${askWhat ? 'opacity-100' : 'opacity-0'}`}>What did you eat?</span>
+        <span aria-hidden={askWhat} className={`col-start-1 row-start-1 transition-opacity ${dur} ease-out ${askWhat ? 'opacity-0' : 'opacity-100'}`}>Add a note <span className="font-normal text-mute">(optional)</span></span>
+        <span aria-hidden={!askWhat} className={`col-start-1 row-start-1 transition-opacity ${dur} ease-out ${askWhat ? 'opacity-100' : 'opacity-0'}`}>What did you eat?</span>
       </div>
       <textarea
         ref={noteRef}
         rows={2}
         value={note}
         disabled={loading}
-        onFocus={() => { if (!photo) setTextFirst(true) }}
+        // v1.6.4: focus is taken inside the tap itself (iOS only raises the keyboard for a focus in the user gesture);
+        // the frame change happens on focus, after the finger is up, so the field never moves under the tap.
+        onPointerUp={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }) }}
+        onClick={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }) }}
+        onFocus={() => { if (!photo) { if (camFailed) setTextFirst(true); else toText() } }}
         onChange={(e) => setNote(e.target.value)}
         maxLength={300}
         aria-label={askWhat ? 'What did you eat?' : 'Add a note (optional)'}

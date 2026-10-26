@@ -86,30 +86,25 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
     assert.equal(await est.isDisabled(), true)
     const eb = await est.boundingBox()
     assert.ok(eb.y + eb.height <= height, 'Estimate on screen without scrolling')
-    const tr = await frame.evaluate((el) => { const c = getComputedStyle(el); return [c.transitionDuration, c.transitionTimingFunction] })
+    const tr = await frame.evaluate((el) => { const c = getComputedStyle(el); return [c.transitionDuration, c.transitionTimingFunction, c.transitionProperty] })
     if (reduced) assert.ok(/^0s/.test(tr[0]), 'reduced motion: no transition ' + tr)
-    else assert.ok(/0\.28s/.test(tr[0]) && /ease-out|cubic-bezier\(0, 0, 0\.58, 1\)/.test(tr[1]), 'frame animates 280 ms ease-out: ' + tr)
+    else assert.ok(!/height|all/.test(tr[2]), 'v1.6.4: the frame never animates its height: ' + tr)
     await shot('photo-first')
   })
 
-  await step(`${tag}: text first: tap the field, frame folds to a 56 px dashed strip ${reduced ? 'instantly' : 'in ~280 ms with the field sliding up'}, label crossfades, focus and Estimate survive the keyboard`, async () => {
+  await step(`${tag}: text first: tap the field, frame becomes a 56 px dashed strip in one layout change ${reduced ? '(instant)' : '(200 ms crossfade, no height animation)'}, label crossfades, focus and Estimate survive the keyboard`, async () => {
     const big = await h(frame)
-    const gap = () => page.evaluate(() => document.querySelector('textarea').getBoundingClientRect().top - document.querySelector('[data-testid=photo-frame]').getBoundingClientRect().top)
-    const g0 = await gap()
     await note.tap()
-    await page.waitForTimeout(reduced ? 30 : 110)
+    await page.waitForTimeout(reduced ? 30 : 60)
     const mid = await page.evaluate(() => {
       const f = document.querySelector('[data-testid=photo-frame]')
-      return { h: f.getBoundingClientRect().height, dash: +getComputedStyle(f.querySelector('.border-dashed')).opacity, gap: document.querySelector('textarea').getBoundingClientRect().top - f.getBoundingClientRect().top }
+      return { h: f.getBoundingClientRect().height, dash: +getComputedStyle(f.querySelector('.border-dashed')).opacity }
     })
     if (reduced) assert.ok(Math.round(mid.h) === 56 && mid.dash === 1, 'reduced motion: strip at once ' + JSON.stringify(mid))
     else {
-      assert.ok(mid.h > 60 && mid.h < big - 5, `frame height mid-animation (${mid.h} between 56 and ${big})`)
+      // v1.6.4 (was a 280 ms height fold): the size changes at once, only opacity moves.
+      assert.ok(Math.round(mid.h) === 56, `strip size right away, no fold (${mid.h}, was ${big})`)
       assert.ok(mid.dash > 0 && mid.dash < 1, 'dashed border fading in: ' + mid.dash)
-      // Bottom sheet: the field slides up toward the frame's top edge as the frame folds, in the same frames.
-      assert.ok(mid.gap < g0 - 10 && mid.gap > g0 - (big - 56) - 40, `field slides with the frame (${g0} -> ${mid.gap})`)
-      await page.waitForTimeout(400)
-      assert.ok(await gap() < mid.gap - 5, 'and keeps going until the strip is done')
     }
     await page.waitForTimeout(400)
     assert.equal(await frame.getAttribute('data-state'), 'strip')

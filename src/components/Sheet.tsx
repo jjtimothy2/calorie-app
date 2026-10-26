@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react'
+import { useEffect, useRef, type FocusEvent, type ReactNode } from 'react'
 
 const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select'
 
@@ -7,12 +7,13 @@ const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), te
  * onClose, so any parent re-render (Log re-renders when the iOS keyboard opens) tore it down and re-ran it: focus
  * jumped back to the sheet, the field blurred and the keyboard closed again ("the note field only nudges").
  * Also follows the on-screen keyboard (visualViewport) so the focused field and the button under it stay visible.
+ * v1.6.4: the keyboard offset is written straight to the sheet (CSS `translate`, rAF-throttled, a short eased transition)
+ * instead of React state + `bottom`, so the sheet glides with the keyboard edge with no re-render or layout jump.
  */
 export function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
-  const [kb, setKb] = useState(0)
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current
@@ -34,21 +35,34 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
   // visual viewport changes with a field focused, keep that field (and the sheet's main button, if marked) in view.
   useEffect(() => {
     const vv = window.visualViewport
-    if (!vv) return
-    let t = 0
+    const el = ref.current
+    if (!vv || !el) return
+    let t = 0, raf = 0, last = 0
+    const apply = () => {
+      raf = 0
+      const kb = Math.max(0, Math.round(document.documentElement.clientHeight - vv.height - vv.offsetTop))
+      if (kb === last) return
+      last = kb
+      el.style.translate = kb ? `0 ${-kb}px` : ''
+      el.style.maxHeight = kb ? `${Math.round(vv.height - 12)}px` : ''
+      el.dataset.kb = String(kb)
+      if (kb) el.dataset.keyboard = 'open'
+      else delete el.dataset.keyboard
+    }
     const update = () => {
-      setKb(Math.max(0, Math.round(document.documentElement.clientHeight - vv.height - vv.offsetTop)))
+      if (!raf) raf = requestAnimationFrame(apply)
       clearTimeout(t)
       t = window.setTimeout(() => {
-        const el = document.activeElement as HTMLElement | null
-        if (!el || !ref.current?.contains(el) || !el.matches(FIELD)) return
+        const a = document.activeElement as HTMLElement | null
+        if (!a || !ref.current?.contains(a) || !a.matches(FIELD)) return
         ref.current.querySelector<HTMLElement>('[data-keep-visible]')?.scrollIntoView({ block: 'nearest' })
-        el.scrollIntoView({ block: 'nearest' })
+        a.scrollIntoView({ block: 'nearest' })
       }, 80)
     }
+    update()
     vv.addEventListener('resize', update)
     vv.addEventListener('scroll', update)
-    return () => { clearTimeout(t); vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
+    return () => { clearTimeout(t); cancelAnimationFrame(raf); vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
   }, [])
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
     const el = e.target as HTMLElement
@@ -64,9 +78,7 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
         aria-label={label}
         tabIndex={-1}
         onFocus={onFocus}
-        data-keyboard={kb ? 'open' : undefined}
-        style={kb ? { bottom: kb, maxHeight: `calc(${window.visualViewport?.height ?? 600}px - 12px)` } : undefined}
-        className="anim-sheet absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col gap-4 overflow-y-auto overscroll-contain rounded-t-[28px] bg-card px-5 pb-safe-sheet pt-3.5"
+        className="anim-sheet sheet-kb absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col gap-4 overflow-y-auto overscroll-contain rounded-t-[28px] bg-card px-5 pb-safe-sheet pt-3.5"
       >
         <div className="mx-auto h-[5px] w-10 shrink-0 rounded-full bg-line" />
         {children}
