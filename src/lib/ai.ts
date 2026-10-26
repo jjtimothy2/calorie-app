@@ -60,9 +60,11 @@ export function errorText(kind: AiErrorKind, provider: Provider): { title: strin
 export const ESTIMATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['dish', 'items'],
+  required: ['dish', 'scale_ref', 'items'],
   properties: {
     dish: { type: 'string', description: 'Short name for the whole meal, e.g. Nasi campur' },
+    // v1.6.1: the size reference the model used. Parsed leniently (older answers have none); shown as "Sized using: …".
+    scale_ref: { type: 'string', description: 'The size reference used for grams in 1 to 3 words, e.g. "spoon", "hand", "plate rim"; empty string when there is none or no photo' },
     items: {
       type: 'array',
       items: {
@@ -91,19 +93,32 @@ export function systemPrompt(hasPhoto: boolean) {
     hasPhoto
       ? 'You get a photo of the meal and maybe a note from the user. The note is the user’s own words about what they ate: trust it over what the photo seems to show, and use it for anything the photo can’t show (hidden fillings, cooking method, how much was eaten).'
       : 'There is no photo. The user’s description is the whole meal: list exactly the foods it names, with the amounts it gives. When no amount is given, use a typical Indonesian portion (e.g. warung or warteg plate, one piece of gorengan, one porsi as sold by street vendors), not a Western or restaurant portion.',
+    ...(hasPhoto ? [
+      'Size first: before guessing any grams, look in and around the photo for a size reference and judge every portion against it: a spoon or fork (about 15 to 18 cm long; a tablespoon bowl holds about 15 ml), a hand or fingers, chopsticks (about 20 to 23 cm), a phone (about 15 cm), a cup or glass, or the plate or bowl rim.',
+      'If there is no reference, assume a standard 25 cm dinner plate, use typical Indonesian portions, and lower confidence. Put the reference you used in scale_ref in 1 to 3 words, e.g. "spoon", "hand", "chopsticks", "plate rim"; use an empty string when there was none.',
+    ] : []),
     'Meals are often Indonesian: nasi campur, nasi padang, warteg plates, gorengan, sate, bakso, mie ayam, martabak, sambal, santan (coconut milk) curries, krupuk.',
     'Be accurate rather than low. Count what is easy to miss: frying oil soaked into gorengan, ayam goreng, tempe and tahu goreng and fried rice or noodles; santan in gulai, rendang, opor, sayur lodeh and nasi uduk; sweet kecap, peanut sauce, sambal and oil-based sauces; sugar in drinks and desserts; margarine and condensed milk on martabak manis.',
     'Rice: a plain warung portion of nasi putih is about 150 to 200 g cooked (about 200 to 260 kcal); a nasi padang or warteg plate often has more.',
     'List each separate food as its own item (rice, each side, sambal, krupuk, drinks). grams is the portion actually eaten. kcal, protein_g, carbs_g and fat_g are for those grams. portion is a short everyday description of those grams, e.g. "1 plate", "2 pieces", "1 tbsp", "1 glass", or an empty string.',
     'Follow the note: "Shared" means only the user’s share (about half unless the note says otherwise), "Half eaten" means half the portion, "Extra sambal" means more sambal, "Santan" means the dish is cooked with coconut milk, "No rice" means leave rice out.',
     hasPhoto ? 'If there is no food in the photo or note, return an empty items array.' : 'If the description is not food, return an empty items array.',
-    'Answer with JSON only: {"dish": string, "items": [{"name", "portion", "grams", "kcal", "protein_g", "carbs_g", "fat_g", "confidence"}]}.',
+    hasPhoto ? 'Answer with JSON only: {"dish": string, "scale_ref": string, "items": [{"name", "portion", "grams", "kcal", "protein_g", "carbs_g", "fat_g", "confidence"}]}.' : 'Answer with JSON only: {"dish": string, "scale_ref": "", "items": [{"name", "portion", "grams", "kcal", "protein_g", "carbs_g", "fat_g", "confidence"}]}.',
   ].join('\n')
 }
 export function userPrompt(note: string, hasPhoto: boolean) {
   const t = note.trim()
   if (!hasPhoto) return `What I ate: ${t}\nEstimate this meal.`
   return (t ? `My note: ${t}` : 'No note.') + '\nEstimate this meal.'
+}
+
+/** v1.6.1: the results line about size. Photo only: "Sized using: spoon", or the no-reference line. Text only: nothing. */
+export const NO_SCALE_REF = 'No size reference, portions are a guess'
+export function scaleLine(scaleRef: string, hasPhoto: boolean): string | null {
+  if (!hasPhoto) return null
+  const r = scaleRef.trim().replace(/[.\s]+$/, '')
+  if (!r || /^(none|no\b|n\/a|unknown|not\b|nothing|-)/i.test(r)) return NO_SCALE_REF
+  return `Sized using: ${r.length > 32 ? r.slice(0, 31).trimEnd() + '…' : r}`
 }
 
 /** Chip tap: append to the note (or take it out again), comma separated. */
@@ -118,7 +133,8 @@ export const noteHas = (note: string, chip: string) => note.split(',').some((p) 
 
 // ---------- Parsing ----------
 export type AiItem = { name: string; portion: string; grams: number; kcal: number; protein: number; carbs: number; fat: number; confidence: number }
-export type AiEstimate = { dish: string; items: AiItem[] }
+/** scaleRef (v1.6.1): the size reference the model says it used ('' when missing or none). */
+export type AiEstimate = { dish: string; scaleRef: string; items: AiItem[] }
 
 const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/[^0-9.]/g, '')) : NaN)
 
@@ -160,7 +176,8 @@ export function parseEstimate(text: string): AiEstimate | null {
     })
   }
   const dish = typeof o.dish === 'string' && o.dish.trim() ? o.dish.trim().slice(0, 40) : ''
-  return { dish, items }
+  const scaleRef = typeof o.scale_ref === 'string' ? o.scale_ref.trim().slice(0, 80) : ''
+  return { dish, scaleRef, items }
 }
 
 // ---------- Food list: emoji only (v1.6) ----------

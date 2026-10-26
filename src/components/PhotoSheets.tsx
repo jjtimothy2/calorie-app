@@ -7,6 +7,7 @@ import { foodEmoji } from '../data/foodEmoji'
 import {
   AiError, MODELS, PROVIDER_LABEL, errorText, estimateMeal, gramStep, itemMacros, noteHas, portionLabel, toPhotoItems, toggleNoteChip,
   type AiErrorKind, type AiSettings, type PhotoItem, type PhotoMacros,
+  scaleLine,
 } from '../lib/ai'
 import { fmt } from '../lib/calc'
 import { Sheet } from './Sheet'
@@ -82,7 +83,7 @@ export function SparkleIcon({ className = 'h-6 w-6' }: { className?: string }) {
 export function NoKeySheet({ onClose, onSetup }: { onClose: () => void; onSetup: () => void }) {
   return (
     <Sheet label="Set up AI estimates" onClose={onClose}>
-      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-bg text-ink"><SparkleIcon className="h-8 w-8" /></div>
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-line bg-card text-g"><SparkleIcon className="h-8 w-8" /></div>
       <h2 className="title text-center text-[26px] leading-tight">AI estimate</h2>
       <p className="text-center text-[16px] leading-snug text-mute">
         Say what you ate, or snap your plate, and an AI lists it with rough calories, protein, carbs and fat. You check the amounts, then log.
@@ -98,7 +99,7 @@ export function NoKeySheet({ onClose, onSetup }: { onClose: () => void; onSetup:
   )
 }
 
-type Phase = { k: 'input' } | { k: 'loading' } | { k: 'results'; dish: string; items: PhotoItem[] } | { k: 'error'; kind: AiErrorKind }
+type Phase = { k: 'input' } | { k: 'loading' } | { k: 'results'; dish: string; scaleRef: string; items: PhotoItem[] } | { k: 'error'; kind: AiErrorKind }
 export type LogItem = { item: PhotoItem; grams: number }
 
 type Props = {
@@ -117,7 +118,7 @@ type Props = {
 
 const Thumb = ({ photo, dim = false }: { photo: string | null; dim?: boolean }) => photo
   ? <img src={photo} alt="Your meal photo" className={`h-14 w-14 shrink-0 rounded-[14px] object-cover ${dim ? 'opacity-60' : ''}`} />
-  : <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] bg-bg text-ink" aria-hidden="true"><SparkleIcon className="h-7 w-7" /></span>
+  : <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] border border-line bg-card text-g" aria-hidden="true"><SparkleIcon className="h-7 w-7" /></span>
 
 export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto, onClose, onQuickAdd, onFixKey, onLog }: Props) {
   const [note, setNote] = useState('')
@@ -140,14 +141,14 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
     try {
       const est = await estimateMeal(settings, photo, note, { signal: c.signal })
       if (c.signal.aborted) return
-      setPhase({ k: 'results', dish: est.dish || 'Your meal', items: toPhotoItems(est, FOODS) })
+      setPhase({ k: 'results', dish: est.dish || 'Your meal', scaleRef: est.scaleRef, items: toPhotoItems(est, FOODS) })
     } catch (e) {
       if (c.signal.aborted) return
       setPhase({ k: 'error', kind: e instanceof AiError ? e.kind : 'failed' })
     }
   }
 
-  if (phase.k === 'results') return <Results dish={phase.dish} items={phase.items} photo={photo} note={note} onEdit={back} onClose={onClose} onLog={onLog} />
+  if (phase.k === 'results') return <Results dish={phase.dish} scaleRef={phase.scaleRef} items={phase.items} photo={photo} note={note} onEdit={back} onClose={onClose} onLog={onLog} />
 
   if (phase.k === 'error') {
     const t = errorText(phase.kind, settings.provider)
@@ -179,7 +180,7 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
   const loading = phase.k === 'loading'
   return (
     <Sheet label="AI estimate" onClose={onClose}>
-      <h2 className="title flex items-center gap-2 text-[26px] leading-tight"><SparkleIcon className="h-6 w-6" />AI estimate</h2>
+      <h2 className="title flex items-center gap-2 text-[26px] leading-tight"><SparkleIcon className="h-6 w-6 text-g" />AI estimate</h2>
       <textarea
         ref={noteRef}
         rows={3}
@@ -211,7 +212,9 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
           </span>
         </button>
       )}
-      {photoError && <p role="alert" className="-mt-1 text-[15px] leading-snug text-over-ink" data-testid="photo-problem">Couldn’t open that photo. Try another one; JPEG and PNG work everywhere.</p>}
+      {/* v1.6.1: a size reference in the shot gives better grams (the prompt looks for one). */}
+      {!photo && <p className="-mt-1.5 px-1 text-[13px] leading-snug text-mute [text-wrap:balance]" data-testid="photo-tip">Tip: put a spoon or your hand in the shot for better portions.</p>}
+      {photoError && <p role="alert" className="-mt-1 text-[15px] leading-snug text-danger" data-testid="photo-problem">Couldn’t open that photo. Try another one; JPEG and PNG work everywhere.</p>}
       <div className="flex flex-wrap gap-2" role="group" aria-label="Quick notes">
         {/* A chip tapped while typing keeps the keyboard up (focus stays in the text); otherwise it never opens it. */}
         {NOTE_CHIPS.map((c) => (
@@ -226,30 +229,33 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
         ))}
       </div>
       {loading ? (<>
-        <p className="mt-1 text-center text-[16px] font-semibold" role="status" aria-live="polite"><span className="photo-pulse" aria-hidden="true">✨ </span>Looking at your meal…</p>
+        <p className="mt-1 text-center text-[16px] font-semibold" role="status" aria-live="polite"><SparkleIcon className="photo-pulse mr-1.5 inline-block h-[18px] w-[18px] align-[-3px] text-g" />Looking at your meal…</p>
         <Button variant="ghost" className="-mt-1" onClick={back}>Cancel</Button>
       </>) : (
-        <Button className="mt-1" data-keep-visible disabled={!ready} onClick={run}><span aria-hidden="true">✨ </span>Estimate</Button>
+        <Button className="mt-1" data-keep-visible disabled={!ready} onClick={run}><SparkleIcon className="mr-2 inline-block h-5 w-5 align-[-3px]" />Estimate</Button>
       )}
       <p className="-mt-2 text-center text-[13px] text-mute">{ready || loading ? `Sent to ${PROVIDER_LABEL[settings.provider]} (${MODELS[settings.provider]}). Photos aren’t saved.` : 'Describe your meal or add a photo to estimate.'}</p>
     </Sheet>
   )
 }
 
-function Results({ dish, items, photo, note, onEdit, onClose, onLog }: { dish: string; items: PhotoItem[]; photo: string | null; note: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[]) => void }) {
+function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }: { dish: string; scaleRef: string; items: PhotoItem[]; photo: string | null; note: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[]) => void }) {
   const [rows, setRows] = useState(() => items.map((it) => ({ it, g: it.grams })))
   const view = rows.map((r) => ({ ...r, m: itemMacros(r.it, r.g), step: gramStep(r.it.grams) }))
   const total = view.reduce<PhotoMacros>((a, r) => ({ kcal: a.kcal + r.m.kcal, protein: a.protein + r.m.protein, carbs: a.carbs + r.m.carbs, fat: a.fat + r.m.fat }), { kcal: 0, protein: 0, carbs: 0, fat: 0 })
   const set = (key: string, d: number) => setRows((x) => x.map((r) => (r.it.key === key ? { ...r, g: Math.max(gramStep(r.it.grams), r.g + d) } : r)))
   const remove = (key: string) => setRows((x) => x.filter((r) => r.it.key !== key))
   const n = rows.length
+  const sized = scaleLine(scaleRef, !!photo)
   return (
     <Sheet label="AI estimate" onClose={onClose}>
       <div className="flex items-center gap-3">
         <Thumb photo={photo} />
         <div className="min-w-0">
           <h2 className="title text-[26px] leading-tight" data-testid="photo-dish">{dish}</h2>
-          <p className="text-[15px] text-mute">{photo ? 'Estimated from your photo' : 'Estimated from your description'}</p>
+          <p className="text-[15px] text-mute" data-testid="photo-source">{photo ? 'Estimated from your photo' : 'Estimated from your description'}</p>
+          {/* v1.6.1: how the photo was sized; one line, cut with an ellipsis rather than wrapping. Text only: nothing. */}
+          {sized && <p className="truncate text-[13px] text-mute" data-testid="photo-scale" title={sized}>{sized}</p>}
         </div>
       </div>
       {note.trim() && <p className="-mt-1 rounded-xl bg-bg px-3 py-2 text-[15px]" data-testid="photo-note"><span className="text-mute">{photo ? 'Your note: ' : 'You said: '}</span>{note.trim()}</p>}

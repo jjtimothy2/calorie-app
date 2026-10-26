@@ -5,6 +5,7 @@ import { ExerciseEditSheet, ExerciseQuickSheet, exerciseLine } from '../componen
 import { FoodSheet } from '../components/FoodSheet'
 import { ProteinCard } from '../components/ProteinCard'
 import { QuickAddSheet } from '../components/QuickAddSheet'
+import { SparkleIcon } from '../components/PhotoSheets'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
@@ -112,7 +113,7 @@ export default function Home() {
                           <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
                           <span className="min-w-0 flex-1">
                             <span className="block text-[16px] font-semibold leading-snug">{e.name}</span>
-                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : e.source === 'photo' ? ` · ${e.servingLabel}` : ' · quick add'}{e.source === 'photo' ? ' · ✨ AI' : ''}</span>
+                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : e.source === 'photo' ? ` · ${e.servingLabel}` : ' · quick add'}{e.source === 'photo' && <> · <SparkleIcon className="inline-block h-3 w-3 align-[-1px]" /> AI</>}</span>
                           </span>
                           <span className="num text-[18px]">{fmt(entryTotals(e).kcal)}</span>
                         </button>

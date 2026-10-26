@@ -52,6 +52,16 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.6.1 AI button polish, size-aware photo prompt
+
+- The AI button on Log is sparkle only (no text), 56 px round, card background, line border, green sparkle. Its accessible name is "Estimate with AI".
+- The AI sheet uses the app palette: SVG sparkle in currentColor instead of the emoji, green on card tiles, errors in the danger red.
+- Photo prompt: before guessing grams the model looks for a size reference (spoon or fork 15 to 18 cm, tablespoon about 15 ml, hand, chopsticks, phone, cup, plate or bowl rim). With none it assumes a 25 cm dinner plate, typical Indonesian portions and lower confidence. Text-only prompts are unchanged.
+- The answer has a `scale_ref` string (parsed leniently; older answers without it still work).
+- Under Add photo: "Tip: put a spoon or your hand in the shot for better portions."
+- Photo results show "Sized using: <reference>" or "No size reference, portions are a guess" under the dish name. Text-only results show neither.
+- Today keeps the AI marker on AI entries, now an SVG sparkle plus "AI" in muted ink.
+
 ## v1.6 AI button, text or photo, AI numbers only
 
 - Log > Food: the camera is now a round ✨ "AI" button (56 px, right of Quick add, aria-label "AI estimate"). Offline it reads "Needs internet"; with no key it opens the set-up sheet.

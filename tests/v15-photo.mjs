@@ -72,7 +72,7 @@ const setup = async (opts = {}) => {
 const saveKey = (page, provider, key) => page.evaluate(([p, k]) => localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: p, key: k })), [provider, key])
 const state = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2') ?? '{}'))
 const dialog = (page) => page.getByRole('dialog')
-const AI_BTN = { name: 'AI estimate', exact: true }
+const AI_BTN = { name: 'Estimate with AI', exact: true } // v1.6.1
 /** Opens the AI sheet from the Log bar. */
 const openAi = async (page) => { await page.getByRole('button', AI_BTN).click(); await dialog(page).getByRole('textbox', { name: /What did you eat/ }).waitFor() }
 /** Opens the AI sheet and adds the test photo. */
@@ -92,8 +92,10 @@ try {
     await page.goto(BASE + '/log')
     const cam = page.getByRole('button', AI_BTN)
     await cam.waitFor()
-    assert.equal(await cam.innerText(), 'AI', 'visible label')
+    assert.equal((await cam.innerText()).trim(), '', 'v1.6.1: no text label, sparkle only')
     assert.equal(await cam.locator('svg').count(), 1, 'sparkle icon')
+    const look = await cam.evaluate((el) => { const c = getComputedStyle(el); return { bg: c.backgroundColor, border: c.borderTopColor, ink: c.color, svg: getComputedStyle(el.querySelector('svg')).fill } })
+    assert.deepEqual(look, { bg: 'rgb(255, 253, 248)', border: 'rgb(231, 223, 208)', ink: 'rgb(47, 143, 91)', svg: 'rgb(47, 143, 91)' }, 'Reed palette: card, line border, green sparkle')
     assert.equal(await page.getByTestId('camera-btn').count(), 0, 'camera button is gone')
     const qa = page.getByRole('button', { name: /Quick add calories/ })
     await cam.waitFor()
@@ -172,6 +174,14 @@ try {
     })
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'text, Add photo, chips, Estimate from top to bottom')
     assert.match(await d.getByTestId('add-photo').innerText(), /Add photo\s+Camera or library, optional/)
+    // v1.6.1: tip line right under Add photo, muted.
+    const tip = d.getByTestId('photo-tip')
+    assert.equal(await tip.innerText(), 'Tip: put a spoon or your hand in the shot for better portions.')
+    const [ab, tb] = [await d.getByTestId('add-photo').boundingBox(), await tip.boundingBox()]
+    assert.ok(tb.y >= ab.y + ab.height && tb.y - (ab.y + ab.height) < 12, 'tip sits under Add photo')
+    assert.equal(await tip.evaluate((el) => getComputedStyle(el).color), 'rgb(107, 103, 95)', 'muted ink')
+    assert.equal(await d.locator('svg').evaluateAll((els) => els.length > 0), true)
+    assert.ok(!(await d.innerText()).includes('✨'), 'no emoji sparkle in the sheet (SVG in palette colours)')
     const est = d.getByRole('button', { name: /Estimate/ })
     assert.equal(await est.isDisabled(), true, 'empty: Estimate disabled')
     await note.fill('   ')
@@ -206,6 +216,8 @@ try {
     assert.match(body.systemInstruction.parts[0].text, /There is no photo.*typical Indonesian portion/s)
     assert.ok(!req.body.includes('Nasi putih (white rice)'), 'food list not sent')
     assert.match(await d.getByTestId('photo-note').innerText(), /You said: nasi padang with rendang and egg/)
+    assert.equal(await d.getByTestId('photo-scale').count(), 0, 'text only: no size line')
+    assert.ok(!/size reference|25 cm/.test(body.systemInstruction.parts[0].text), 'text-only prompt has no size-reference rule')
     // Edit goes back with the text kept.
     await d.getByRole('button', { name: 'Edit' }).click()
     assert.equal(await d.getByRole('textbox').inputValue(), 'nasi padang with rendang and egg')
@@ -252,6 +264,9 @@ try {
     assert.ok(!all.includes('Nasi putih (white rice)') && !all.includes('Sayur lodeh;'), 'food list not sent')
     assert.match(all, /Indonesia/)
     assert.match(all, /portion/)
+    assert.match(body.systemInstruction.parts[0].text, /before guessing any grams, look in and around the photo for a size reference/)
+    assert.match(all, /scale_ref/)
+    assert.equal(await d.getByTestId('photo-tip').count(), 0, 'tip only shows with Add photo')
     assert.ok(body.generationConfig?.responseFormat || body.generationConfig, 'JSON output requested')
   })
 
@@ -259,6 +274,10 @@ try {
     const d = dialog(page)
     assert.equal(await d.getByTestId('photo-dish').innerText(), 'Nasi ayam goreng')
     assert.match(await d.getByTestId('photo-note').innerText(), /Your note: .*Extra sambal/i)
+    assert.equal(await d.getByTestId('photo-scale').innerText(), 'Sized using: spoon')
+    const [db, sb] = [await d.getByTestId('photo-source').boundingBox(), await d.getByTestId('photo-scale').boundingBox()]
+    assert.ok(sb.y >= db.y + db.height - 1, 'under the dish subtitle')
+    assert.equal(await d.getByTestId('photo-scale').evaluate((el) => getComputedStyle(el).color), 'rgb(107, 103, 95)')
     const rows = d.getByRole('list', { name: 'Estimated items' }).getByRole('listitem')
     assert.equal(await rows.count(), 4)
     const row = (n) => rows.filter({ hasText: n })
@@ -339,7 +358,11 @@ try {
     await dialog(page).getByRole('button', { name: /Estimate/ }).click()
     await dialog(page).getByRole('button', { name: 'Log 4 items' }).click()
     await page.goto(BASE + '/')
-    await page.getByText('✨ AI').first().waitFor()
+    await page.getByText('Nasi putih').first().waitFor()
+    const labs = await page.locator('li span.text-mute').evaluateAll((els) => els.map((e) => e.textContent))
+    const lab = page.locator('li span.text-mute').filter({ hasText: /AI$/ }).first()
+    assert.ok(labs.some((t) => / · {1,2}AI$/.test(t)), 'Today label ends in AI: ' + JSON.stringify(labs))
+    assert.equal(await lab.locator('svg').count(), 1, 'Today label: SVG sparkle (currentColor) + AI')
   })
 
   await step('fenced JSON + string numbers + missing portion: AI values kept', async () => {
@@ -353,6 +376,7 @@ try {
     assert.equal(await rows.count(), 2)
     // 60 + 95 from the AI; the cracker has no portion field (optional).
     assert.match(await d.getByTestId('photo-total').innerText(), /^155/)
+    assert.equal(await d.getByTestId('photo-scale').innerText(), 'No size reference, portions are a guess', 'answer without scale_ref')
     assert.equal(await rows.filter({ hasText: 'Krupuk-ish' }).getByTestId('item-portion').count(), 0)
     await d.getByRole('button', { name: 'Edit' }).waitFor()
     await page.keyboard.press('Escape')

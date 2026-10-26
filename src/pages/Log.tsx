@@ -209,10 +209,11 @@ export default function Log() {
           </button>
           {/* v1.5: AI photo estimate (Reed's mock). Food mode only. Offline it says so instead of opening anything.
               v1.5.2: on the right (easier for the thumb), 56 px target, 8 px from the edge plus the safe area.
-              v1.6: the AI button (sparkle + "AI"); the photo is optional inside the sheet. */}
+              v1.6: the AI button; the photo is optional inside the sheet.
+              v1.6.1 (Reed): sparkle only, no label; card background, line border, green sparkle. */}
           {mode === 'food' && (online ? (
-            <button type="button" onClick={openAi} aria-label="AI estimate" data-testid="ai-btn" className="tap flex h-[56px] w-[56px] shrink-0 flex-col items-center justify-center rounded-full border-2 border-line bg-card leading-none text-ink">
-              <SparkleIcon className="h-[22px] w-[22px]" /><span className="mt-0.5 text-[12px] font-extrabold tracking-wide" aria-hidden="true">AI</span>
+            <button type="button" onClick={openAi} aria-label="Estimate with AI" data-testid="ai-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-g">
+              <SparkleIcon className="h-[26px] w-[26px]" />
             </button>
           ) : (
             <span role="note" data-testid="ai-offline" className="flex h-[56px] shrink-0 items-center gap-1.5 rounded-full border-2 border-dashed border-line px-3 text-[13px] font-semibold leading-tight text-mute">

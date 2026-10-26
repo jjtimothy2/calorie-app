@@ -2,7 +2,7 @@
 // take focus on one tap and keep it when the keyboard opens. A real keyboard can't be opened in a headless browser, so
 // the keyboard is simulated by shrinking the viewport (that is what fires Log's keyboard check and re-renders Log,
 // which is what used to pull focus out of the note field).
-// Usage: npm run build && npx vite preview --port 4174 & node tests/v152-ios.mjs   (SHOTS=1 also writes v16-*.png)
+// Usage: npm run build && npx vite preview --port 4174 & node tests/v152-ios.mjs   (SHOTS=1 also writes v161-*.png)
 import { webkit, devices } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE } from './v11-fixture.mjs'
@@ -35,16 +35,16 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
   const page = await ctx.newPage()
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/Service Worker registration blocked|service worker/i.test(m.text())) errors.push(`${tag}: ${m.type()}: ${m.text()}`) })
   page.on('pageerror', (e) => errors.push(`${tag}: ${e.message}`))
-  const shot = async (name) => { if (SHOTS) { await page.waitForTimeout(250); await page.screenshot({ path: `${OUT}v16-${name}-${tag}.png` }) } }
+  const shot = async (name) => { if (SHOTS) { await page.waitForTimeout(250); await page.screenshot({ path: `${OUT}v161-${name}-${tag}.png` }) } }
   const keyboard = async (open) => { await page.setViewportSize({ width, height: open ? height - kb : height }); await page.waitForTimeout(400) }
   const dlg = page.getByRole('dialog')
 
-  await step(`${tag}: AI button (sparkle + "AI") sits right of Quick add, 56 px, 8 px from the edge, clear of Quick add`, async () => {
+  await step(`${tag}: AI button (sparkle only, v1.6.1) sits right of Quick add, 56 px, 8 px from the edge, clear of Quick add`, async () => {
     await page.goto(BASE + '/log')
-    const btn = page.getByRole('button', { name: 'AI estimate', exact: true })
+    const btn = page.getByRole('button', { name: 'Estimate with AI', exact: true })
     const qa = page.getByRole('button', { name: /Quick add calories/ })
     await btn.waitFor()
-    assert.equal(await btn.innerText(), 'AI')
+    assert.equal((await btn.innerText()).trim(), '', 'no text label')
     assert.equal(await btn.locator('svg').count(), 1)
     const [cb, qb] = [await btn.boundingBox(), await qa.boundingBox()]
     assert.ok(cb.x >= qb.x + qb.width + 8, `AI button right of Quick add with room (${cb.x} vs ${qb.x + qb.width})`)
@@ -57,6 +57,12 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     await btn.tap()
     await dlg.getByRole('heading', { name: 'AI estimate' }).waitFor()
     assert.equal(await dlg.getByRole('button', { name: /Estimate/ }).isDisabled(), true, 'empty sheet: Estimate disabled')
+    // v1.6.1 tip under Add photo: fits the sheet, at most 2 balanced lines, no overflow.
+    const tip = dlg.getByTestId('photo-tip')
+    await tip.waitFor()
+    const tm = await tip.evaluate((el) => ({ h: el.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(el).lineHeight), over: el.scrollWidth > el.clientWidth, r: el.getBoundingClientRect().right }))
+    assert.ok(!tm.over && tm.r <= width - 16, 'tip inside the sheet')
+    assert.ok(tm.h <= tm.lh * 2 + 1, `tip at most 2 lines (${tm.h} px)`)
     await shot('ai-empty')
   })
 
@@ -119,6 +125,16 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     // A file chooser can't be driven by tap in WebKit headless; feed the hidden input directly.
     await page.getByTestId('photo-input').setInputFiles(PLATE)
     await dlg.getByTestId('photo-added').waitFor()
+    assert.equal(await dlg.getByTestId('photo-tip').count(), 0, 'tip goes once a photo is added')
+    // v1.6.1: photo results show "Sized using: spoon" under the dish name on one line.
+    assert.equal(await dlg.getByTestId('photo-scale').count(), 0)
+    await dlg.getByRole('button', { name: /Estimate/ }).tap()
+    const scale = dlg.getByTestId('photo-scale')
+    await scale.waitFor()
+    assert.equal(await scale.innerText(), 'Sized using: spoon')
+    const sm = await scale.evaluate((el) => ({ h: el.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(el).lineHeight), over: el.scrollWidth > el.clientWidth }))
+    assert.ok(!sm.over && sm.h <= sm.lh + 1, `sized line on one line (${sm.h} px)`)
+    await shot('ai-results-photo')
     await page.keyboard.press('Escape')
     await dlg.waitFor({ state: 'detached' })
   })

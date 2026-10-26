@@ -27,7 +27,7 @@ await t('parseEstimate: plain JSON, fences, prose around it, strings for numbers
   assert.equal(b.items[0].grams, 20); assert.equal(b.items[0].kcal, 40); assert.equal(b.items[0].carbs, 0); assert.equal(b.items[0].confidence, 0.5)
   const c = ai.parseEstimate('Sure! Here it is: {"dish":"Y","items":[{"name":"","grams":10,"kcal":1},{"name":"Egg","grams":-5,"kcal":1},{"name":"Tempe","grams":50,"kcal":-3,"protein_g":"x","confidence":85}]} hope this helps')
   assert.equal(c.items.length, 1); assert.equal(c.items[0].kcal, 0); assert.equal(c.items[0].protein, 0); assert.equal(c.items[0].confidence, 0.85)
-  assert.deepEqual(ai.parseEstimate('{"dish":"Table","items":[]}'), { dish: 'Table', items: [] })
+  assert.deepEqual(ai.parseEstimate('{"dish":"Table","items":[]}'), { dish: 'Table', scaleRef: '', items: [] })
   assert.equal(ai.parseEstimate('I cannot help with that'), null)
   assert.equal(ai.parseEstimate('{"dish":"no items key"}'), null)
   assert.equal(ai.parseEstimate('{broken'), null)
@@ -73,6 +73,20 @@ await t('v1.6 portionLabel: the AI portion words at the AI grams, nothing once t
   assert.equal(ai.portionLabel({ ai: { grams: 50, portion: '' } }, 50), '')
 })
 
+await t('v1.6.1 scale_ref: parsed leniently, scaleLine for photo only (Sized using / no reference), nothing for text', () => {
+  assert.equal(ai.parseEstimate('{"dish":"X","scale_ref":" spoon ","items":[]}').scaleRef, 'spoon')
+  assert.equal(ai.parseEstimate('{"dish":"X","items":[]}').scaleRef, '', 'older answers without scale_ref still parse')
+  assert.equal(ai.parseEstimate('{"dish":"X","scale_ref":42,"items":[]}').scaleRef, '')
+  assert.equal(ai.parseEstimate('[{"name":"Egg","grams":50,"kcal":70}]').scaleRef, '')
+  assert.equal(ai.scaleLine('spoon', true), 'Sized using: spoon')
+  assert.equal(ai.scaleLine('plate rim.', true), 'Sized using: plate rim')
+  for (const none of ['', '  ', 'none', 'None, assumed 25 cm plate', 'no reference', 'N/A']) assert.equal(ai.scaleLine(none, true), 'No size reference, portions are a guess', none)
+  assert.equal(ai.scaleLine('spoon', false), null, 'text only: no line'); assert.equal(ai.scaleLine('', false), null)
+  assert.ok(ai.scaleLine('a very long description of the reference object near the plate', true).length <= 45, 'long refs are cut')
+  const sch = ai.ESTIMATE_SCHEMA
+  assert.ok(sch.properties.scale_ref && sch.required.includes('scale_ref'), 'in the schema (OpenAI strict needs every key required)')
+})
+
 await t('note chips toggle in and out of the note', () => {
   let n = ai.toggleNoteChip('', 'Shared'); assert.equal(n, 'Shared')
   n = ai.toggleNoteChip('fried, ' + n, 'No rice'); assert.equal(n, 'fried, Shared, No rice')
@@ -86,7 +100,12 @@ await t('v1.6 prompt: no food list, Indonesian context with oil, santan, sauces,
     assert.match(p, /Indonesia/); assert.match(p, /santan/); assert.match(p, /oil/); assert.match(p, /sauce/); assert.match(p, /Rice: /); assert.match(p, /portion/)
     assert.ok(!p.includes('Nasi putih (white rice)') && !p.includes('Sayur lodeh;') && !/"match"/.test(p), 'no food list or match field')
   }
-  assert.match(sp, /trust it over what the photo/); assert.match(st, /no photo/i); assert.match(st, /typical Indonesian portion/)
+  assert.match(sp, /trust it over what the photo/)
+  // v1.6.1: photo prompt looks for a size reference before any grams; text-only prompt has none of that.
+  assert.match(sp, /before guessing any grams, look in and around the photo for a size reference/)
+  for (const w of ['spoon or fork (about 15 to 18 cm long', 'tablespoon bowl holds about 15 ml', 'hand or fingers', 'chopsticks', 'phone', 'plate or bowl rim', 'standard 25 cm dinner plate', 'lower confidence', 'scale_ref']) assert.ok(sp.includes(w), w)
+  assert.ok(!/size reference|25 cm/.test(st), 'text-only prompt unchanged by the size rule')
+  assert.match(st, /"scale_ref": ""/); assert.match(st, /no photo/i); assert.match(st, /typical Indonesian portion/)
   assert.match(ai.userPrompt('Half portion, fried', true), /My note: Half portion, fried/)
   assert.match(ai.userPrompt('2 slices martabak manis', false), /^What I ate: 2 slices martabak manis/)
   assert.ok(ai.ESTIMATE_SCHEMA.properties.items.items.properties.portion && !ai.ESTIMATE_SCHEMA.properties.items.items.properties.match)

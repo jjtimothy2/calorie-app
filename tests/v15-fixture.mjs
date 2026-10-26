@@ -63,6 +63,7 @@ export const TODAY = key(new Date())
 // but the AI's own numbers must be used (our list would give rice 192 kcal and chicken 320); the salsa isn't on the list.
 export const EST = {
   dish: 'Nasi ayam goreng',
+  scale_ref: 'spoon', // v1.6.1
   items: [
     { name: 'Nasi putih', portion: '1 plate', grams: 150, kcal: 250, protein_g: 4.5, carbs_g: 55, fat_g: 0.5, confidence: 'high' },
     { name: 'Ayam goreng', portion: '1 thigh', grams: 120, kcal: 330, protein_g: 25, carbs_g: 5, fat_g: 23, confidence: 'medium' },
