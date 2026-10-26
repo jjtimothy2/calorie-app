@@ -75,7 +75,8 @@ export function QuickAddSheet(props: Props) {
   const kcalField = (
     <label className="flex flex-col gap-1 text-[15px] font-semibold">
       {isNew ? 'Calories a serving (kcal)' : 'Calories (kcal)'}
-      <input data-autofocus={!isNew || name ? true : undefined} className={input} type="number" inputMode="numeric" min={1} required value={kcal} onChange={(ev) => setKcal(ev.target.value)} name="kcal" />
+      <input data-autofocus={!isNew || name ? true : undefined} className={input} type="number" inputMode="numeric" min={1} required value={kcal} onChange={(ev) => setKcal(ev.target.value)} name="kcal" aria-describedby={props.mode !== 'edit' ? 'qa-kcal-hint' : undefined} />
+      {props.mode !== 'edit' && <span id="qa-kcal-hint" className="text-[13px] font-normal text-mute" data-testid="qa-kcal-hint">From a label, menu or your own count</span>}
     </label>
   )
   const hint = existing ? `Updates ${existing.name} in My foods.` : isNew ? 'Saved to My foods. Nothing is logged.' : named ? 'Saved to My foods, so you can search for it next time.' : 'Give it a name to save it to My foods.'
@@ -86,8 +87,8 @@ export function QuickAddSheet(props: Props) {
       {props.mode !== 'edit' && <span id="qa-name-hint" className="text-[13px] font-normal text-mute" data-testid="qa-name-hint">{hint}</span>}
     </label>
   )
-  const label = props.mode === 'new' ? 'New food' : props.mode === 'add' ? (props.group ? 'Quick add to this meal' : 'Quick add calories') : 'Edit quick add'
-  const title = props.mode === 'new' ? 'New food' : props.mode === 'add' ? 'Quick add' : e?.source === 'photo' ? 'Edit item' : 'Edit quick add'
+  const label = props.mode === 'new' ? 'New food' : props.mode === 'add' ? (props.group ? 'Add Calories for this meal' : 'Add Calories') : 'Edit quick add'
+  const title = props.mode === 'new' ? 'New food' : props.mode === 'add' ? 'Add Calories' : e?.source === 'photo' ? 'Edit item' : 'Edit quick add'
 
   return (
     <Sheet label={label} onClose={props.onClose}>

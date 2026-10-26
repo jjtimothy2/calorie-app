@@ -156,7 +156,7 @@ try {
     await page.getByRole('heading', { name: 'Log exercise' }).waitFor()
     // v1.3.4: Quick add is a sticky full-width bar at the bottom of Log, not a top-right link.
     assert.equal(await page.getByRole('button', { name: 'Quick add', exact: true }).count(), 0)
-    assert.match(await page.getByTestId('qa-bar').innerText(), /^⚡\s*Quick add burn$/)
+    assert.match(await page.getByTestId('qa-bar').innerText(), /^Quick add burn$/)
     const geo = async () => page.evaluate(() => {
       const r = (el) => el && el.getBoundingClientRect()
       const bar = r(document.querySelector('[data-testid=qa-bar]')), main = r(document.querySelector('main')), toast = r(document.querySelector('[data-testid=toast]'))
@@ -178,7 +178,7 @@ try {
     assert.equal(await num(page.getByTestId('eq-burned')), 300)
     await page.getByRole('link', { name: 'Add to Lunch' }).click()
     assert.equal(await page.getByRole('button', { name: 'Quick add', exact: true }).count(), 0)
-    await page.getByTestId('qa-bar').getByRole('button', { name: 'Quick add calories' }).click()
+    await page.getByTestId('qa-bar').getByRole('button', { name: 'Add Calories' }).click()
     assert.match(await page.getByRole('dialog').innerText(), /Lunch/) // opens for the current meal
     await page.fill('input[name=kcal]', '1500')
     await page.fill('input[name=name]', 'Big lunch')
@@ -240,7 +240,7 @@ try {
   })
   await step('surplus shows in orange when food beats BMR + exercise', async () => {
     await page.getByRole('link', { name: 'Add to Dinner' }).click()
-    await page.getByTestId('qa-bar').getByRole('button', { name: 'Quick add calories' }).click()
+    await page.getByTestId('qa-bar').getByRole('button', { name: 'Add Calories' }).click()
     await page.fill('input[name=kcal]', '600')
     await page.fill('input[name=name]', 'Martabak')
     await page.getByRole('button', { name: 'Add 600 kcal' }).click()

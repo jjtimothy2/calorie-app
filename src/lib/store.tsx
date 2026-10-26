@@ -113,16 +113,16 @@ const DEMO_EX: ([string, number, Intensity] | null)[] = [
 function demoWeek(state: State, dayKcal: number[]): Entry[] {
   const today = dateKey()
   const keep = state.entries.filter((e) => e.date === today || e.date < addDays(today, -6))
-  const plan: [string, 'breakfast' | 'lunch' | 'dinner' | 'snacks', number][][] = [
+  const plan: [string, Meal, number][][] = [
     [['oatmeal', 'breakfast', 1], ['nasi-goreng', 'lunch', 1], ['soto-ayam', 'dinner', 1], ['banana', 'snacks', 1]],
-    [['bubur-ayam', 'breakfast', 1], ['gado-gado', 'lunch', 1], ['sate-ayam-with-peanut-sauce', 'dinner', 1], ['es-teh-manis', 'snacks', 2]],
+    [['bubur-ayam', 'breakfast', 1], ['gado-gado', 'lunch', 1], ['sate-ayam-with-peanut-sauce', 'dinner', 1], ['es-teh-manis', 'beverages', 2]],
     [['scrambled-eggs', 'breakfast', 1], ['nasi-padang-rice-rendang', 'lunch', 1], ['ayam-bakar', 'dinner', 1], ['nasi-putih-white-rice', 'dinner', 1]],
     [['granola', 'breakfast', 1], ['mie-goreng', 'lunch', 1], ['pecel-lele', 'dinner', 1], ['martabak-manis', 'snacks', 2]],
     [['nasi-uduk', 'breakfast', 1], ['bakso-meatball-soup', 'lunch', 1], ['tempe-goreng', 'dinner', 3], ['nasi-putih-white-rice', 'dinner', 1]],
     [['greek-yogurt-plain', 'breakfast', 1], ['caesar-salad-with-chicken', 'lunch', 1], ['rendang-daging', 'dinner', 1], ['nasi-putih-white-rice', 'dinner', 1], ['almonds', 'snacks', 1]],
   ]
   // Protein-forward extras at a fixed serving, so some demo days hit the protein target.
-  const extras: [string, 'breakfast' | 'lunch' | 'dinner' | 'snacks'][][] = [
+  const extras: [string, Meal][][] = [
     [['chicken-breast-grilled', 'lunch'], ['whey-protein-shake', 'snacks']], [], [['whey-protein-shake', 'snacks'], ['chicken-breast-grilled', 'lunch'], ['tuna-canned-in-water', 'dinner']],
     [['chicken-breast-grilled', 'dinner'], ['whey-protein-shake', 'snacks'], ['tuna-canned-in-water', 'lunch']], [], [['whey-protein-shake', 'snacks']],
   ]

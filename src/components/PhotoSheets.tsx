@@ -201,7 +201,7 @@ export function AiFlow({ settings, photo, photoError, photoSource = 'camera', on
           )}
         </div>
         <button type="button" className="tap -mt-1 py-2 text-center text-[16px] font-bold text-g-ink underline" onClick={onQuickAdd}>
-          Use Quick add instead
+          Add Calories instead
         </button>
       </Sheet>
     )
@@ -333,7 +333,7 @@ function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }:
             </div>
           </li>
         ))}
-        {!n && <li className="py-3 text-center text-[15px] text-mute">All items removed. Edit, or close and use Quick add.</li>}
+        {!n && <li className="py-3 text-center text-[15px] text-mute">All items removed. Edit, or close and use Add Calories.</li>}
       </ul>
       <div className="flex items-start justify-between gap-3">
         <span className="pt-1 text-[17px] font-semibold">Total</span>

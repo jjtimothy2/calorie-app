@@ -97,7 +97,7 @@ try {
     const look = await cam.evaluate((el) => { const c = getComputedStyle(el), svg = el.querySelector('svg'), id = svg.getAttribute('fill').match(/^url\(#(.+)\)$/)?.[1]; return { bg: c.backgroundColor, border: c.borderTopColor, stops: [...(document.getElementById(id)?.querySelectorAll('stop') ?? [])].map((x) => x.getAttribute('stop-color').toUpperCase()), paths: svg.querySelectorAll('path').length } })
     assert.deepEqual(look, { bg: 'rgb(255, 253, 248)', border: 'rgb(231, 223, 208)', stops: ['#2F8F5B', '#D9663F'], paths: 1 }, 'v1.6.3: cream card, line border, one star filled green to orange')
     assert.equal(await page.getByTestId('camera-btn').count(), 0, 'camera button is gone')
-    const qa = page.getByRole('button', { name: /Quick add calories/ })
+    const qa = page.getByRole('button', { name: /Add Calories/ })
     await cam.waitFor()
     const [cb, qb] = [await cam.boundingBox(), await qa.boundingBox()]
     assert.ok(cb.x >= qb.x + qb.width, 'AI button is right of Quick add')
@@ -406,7 +406,7 @@ try {
     assert.match(await dialog(page).innerText(), new RegExp(title))
     assert.ok(!(await dialog(page).innerText()).includes('RESOURCE_EXHAUSTED'), 'no raw provider text')
     await dialog(page).getByRole('button', { name: 'Edit' }).waitFor()
-    await dialog(page).getByRole('button', { name: 'Use Quick add instead' }).waitFor()
+    await dialog(page).getByRole('button', { name: 'Add Calories instead' }).waitFor()
   }
   await step('errors in plain words, each with Edit and Quick add: wrong key, rate limit, no food, unreadable, connection dropped', async () => {
     await errorCase('badkey', 'key', 'Your key didn’t work')
@@ -422,8 +422,8 @@ try {
     await dialog(page).getByTestId('photo-added').waitFor()
     await errorCase('garbage', 'failed', 'Something went wrong')
     await errorCase('drop', 'offline', 'No internet')
-    await dialog(page).getByRole('button', { name: 'Use Quick add instead' }).click()
-    await dialog(page).getByRole('heading', { name: 'Quick add' }).waitFor()
+    await dialog(page).getByRole('button', { name: 'Add Calories instead' }).click()
+    await dialog(page).getByRole('heading', { name: 'Add Calories' }).waitFor()
     await page.keyboard.press('Escape')
   })
 

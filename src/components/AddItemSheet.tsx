@@ -66,7 +66,7 @@ export function AddItemSheet({ group, title, meal, date, remaining, onDone, onCl
           />
         </div>
         <button type="button" onClick={() => setQuick(true)} className="tap flex min-h-12 items-center gap-3 rounded-2xl bg-g-soft px-4 text-left text-[16px] font-bold text-g-soft-ink" data-testid="add-item-quick">
-          <span aria-hidden="true">⚡</span>Quick add calories
+          Add Calories
         </button>
         {!q.trim() && list.length > 0 && <p className="-mb-2 text-[13px] font-semibold text-mute">Favourites, my foods and recent</p>}
         <ul aria-label="Foods" data-testid="add-item-list">
@@ -83,7 +83,7 @@ export function AddItemSheet({ group, title, meal, date, remaining, onDone, onCl
             </li>
           ))}
           {list.length === 0 && (
-            <li className="py-5 text-center text-[15px] text-mute">{q.trim() ? 'No match. Try Quick add.' : 'Search for a food, or use Quick add.'}</li>
+            <li className="py-5 text-center text-[15px] text-mute">{q.trim() ? 'No match. Try Add Calories.' : 'Search for a food, or use Add Calories.'}</li>
           )}
         </ul>
       </div>

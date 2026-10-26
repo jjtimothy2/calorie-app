@@ -161,7 +161,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await page.getByRole('group', { name: 'Food list' }).getByRole('button', { name: 'All foods' }).click()
     await page.getByLabel('Search foods').fill('Soto betawi spesial')
     const empty = page.getByTestId('list-empty'); await empty.waitFor()
-    assert.match(await empty.innerText(), /No match\.\s*Save to my foods\s*or\s*Quick add calories/)
+    assert.match(await empty.innerText(), /No match\.\s*Save to my foods\s*or\s*Add Calories/)
     await tall(page.getByTestId('save-to-mine'), 'Save to my foods')
     await page.getByTestId('save-to-mine').click()
     await page.getByTestId('newfood-form').waitFor()

@@ -34,7 +34,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const mineEntries = async () => (await ls(V2)).entries.filter((e) => e.foodId?.startsWith('u_'))
   const dialog = page.getByRole('dialog')
   const quickAdd = async (kcal, name, protein) => {
-    await page.getByTestId('qa-bar').getByRole('button', { name: 'Quick add calories' }).click()
+    await page.getByTestId('qa-bar').getByRole('button', { name: 'Add Calories' }).click()
     await page.fill('input[name=kcal]', String(kcal))
     if (name != null) await page.fill('input[name=name]', name)
     if (protein != null) await dialog.getByLabel('Protein').fill(String(protein))

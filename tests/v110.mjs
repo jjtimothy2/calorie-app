@@ -147,7 +147,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
 
     await step(`${tag} a saved food shows a bookmark (aria-label Saved food) in search and Recent, no Mine or "your food" text`, async () => {
       await toHome(); await toLog()
-      await page.getByTestId('qa-bar').getByRole('button', { name: 'Quick add calories' }).click()
+      await page.getByTestId('qa-bar').getByRole('button', { name: 'Add Calories' }).click()
       await page.fill('input[name=kcal]', '320'); await page.fill('input[name=name]', 'Bubur ayam')
       await dialog.getByRole('button', { name: 'Add 320 kcal' }).click()
       await page.getByTestId('toast').waitFor()

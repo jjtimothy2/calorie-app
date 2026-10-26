@@ -18,6 +18,11 @@ import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '..
 
 type Tab = 'recent' | 'fav' | 'mine' | 'all'
 
+// v1.11: the Add Calories / Quick add burn button is solid green #178046 (the g-ink token) with cream card text, no emoji.
+// 17 px bold counts as normal text for WCAG, so it needs 4.5:1: cream #FFFDF8 on #178046 is 4.9:1 (white on the lighter
+// palette green #2F8F5B would be 4.0:1 and fail).
+const QA_BTN = 'bg-g-ink text-card shadow-[0_8px_20px_rgba(23,128,70,.25)]'
+
 export default function Log() {
   const { state, dispatch, recentFoodIds, today, myFoods, myFoodById } = useStore()
   const [params, setParams] = useSearchParams()
@@ -162,29 +167,37 @@ export default function Log() {
     else setPicked(f)
   }
 
-  const quickLink = (row?: boolean) => <button type="button" className={`tap font-bold text-g-ink underline ${row ? 'min-h-11 px-1.5' : '-my-3 inline-block py-3'}`} onClick={() => setQuick(true)}>Quick add calories</button>
+  const quickLink = (row?: boolean) => <button type="button" className={`tap font-bold text-g-ink underline ${row ? 'min-h-11 px-1.5' : '-my-3 inline-block py-3'}`} onClick={() => setQuick(true)}>Add Calories</button>
 
   return (
     <>
       <Screen>
-        <header className="flex items-center justify-between gap-2">
-          <Link to="/" aria-label="Close and go back to Today" className="grid h-11 w-11 place-items-center text-xl text-mute">✕</Link>
+        <header className="flex items-center justify-between gap-1">
+          <Link to="/" aria-label="Close and go back to Today" className="grid h-11 w-11 shrink-0 place-items-center text-xl text-mute">✕</Link>
           {mode === 'food' ? (
-            <label className="title flex items-center gap-1 text-[24px]">
-              <span>Add to</span>
-              <select
-                aria-label="Meal"
-                value={meal}
-                onChange={(e) => { const n = new URLSearchParams(params); n.set('meal', e.target.value); setParams(n, { replace: true }) }}
-                className="rounded-lg bg-transparent font-display font-semibold text-g-ink"
-              >
-                {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
-              </select>
+            // v1.11: the meal is a 44 px card pill like the chips (16 px left, 12 px right of a chevron), sized to the
+            // current meal. The native <select> sits invisibly on top, so a tap still opens the system picker.
+            <label className="title flex min-w-0 items-center gap-2 text-[24px]">
+              <span className="shrink-0">Add to</span>
+              <span className="relative flex h-11 min-w-0 items-center gap-1.5 rounded-full border border-line bg-card pl-4 pr-3 focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-g-ink" data-testid="meal-pill">
+                <span className="truncate font-display font-semibold leading-none text-g-ink" aria-hidden="true">{MEAL_LABEL[meal]}</span>
+                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0 text-g-ink" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9.5 6 6 6-6" /></svg>
+                <select
+                  aria-label="Meal"
+                  value={meal}
+                  onChange={(e) => { const n = new URLSearchParams(params); n.set('meal', e.target.value); setParams(n, { replace: true }) }}
+                  className="absolute -inset-px h-[calc(100%+2px)] w-[calc(100%+2px)] cursor-pointer appearance-none rounded-full opacity-0 focus:outline-none"
+                >
+                  {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
+                </select>
+              </span>
             </label>
           ) : (
             <h1 className="title text-[24px]">Log exercise</h1>
           )}
-          <span className="h-11 w-11" aria-hidden="true" />
+          {/* v1.11: mirrors the close button to keep the title centred, but only takes room that is left over (basis 0,
+              up to 44 px), so on a 375 px phone "Beverages" never loses a fraction of a pixel to it and truncates. */}
+          <span className="h-11 min-w-0 max-w-11 flex-1 basis-0" aria-hidden="true" />
         </header>
         <div className="flex gap-2" role="group" aria-label="What to log">
           <Chip on={mode === 'food'} onClick={() => setMode('food')}><span aria-hidden="true">🍽 </span>Food</Chip>
@@ -280,12 +293,14 @@ export default function Log() {
       {/* v1.3.4: Quick add lives in a sticky full-width bar at the bottom of Log (Reed, option 1). Hidden when the
           day is closed, and while the on-screen keyboard is up so it never rides up over the list. */}
       {!day.closed && !keyboard && (
-        <div className={`flex shrink-0 items-center gap-3 border-t border-line bg-bg pl-5 pt-3 pb-safe-qa ${mode === 'food' ? 'pr-safe-cam' : 'pr-5'}`} data-testid="qa-bar">
-          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="tap flex min-w-0 flex-1 items-center justify-center gap-2 rounded-[18px] bg-ink p-4 text-[17px] font-bold text-bg shadow-[0_8px_20px_rgba(42,36,32,.22)]">
-            <span aria-hidden="true">⚡</span>{mode === 'food' ? 'Quick add calories' : 'Quick add burn'}
+        // v1.11: 20 px on both sides (plus the safe area), the same gutter as the page, so the button's left edge and the
+        // AI button's right edge line up with the search box and list. Was 20 px left, 8 px right. Both buttons are 56 px tall.
+        <div className="px-safe-bar flex shrink-0 items-center gap-3 border-t border-line bg-bg pt-3 pb-safe-qa" data-testid="qa-bar">
+          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className={`tap flex h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[18px] text-[17px] font-bold ${QA_BTN}`} data-testid="qa-btn">
+            {mode === 'food' ? 'Add Calories' : 'Quick add burn'}
           </button>
           {/* v1.5: AI photo estimate (Reed's mock). Food mode only. Offline it says so instead of opening anything.
-              v1.5.2: on the right (easier for the thumb), 56 px target, 8 px from the edge plus the safe area.
+              v1.5.2: on the right (easier for the thumb), 56 px target. v1.11: 20 px from the edge plus the safe area, like the page.
               v1.6: the AI button; the photo is optional inside the sheet.
               v1.6.1 (Reed): sparkle only, no label; card background, line border, green sparkle. */}
           {mode === 'food' && (online ? (

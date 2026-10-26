@@ -1,17 +1,19 @@
 export type Sex = 'male' | 'female'
 export type Goal = 'lose' | 'keep' | 'gain'
 export type Activity = 'sedentary' | 'light' | 'moderate' | 'active' | 'very'
-export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snacks' | 'beverages'
 /** Weight-change pace in kg a week. */
 export type Pace = 'gentle' | 'standard' | 'faster'
 export type Intensity = 'light' | 'moderate' | 'vigorous'
 
-export const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snacks']
+// v1.11: Beverages after Snacks. Never a time-of-day default (defaultMeal), only picked by hand.
+export const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snacks', 'beverages']
 export const MEAL_LABEL: Record<Meal, string> = {
   breakfast: 'Breakfast',
   lunch: 'Lunch',
   dinner: 'Dinner',
   snacks: 'Snacks',
+  beverages: 'Beverages',
 }
 
 export type MacroKey = 'protein' | 'carbs' | 'fat'

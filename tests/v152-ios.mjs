@@ -39,10 +39,10 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
   const keyboard = async (open) => { await page.setViewportSize({ width, height: open ? height - kb : height }); await page.waitForTimeout(400) }
   const dlg = page.getByRole('dialog')
 
-  await step(`${tag}: AI button (star only, v1.6.3) sits right of Quick add, 56 px, 8 px from the edge, clear of Quick add`, async () => {
+  await step(`${tag}: AI button (star only, v1.6.3) sits right of Quick add, 56 px, v1.11: 20 px from the edge like the page gutter, clear of Add Calories`, async () => {
     await page.goto(BASE + '/log')
     const btn = page.getByRole('button', { name: 'Estimate with AI', exact: true })
-    const qa = page.getByRole('button', { name: /Quick add calories/ })
+    const qa = page.getByRole('button', { name: /Add Calories/ })
     await btn.waitFor()
     assert.equal((await btn.innerText()).trim(), '', 'no text label')
     assert.equal(await btn.locator('svg').count(), 1)
@@ -50,9 +50,9 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     assert.ok(cb.x >= qb.x + qb.width + 8, `AI button right of Quick add with room (${cb.x} vs ${qb.x + qb.width})`)
     assert.equal(Math.round(cb.width), 56); assert.equal(Math.round(cb.height), 56)
     const edge = width - (cb.x + cb.width)
-    assert.ok(edge >= 8 && edge <= 12, `8 px from the screen edge (got ${edge})`)
+    assert.ok(Math.abs(edge - 20) <= 1, `v1.11: 20 px from the screen edge (got ${edge})`)
     assert.ok(Math.abs(cb.y + cb.height / 2 - (qb.y + qb.height / 2)) < 3, 'same row')
-    assert.ok(qb.x >= 16, 'Quick add keeps its left margin')
+    assert.ok(Math.abs(qb.x - 20) <= 1, `v1.11: Add Calories 20 px from the left edge, same as the right (got ${qb.x})`)
     await shot('log-bar')
     await btn.tap()
     await page.getByRole('menuitem', { name: 'Type it' }).tap() // v1.7 menu
@@ -145,7 +145,7 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
   })
 
   await step(`${tag}: Quick add sheet fields take one tap and keep focus with the keyboard open`, async () => {
-    await page.getByRole('button', { name: /Quick add calories/ }).tap()
+    await page.getByRole('button', { name: /Add Calories/ }).tap()
     const name = dlg.getByRole('textbox', { name: /name/i }).first()
     await name.tap()
     assert.equal(await active(page), 'input')

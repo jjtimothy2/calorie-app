@@ -52,6 +52,15 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.11 Add Calories, a cleaner Log bar, meal pill and Beverages
+
+- The Log bottom button reads "Add Calories" (no emoji) on solid green #178046 with cream text (about 4.9:1 contrast). The Exercise tab's "Quick add burn" button uses the same green. The sheet title, the add-item search button, the photo sheet's "Add Calories instead" and the empty Log link all say Add Calories too.
+- The Add Calories sheet shows "From a label, menu or your own count" under kcal (linked to the field for screen readers).
+- The bottom bar has 20 px on both sides plus the safe area, so the 56 px buttons line up with the search box.
+- The Log meal selector is a 44 px cream pill with a thin border and a chevron, sized to the meal. The native picker still opens on tap (the select sits invisibly on top).
+- New meal: Beverages, after Snacks. It is in the meal picker, the meal chips in every sheet and its own section on Today. It is never picked by time of day. The demo week logs Es teh manis under Beverages.
+- No data changes (still version 2): old data and backups load unchanged, and existing entries keep their meals. Cache v1.11. Tests: tests/v111.mjs (bar, pill, sheet, Beverages on Today, Exercise button, default meal by hour, old data, demo week, at 390x844 and 375x667).
+
 ## v1.10.2 History no longer goes blank for new users
 
 - Fixed: opening History before your first closed day froze on a blank screen in Safari (iPhone). The 7-day average line has nothing to draw until a day is closed, and measuring that empty line for its draw-in animation threw "The element's path is empty", which took the whole app down. The chart now skips the animation when there is no line. Reduced motion users were never affected.
