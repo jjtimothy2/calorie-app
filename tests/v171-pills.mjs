@@ -1,9 +1,11 @@
-// v1.7 AI button menu: the sparkle opens two pills (Take photo, closest to the thumb, and Type it above). Take photo opens
-// the native rear camera (file input with capture=environment) inside the tap; the shot opens the AI sheet with the photo
-// and an unfocused note. Type it opens the sheet with the text field focused inside the tap and the dashed photo strip,
-// which offers Take photo and Choose from photos. No live camera (getUserMedia) and no text field transition setting.
-// WebKit (Safari's engine) with touch at 390x844 and 375x667. Screenshots: screenshots/v17-*.png.
-// Usage: npm run build && npx vite preview --port 4174 & node tests/v17-menu.mjs
+// v1.7.1 AI pills: the sparkle opens THREE pills, bottom to top: Take photo (file input with capture=environment, opens the
+// rear camera directly), From library (file input with no capture, opens the photo picker) and Type it (sheet with the text
+// field focused). Every picker / focus happens inside the tap. No border, outline or ring on a tapped pill (menu, strip and
+// Retake); pressed = background #efe7d8 + scale .97. Focus only moves into the menu when it was opened from the keyboard.
+// The Type it strip offers Take photo and From library inline, with the one-line spoon tip. Retake reopens the same source.
+// No live camera (getUserMedia) and no text field transition setting (from v1.7).
+// WebKit (Safari's engine) with touch at 390x844 and 375x667. Screenshots: screenshots/v171-*.png.
+// Usage: npm run build && npx vite preview --port 4174 & node tests/v171-pills.mjs
 import { webkit, devices } from 'playwright'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -66,11 +68,24 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const page = await ctx.newPage()
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/Service Worker registration blocked|service worker/i.test(m.text())) errors.push(`${tag}: ${m.type()}: ${m.text()}`) })
   page.on('pageerror', (e) => errors.push(`${tag}: ${e.message}`))
-  const shot = async (name) => { await page.waitForTimeout(350); await page.screenshot({ path: `${OUT}v17-${name}-${tag}.png` }) }
+  const shot = async (name) => { await page.waitForTimeout(350); await page.screenshot({ path: `${OUT}v171-${name}-${tag}.png` }) }
   const btn = page.getByRole('button', { name: 'Estimate with AI', exact: true })
   const menu = page.getByTestId('ai-menu')
   const typeIt = page.getByRole('menuitem', { name: 'Type it' })
   const takePhoto = page.getByRole('menuitem', { name: 'Take photo' })
+  const library = page.getByRole('menuitem', { name: 'From library' })
+  const pressStyle = (loc) => loc.evaluate((el) => { const c = getComputedStyle(el); return { outline: c.outlineStyle, outlineW: c.outlineWidth, shadow: c.boxShadow, bg: c.backgroundColor, tf: c.transform, tap: c.webkitTapHighlightColor } })
+  // Pressed look: hold a pointer down on the pill (WebKit applies :active), read styles, then release far away so nothing fires.
+  const pressed = async (loc) => {
+    const r = await loc.boundingBox()
+    const x = r.x + r.width / 2, y = r.y + r.height / 2
+    await page.mouse.move(x, y); await page.mouse.down(); await page.waitForTimeout(200)
+    return { s: await pressStyle(loc), release: async () => { await page.mouse.move(2, 2); await page.mouse.up() } }
+  }
+  const assertNoRing = (st, n) => {
+    assert.ok(st.outline === 'none' || st.outlineW === '0px', `${n}: no outline (${st.outline} ${st.outlineW})`)
+    assert.ok(!/\b0px 0px 0px [1-9]/.test(st.shadow) && !/inset/.test(st.shadow), `${n}: no box-shadow ring (${st.shadow})`)
+  }
   const dlg = page.getByRole('dialog')
   const active = () => page.evaluate(() => { const a = document.activeElement; return a ? (a.getAttribute('role') === 'menuitem' ? `menuitem:${a.textContent}` : a.tagName.toLowerCase() + (a.dataset.testid ? `#${a.dataset.testid}` : '')) : '' })
   const clicks = () => page.evaluate(() => window.__clicks)
@@ -78,7 +93,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const openMenu = async () => { await btn.tap(); await menu.waitFor(); await page.waitForTimeout(250) }
   let before
 
-  await step(`${tag}: tap the sparkle: menu pops up from the button, Type it above Take photo, pills >= 44 px, nothing off screen`, async () => {
+  await step(`${tag}: tap the sparkle: three pills, bottom to top Take photo, From library, Type it; >= 44 px; nothing off screen or clipped; no focus moved on a tap`, async () => {
     await page.goto(BASE + '/log')
     await btn.waitFor()
     await page.waitForTimeout(300)
@@ -87,13 +102,16 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await openMenu()
     assert.equal(await btn.getAttribute('aria-expanded'), 'true')
     assert.equal(await btn.getAttribute('aria-haspopup'), 'menu')
-    assert.deepEqual(await page.getByRole('menuitem').allInnerTexts(), ['Type it', 'Take photo'], 'DOM/reading order top to bottom')
-    const [t, p, b] = [await typeIt.boundingBox(), await takePhoto.boundingBox(), await btn.boundingBox()]
-    assert.ok(t.y + t.height <= p.y, 'Type it above Take photo')
+    assert.deepEqual(await page.getByRole('menuitem').allInnerTexts(), ['Type it', 'From library', 'Take photo'], 'DOM/reading order top to bottom')
+    const [t, l, p, b] = [await typeIt.boundingBox(), await library.boundingBox(), await takePhoto.boundingBox(), await btn.boundingBox()]
+    assert.ok(t.y + t.height <= l.y && l.y + l.height <= p.y, 'Type it above From library above Take photo')
     assert.ok(p.y + p.height <= b.y && b.y - (p.y + p.height) <= 24, `Take photo right above the button (${Math.round(b.y - p.y - p.height)} px)`)
-    for (const [n, r] of [['Type it', t], ['Take photo', p]]) {
+    // Not clipped: the menu's host does not cut the pills off (top pill is the element hit at its own centre).
+    for (const [n, r] of [['Type it', t], ['From library', l], ['Take photo', p]]) {
       assert.ok(r.height >= 44 && r.width >= 44, `${n} at least 44 px (${r.width}x${r.height})`)
-      assert.ok(r.x >= 0 && r.x + r.width <= width && r.y >= 0, `${n} on screen`)
+      assert.ok(r.x >= 0 && r.x + r.width <= width && r.y >= 0 && r.y + r.height <= height, `${n} on screen`)
+      const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[role=menuitem]')?.textContent ?? null, [r.x + r.width / 2, r.y + 4])
+      assert.equal(hit, n, `${n} not clipped or covered`)
       assert.ok(Math.abs(r.x + r.width - (b.x + b.width)) < 1.5, `${n} right-aligned with the button`)
     }
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
@@ -102,7 +120,13 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     const cb = await cover.boundingBox()
     assert.ok(Math.abs(cb.x - b.x) < 1 && Math.abs(cb.y - b.y) < 1, 'sparkle stays in place on top of the scrim')
     assert.equal(await dlg.count(), 0, 'no sheet yet')
-    assert.equal(await active(), 'menuitem:Type it', 'focus moves into the menu')
+    assert.ok(!(await active()).startsWith('menuitem'), `a tap does not move focus into the menu (${await active()})`)
+    for (const m of await page.getByRole('menuitem').all()) {
+      const st = await pressStyle(m)
+      assertNoRing(st, 'resting pill')
+      assert.equal(await m.evaluate((el) => getComputedStyle(el).borderTopWidth), '0px', 'no border on the pill')
+      assert.equal(st.tap, 'rgba(0, 0, 0, 0)', 'no iOS tap highlight')
+    }
     await shot('menu-open')
   })
 
@@ -116,16 +140,37 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await openMenu()
     await page.keyboard.press('Escape')
     await menu.waitFor({ state: 'detached' })
-    assert.equal(await active(), 'button#ai-btn', 'focus returns to the AI button')
+    assert.equal(await active(), 'button#ai-btn', 'Escape returns focus to the AI button')
     assert.equal(await dlg.count(), 0)
     assert.deepEqual(await clicks(), [], 'no picker opened')
   })
 
-  await step(`${tag}: keyboard: Enter opens the menu, arrows move between pills, Enter on Type it opens the sheet`, async () => {
+  await step(`${tag}: pressing a menu pill: darken to #efe7d8 and scale .97, no outline or ring`, async () => {
+    await openMenu()
+    for (const m of [takePhoto, library, typeIt]) {
+      const { s: st, release } = await pressed(m)
+      await release()
+      assertNoRing(st, 'pressed pill')
+      assert.equal(st.bg, 'rgb(239, 231, 216)', 'pressed background #efe7d8')
+      assert.match(st.tf, /matrix\(0\.97, 0, 0, 0\.97/, `scale .97 (${st.tf})`)
+    }
+    const { release } = await pressed(library)
+    await page.waitForTimeout(100)
+    await page.screenshot({ path: `${OUT}v171-pill-pressed-${tag}.png` })
+    await release()
+    assert.equal(await dlg.count(), 0, 'releasing off the pill does nothing')
+    if (await menu.count()) { await page.keyboard.press('Escape'); await menu.waitFor({ state: 'detached' }) }
+    assert.deepEqual(await clicks(), [], 'no picker opened')
+  })
+
+  await step(`${tag}: keyboard: Enter opens the menu with focus on the top pill (focus-visible ring kept), arrows wrap, Enter on Type it opens the sheet`, async () => {
     await btn.focus()
     await page.keyboard.press('Enter')
     await menu.waitFor()
-    assert.equal(await active(), 'menuitem:Type it')
+    assert.equal(await active(), 'menuitem:Type it', 'keyboard open moves focus into the menu')
+    assert.notEqual(await typeIt.evaluate((el) => getComputedStyle(el).outlineStyle), 'none', 'keyboard focus keeps a visible ring')
+    await page.keyboard.press('ArrowDown')
+    assert.equal(await active(), 'menuitem:From library')
     await page.keyboard.press('ArrowDown')
     assert.equal(await active(), 'menuitem:Take photo')
     await page.keyboard.press('ArrowDown')
@@ -153,6 +198,28 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal(await page.getByTestId('photo-capture').getAttribute('accept'), 'image/*')
   })
 
+  await step(`${tag}: From library opens the input WITHOUT capture inside the tap; a library photo lands on the photo sheet; Change reopens the library`, async () => {
+    await page.evaluate(() => { window.__clicks = [] })
+    await openMenu()
+    await library.tap()
+    const c = await clicks()
+    assert.deepEqual(c, [{ id: 'photo-input', capture: null, ev: 'click', trusted: true }], 'library input clicked synchronously in the tap, no capture')
+    assert.equal(await page.getByTestId('photo-input').getAttribute('accept'), 'image/*')
+    assert.equal(await page.getByTestId('photo-input').getAttribute('capture'), null)
+    await menu.waitFor({ state: 'detached' })
+    await page.getByTestId('photo-input').setInputFiles(PLATE)
+    await dlg.getByTestId('photo-added').waitFor()
+    await page.waitForTimeout(300)
+    assert.notEqual(await active(), 'textarea', 'keyboard stays down')
+    const rt = dlg.getByTestId('retake')
+    assert.equal((await rt.innerText()).trim(), 'Change')
+    await page.evaluate(() => { window.__clicks = [] })
+    await rt.tap()
+    assert.deepEqual((await clicks()).map((x) => [x.id, x.capture]), [['photo-input', null]], 'reopens the library')
+    await page.keyboard.press('Escape')
+    await dlg.waitFor({ state: 'detached' })
+  })
+
   await step(`${tag}: cancelling the camera leaves the log with nothing open`, async () => {
     await page.getByTestId('photo-capture').evaluate((el) => { el.dispatchEvent(new Event('cancel', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })) })
     await page.waitForTimeout(300)
@@ -173,7 +240,16 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await page.waitForTimeout(300)
     assert.notEqual(await active(), 'textarea', 'keyboard stays down')
     assert.equal(await dlg.getByRole('button', { name: /Estimate/ }).isDisabled(), false, 'photo alone can be estimated')
-    await dlg.getByRole('button', { name: 'Retake' }).waitFor()
+    const rt = dlg.getByRole('button', { name: 'Retake' })
+    await rt.waitFor()
+    for (const b of [rt, dlg.getByRole('button', { name: 'Remove photo' })]) {
+      const r = await b.boundingBox()
+      assert.ok(r.height >= 44 && r.width >= 44, `photo button >= 44 px (${r.width}x${r.height})`)
+    }
+    const { s: rst, release: rrel } = await pressed(rt)
+    await rrel()
+    assertNoRing(rst, 'pressed Retake')
+    assert.equal(rst.bg, 'rgb(239, 231, 216)', 'Retake pressed darken')
     await shot('photo-sheet')
     await page.evaluate(() => { window.__clicks = [] })
     await dlg.getByRole('button', { name: 'Retake' }).tap()
@@ -203,26 +279,39 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     const [sb, nb] = await dlg.evaluate((el) => ['[data-testid=add-photo]', 'textarea'].map((q) => el.querySelector(q).getBoundingClientRect()))
     assert.ok(sb.y + sb.height <= nb.y, 'strip above the field')
     await page.keyboard.type('Nasi uduk')
-    await shot('type-sheet')
   })
 
-  await step(`${tag}: the strip offers Take photo (camera) and Choose from photos (library), both >= 44 px and on screen`, async () => {
+  await step(`${tag}: the strip offers Take photo (camera) and From library inline, both >= 44 px, no ring on press; one-line spoon tip`, async () => {
     const strip = dlg.getByTestId('add-photo')
     await strip.tap()
     assert.equal(await strip.getAttribute('aria-expanded'), 'true')
     const opts = dlg.getByTestId('strip-options')
     await opts.waitFor()
-    assert.deepEqual(await opts.getByRole('button').allInnerTexts(), ['Take photo', 'Choose from photos'])
+    assert.deepEqual(await opts.getByRole('button').allInnerTexts(), ['Take photo', 'From library'])
     for (const b of await opts.getByRole('button').all()) {
       const r = await b.boundingBox()
       assert.ok(r.height >= 44 && r.x >= 0 && r.x + r.width <= width, `option size/position ${JSON.stringify(r)}`)
       assert.ok(!(await b.evaluate((el) => el.scrollWidth > el.clientWidth)), 'label fits')
+      assert.equal(await b.evaluate((el) => getComputedStyle(el).borderTopWidth), '0px', 'no border on strip pill')
+      const { s: st, release } = await pressed(b)
+      await release()
+      assertNoRing(st, 'pressed strip pill')
+      assert.equal(st.bg, 'rgb(239, 231, 216)', 'strip pill pressed darken')
+      assert.match(st.tf, /matrix\(0\.97/, 'strip pill scale .97')
     }
-    await dlg.getByTestId('photo-tip').waitFor()
-    await shot('strip-options')
+    const tip = dlg.getByTestId('photo-tip')
+    await tip.waitFor()
+    assert.match(await tip.innerText(), /spoon/)
+    const [ob, tb] = [await opts.boundingBox(), await tip.boundingBox()]
+    assert.ok(tb.y >= ob.y + ob.height - 1, 'tip under the strip options')
+    assert.ok(tb.height <= 22, `tip is one line (${tb.height} px)`)
+    assert.ok(!(await tip.evaluate((el) => el.scrollWidth > el.clientWidth)), 'tip text not cut off')
+    assert.equal(await tip.evaluate((el) => getComputedStyle(el).color), 'rgb(107, 103, 95)', 'muted colour')
+    await page.waitForTimeout(350)
+    await page.screenshot({ path: `${OUT}v171-type-sheet-${tag}.png` })
     await page.evaluate(() => { window.__clicks = [] })
     await opts.getByRole('button', { name: 'Take photo' }).tap()
-    await opts.getByRole('button', { name: 'Choose from photos' }).tap()
+    await opts.getByRole('button', { name: 'From library' }).tap()
     const c = await clicks()
     assert.deepEqual(c.map((x) => [x.id, x.capture, x.ev]), [['photo-capture', 'environment', 'click'], ['photo-input', null, 'click']])
     await page.getByTestId('photo-input').setInputFiles(PLATE)
@@ -255,4 +344,4 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
 await step('no console errors or warnings', async () => { assert.deepEqual(errors, []) })
 await browser.close()
 console.log(results.join('\n'))
-console.log(`\n${results.length} v1.7 menu checks passed, no console errors`)
+console.log(`\n${results.length} v1.7.1 pill checks passed, no console errors`)

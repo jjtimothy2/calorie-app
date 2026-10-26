@@ -183,7 +183,7 @@ try {
     assert.equal(await d.getByTestId('photo-tip').count(), 0, 'tip waits for the photo options')
     await strip.click()
     const tip = d.getByTestId('photo-tip')
-    assert.equal(await tip.innerText(), 'Tip: put a spoon or your hand in the shot for better portions.')
+    assert.equal(await tip.innerText(), 'Tip: a spoon or your hand in the shot helps portions.')
     const [ob, tb] = [await d.getByTestId('strip-options').boundingBox(), await tip.boundingBox()]
     assert.ok(tb.y >= ob.y + ob.height && tb.y - (ob.y + ob.height) < 12, 'tip sits under the photo options')
     assert.equal(await tip.evaluate((el) => getComputedStyle(el).color), 'rgb(107, 103, 95)', 'muted ink')
@@ -231,7 +231,7 @@ try {
     await d.waitFor({ state: 'detached' })
   })
 
-  await step('photo + text: Take photo, Remove, Choose from photos, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
+  await step('photo + text: Take photo, Remove, From library, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
     await snap(page)
     const d = dialog(page)
     assert.equal(await d.getByTestId('photo-strip').count(), 0, 'the frame shows the photo')
@@ -239,7 +239,7 @@ try {
     await d.getByRole('button', { name: 'Remove photo' }).click()
     await d.getByTestId('photo-strip').waitFor()
     await d.getByTestId('add-photo').click()
-    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByRole('button', { name: 'Choose from photos' }).click()])
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByRole('button', { name: 'From library' }).click()])
     await chooser.setFiles(PLATE)
     await d.getByTestId('photo-added').waitFor()
     const est = d.getByRole('button', { name: /Estimate/ })

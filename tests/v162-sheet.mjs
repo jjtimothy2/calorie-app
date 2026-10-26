@@ -107,13 +107,13 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
     await strip.waitFor()
   })
 
-  await step(`${tag}: strip opens Take photo / Choose from photos; a library photo fills the big frame, label "Add a note (optional)"; photo estimate`, async () => {
+  await step(`${tag}: strip opens Take photo / From library; a library photo fills the big frame, label "Add a note (optional)"; photo estimate`, async () => {
     const picks = await page.evaluate(() => window.__picks)
     await strip.tap()
     assert.equal(await page.evaluate(() => window.__picks), picks, 'strip itself opens no picker')
     assert.equal(await strip.getAttribute('aria-expanded'), 'true')
-    await dlg.getByRole('button', { name: 'Choose from photos' }).tap()
-    assert.equal(await page.evaluate(() => window.__picks), picks + 1, 'Choose from photos opens the picker')
+    await dlg.getByRole('button', { name: 'From library' }).tap()
+    assert.equal(await page.evaluate(() => window.__picks), picks + 1, 'From library opens the picker')
     await page.getByTestId('photo-input').setInputFiles(PLATE)
     const added = dlg.getByTestId('photo-added')
     await added.waitFor()

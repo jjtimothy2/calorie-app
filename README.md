@@ -52,13 +52,21 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.7.1 Three AI pills, no tap ring
+
+- The sparkle menu has three pills, bottom to top: Take photo (capture=environment, opens the rear camera directly), From library (no capture flag, opens the photo picker; iOS may show its small menu first) and Type it. Pickers open and the text field focuses inside the tap. Both photo paths land on the photo sheet with the note unfocused.
+- Retake reopens the picker the photo came from (camera = Retake, library = Change). Retake and the remove button are 44 px.
+- No border, outline or ring on any pill when tapped (menu, strip and photo buttons): pressed = #efe7d8 fill and scale .97 (`.pill-press`), no iOS tap highlight. Focus only moves into the menu when it was opened from the keyboard, and keyboard focus keeps the normal ring.
+- The Type it strip offers Take photo and From library inline, with the spoon tip as one muted line.
+- calorie-app:v2 and calorie-app:ai are unchanged. Tests: tests/v171-pills.mjs (replaces v17-menu.mjs).
+
 ## v1.7 AI button menu, native camera
 
 - Log > Food: tapping the sparkle AI button pops two pills above it: Take photo (bottom, closest to the thumb) and Type it. A tap outside, the sparkle again or Escape closes it; arrow keys, Tab, Home and End move between the pills.
 - Take photo opens the phone's rear camera directly (file input with capture=environment, clicked inside the tap). After a shot the AI sheet opens with the photo and the note field is not focused. Cancelling the camera leaves the log as it was.
 - Type it opens the sheet with "What did you eat?" focused inside the tap (keyboard comes up) and a dashed "Add a photo (optional)" strip above it. The strip offers Take photo and Choose from photos (no capture flag) inline, plus the spoon or hand tip.
 - Removed: the live camera (getUserMedia, retries, freeze frame, fade) and the "Text field transition" setting. The old calorie-app:ui value is ignored. calorie-app:v2 and calorie-app:ai are unchanged.
-- Tests: tests/v17-menu.mjs (WebKit, 390x844 and 375x667); v163-camera and v164-transition retired; v15-photo, v152-ios and v162-sheet updated.
+- Tests: tests/v17-menu.mjs, now tests/v171-pills.mjs (WebKit, 390x844 and 375x667); v163-camera and v164-transition retired; v15-photo, v152-ios and v162-sheet updated.
 
 ## v1.6.3 Live camera in the AI sheet (replaced in v1.7)
 

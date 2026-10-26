@@ -129,6 +129,8 @@ type Props = {
   photo: string | null
   /** The last photo couldn't be read. */
   photoError: boolean
+  /** v1.7.1: which picker gave the current photo; Retake reopens the same one. */
+  photoSource?: 'camera' | 'library'
   /** v1.7: opens the native camera (file input with capture). */
   onTakePhoto: () => void
   /** v1.7: opens the photo library (file input without capture). */
@@ -144,7 +146,7 @@ const Thumb = ({ photo, dim = false }: { photo: string | null; dim?: boolean }) 
   ? <img src={photo} alt="Your meal photo" className={`h-14 w-14 shrink-0 rounded-[14px] object-cover ${dim ? 'opacity-60' : ''}`} />
   : <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] border border-line bg-card text-g" aria-hidden="true"><SparkleIcon className="h-7 w-7" /></span>
 
-export function AiFlow({ settings, photo, photoError, onTakePhoto, onChoosePhoto, onRemovePhoto, onClose, onQuickAdd, onFixKey, onLog }: Props) {
+export function AiFlow({ settings, photo, photoError, photoSource = 'camera', onTakePhoto, onChoosePhoto, onRemovePhoto, onClose, onQuickAdd, onFixKey, onLog }: Props) {
   const [note, setNote] = useState('')
   const [phase, setPhase] = useState<Phase>({ k: 'input' })
   const noteRef = useRef<HTMLTextAreaElement>(null)
@@ -154,7 +156,7 @@ export function AiFlow({ settings, photo, photoError, onTakePhoto, onChoosePhoto
   // A new or removed photo goes back to the input step; the text is kept.
   useEffect(() => { ctl.current?.abort(); setPhase({ k: 'input' }) }, [photo])
   const back = () => { ctl.current?.abort(); setPhase({ k: 'input' }) }
-  // v1.7: no live camera. The strip offers Take photo / Choose from photos (both native pickers).
+  // v1.7: no live camera. The strip offers Take photo / From library (both native pickers).
   const [opts, setOpts] = useState(false)
   useEffect(() => { setOpts(false) }, [photo])
   // v1.6.2: a photo, 2+ typed characters, or a chip.
@@ -215,8 +217,11 @@ export function AiFlow({ settings, photo, photoError, onTakePhoto, onChoosePhoto
           <img src={photo} alt="Your meal photo" className={`h-full w-full object-cover ${loading ? 'opacity-60' : ''}`} />
           <span className="sr-only">Photo added</span>
           {!loading && <div className="absolute inset-x-2 bottom-2 flex justify-end gap-2">
-            <button type="button" onClick={onTakePhoto} className="tap flex items-center gap-1.5 rounded-full bg-card/95 px-4 py-2 text-[15px] font-bold text-g-ink shadow-sm"><CameraIcon className="h-[18px] w-[18px]" />Retake</button>
-            <button type="button" onClick={onRemovePhoto} aria-label="Remove photo" className="tap grid h-10 w-10 place-items-center rounded-full bg-card/95 text-[18px] text-ink shadow-sm">✕</button>
+            {/* v1.7.1: 44 px tall, no ring on tap; reopens the picker the photo came from. */}
+            {photoSource === 'library'
+              ? <button type="button" onClick={onChoosePhoto} className="tap pill-press flex h-11 items-center gap-1.5 rounded-full bg-card/95 px-4 text-[15px] font-bold text-g-ink shadow-sm" data-testid="retake"><GalleryIcon className="h-[18px] w-[18px]" />Change</button>
+              : <button type="button" onClick={onTakePhoto} className="tap pill-press flex h-11 items-center gap-1.5 rounded-full bg-card/95 px-4 text-[15px] font-bold text-g-ink shadow-sm" data-testid="retake"><CameraIcon className="h-[18px] w-[18px]" />Retake</button>}
+            <button type="button" onClick={onRemovePhoto} aria-label="Remove photo" className="tap pill-press grid h-11 w-11 place-items-center rounded-full bg-card/95 text-[18px] text-ink shadow-sm">✕</button>
           </div>}
         </div>
       ) : (
@@ -235,16 +240,16 @@ export function AiFlow({ settings, photo, photoError, onTakePhoto, onChoosePhoto
           </button>
           {opts && (
             <div className="anim-pop-in flex gap-2" role="group" aria-label="Add a photo" data-testid="strip-options">
-              <button type="button" onClick={onTakePhoto} className="tap flex h-12 flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line px-3 bg-card text-[15px] font-bold shadow-[0_4px_14px_rgba(42,36,32,.08)]">
+              <button type="button" onClick={onTakePhoto} className="tap pill-press flex h-12 flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-full bg-bg px-3 text-[15px] font-bold">
                 <CameraIcon className="h-5 w-5 text-g" />Take photo
               </button>
-              <button type="button" onClick={onChoosePhoto} className="tap flex h-12 flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line px-3 bg-card text-[15px] font-bold shadow-[0_4px_14px_rgba(42,36,32,.08)]">
-                <GalleryIcon className="h-5 w-5 text-g" />Choose from photos
+              <button type="button" onClick={onChoosePhoto} className="tap pill-press flex h-12 flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-full bg-bg px-3 text-[15px] font-bold">
+                <GalleryIcon className="h-5 w-5 text-g" />From library
               </button>
             </div>
           )}
-          {/* v1.6.1: a size reference in the shot gives better grams. v1.7: shown with the photo options. */}
-          {opts && <p className="px-1 text-[13px] leading-snug text-mute [text-wrap:balance]" data-testid="photo-tip">Tip: put a spoon or your hand in the shot for better portions.</p>}
+          {/* v1.6.1: a size reference in the shot gives better grams. v1.7: shown with the photo options. v1.7.1: one line. */}
+          {opts && <p className="truncate px-1 text-[13px] leading-snug text-mute" data-testid="photo-tip">Tip: a spoon or your hand in the shot helps portions.</p>}
         </div>
       )}
       <div className="-mb-1.5 px-1 text-[15px] font-bold" data-testid="note-label">

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
-import { AiFlow, CameraIcon, NoKeySheet, PencilIcon, SparkleIcon, type LogItem } from '../components/PhotoSheets'
+import { AiFlow, CameraIcon, GalleryIcon, NoKeySheet, PencilIcon, SparkleIcon, type LogItem } from '../components/PhotoSheets'
 import { Screen } from '../components/Layout'
 import { Button, Chip } from '../components/ui'
 import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
@@ -46,25 +46,32 @@ export default function Log() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [aiFlow, setAiFlow] = useState<{ ai: AiSettings; photo: string | null; photoError: boolean } | null>(null)
   const [noKey, setNoKey] = useState(false)
-  // v1.7: the AI button opens a two-pill menu (Take photo / Type it) instead of the sheet with a live camera.
+  // v1.7: the AI button opens a pill menu instead of the sheet with a live camera.
+  // v1.7.1: three pills (Take photo / From library / Type it). Focus only moves into the menu when it was opened from
+  // the keyboard (click detail 0), so a tap never lights up a pill.
   const captureRef = useRef<HTMLInputElement>(null)
   const aiBtnRef = useRef<HTMLButtonElement>(null)
-  const [aiMenu, setAiMenu] = useState<{ right: number; bottom: number } | null>(null)
-  const openAi = () => {
+  const [aiMenu, setAiMenu] = useState<{ right: number; bottom: number; kb: boolean } | null>(null)
+  // v1.7.1: which picker gave the current photo, so Retake reopens the same one.
+  const [photoSrc, setPhotoSrc] = useState<'camera' | 'library'>('camera')
+  const openAi = (ev?: { detail: number }) => {
     if (!online) return
     const ai = readAi()
     if (!ai) { setNoKey(true); return }
     const b = aiBtnRef.current, host = b?.closest<HTMLElement>('[data-ai-host]') ?? b?.offsetParent
     if (!b || !host) return
     const r = b.getBoundingClientRect(), h = (host as HTMLElement).getBoundingClientRect()
-    setAiMenu({ right: h.right - r.right, bottom: h.bottom - r.bottom })
+    setAiMenu({ right: h.right - r.right, bottom: h.bottom - r.bottom, kb: ev?.detail === 0 })
   }
+  // Both pickers are opened synchronously inside the tap (iOS only opens them from a user gesture).
   const takePhoto = () => { setAiMenu(null); captureRef.current?.click() }
+  const fromLibrary = () => { setAiMenu(null); fileRef.current?.click() }
   const typeIt = () => { const ai = readAi(); setAiMenu(null); if (ai) setAiFlow({ ai, photo: null, photoError: false }) }
-  const onFile = async (file: Blob | undefined) => {
+  const onFile = async (file: Blob | undefined, src: 'camera' | 'library') => {
     if (fileRef.current) fileRef.current.value = '' // same photo can be picked again
     if (captureRef.current) captureRef.current.value = ''
     if (!file) return // camera cancelled: nothing opens
+    setPhotoSrc(src)
     const ai = readAi()
     try {
       const url = await downscalePhoto(file)
@@ -223,7 +230,7 @@ export default function Log() {
               v1.6: the AI button; the photo is optional inside the sheet.
               v1.6.1 (Reed): sparkle only, no label; card background, line border, green sparkle. */}
           {mode === 'food' && (online ? (
-            <button ref={aiBtnRef} type="button" onClick={openAi} aria-label="Estimate with AI" aria-haspopup="menu" aria-expanded={!!aiMenu} data-testid="ai-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-g">
+            <button ref={aiBtnRef} type="button" onClick={(e) => openAi(e)} aria-label="Estimate with AI" aria-haspopup="menu" aria-expanded={!!aiMenu} data-testid="ai-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-g">
               <SparkleIcon gradient className="h-[34px] w-[34px]" />
             </button>
           ) : (
@@ -257,15 +264,16 @@ export default function Log() {
       {picked && (
         <FoodSheet key={picked.id} mode="add" food={picked} meal={meal} date={today} remaining={remaining} onClose={() => setPicked(null)} onDone={(e) => { setPicked(null); showToast(e) }} />
       )}
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-input" onChange={(e) => onFile(e.target.files?.[0])} />
-      <input ref={captureRef} type="file" accept="image/*" capture="environment" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-capture" onChange={(e) => onFile(e.target.files?.[0])} />
-      {aiMenu && <AiMenu pos={aiMenu} onClose={() => { setAiMenu(null); aiBtnRef.current?.focus({ preventScroll: true }) }} onTakePhoto={takePhoto} onTypeIt={typeIt} />}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-input" onChange={(e) => onFile(e.target.files?.[0], 'library')} />
+      <input ref={captureRef} type="file" accept="image/*" capture="environment" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-capture" onChange={(e) => onFile(e.target.files?.[0], 'camera')} />
+      {aiMenu && <AiMenu pos={aiMenu} fromKeyboard={aiMenu.kb} onClose={(kb) => { setAiMenu(null); if (aiMenu.kb || kb) aiBtnRef.current?.focus({ preventScroll: true }) }} onTakePhoto={takePhoto} onFromLibrary={fromLibrary} onTypeIt={typeIt} />}
       {noKey && <NoKeySheet onClose={() => setNoKey(false)} onSetup={() => nav('/settings?ai=1')} />}
       {aiFlow && (
         <AiFlow
           settings={aiFlow.ai}
           photo={aiFlow.photo}
           photoError={aiFlow.photoError}
+          photoSource={photoSrc}
           onTakePhoto={() => captureRef.current?.click()}
           onChoosePhoto={() => fileRef.current?.click()}
           onRemovePhoto={() => setAiFlow((f) => (f ? { ...f, photo: null, photoError: false } : f))}
@@ -317,43 +325,50 @@ function useKeyboardOpen() {
 }
 
 /**
- * v1.7: two pills rising above the AI button, over a light scrim. Take photo sits closest to the thumb, Type it above.
- * The sparkle is redrawn on top (tap = close). Escape or a tap outside closes; arrow keys and Tab move between pills.
+ * v1.7: pills rising above the AI button, over a light scrim. The sparkle is redrawn on top (tap = close).
+ * Escape or a tap outside closes; arrow keys and Tab move between pills.
+ * v1.7.1: three pills, bottom to top: Take photo (closest to the thumb), From library, Type it. No border or ring on
+ * tap (pill-press); focus only moves into the menu when it was opened from the keyboard.
  */
-function AiMenu({ pos, onClose, onTakePhoto, onTypeIt }: { pos: { right: number; bottom: number }; onClose: () => void; onTakePhoto: () => void; onTypeIt: () => void }) {
+function AiMenu({ pos, fromKeyboard, onClose, onTakePhoto, onFromLibrary, onTypeIt }: { pos: { right: number; bottom: number }; fromKeyboard: boolean; onClose: (kb?: boolean) => void; onTakePhoto: () => void; onFromLibrary: () => void; onTypeIt: () => void }) {
   const box = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
   useEffect(() => {
     const items = () => Array.from(box.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? [])
-    items()[0]?.focus({ preventScroll: true })
+    if (fromKeyboard) items()[0]?.focus({ preventScroll: true })
     const k = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); close.current(); return }
+      if (e.key === 'Escape') { e.preventDefault(); close.current(true); return }
       if (!['ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'].includes(e.key)) return
       const list = items()
       if (!list.length) return
       e.preventDefault()
       const i = list.indexOf(document.activeElement as HTMLElement)
-      const n = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1
+      // Nothing focused yet (opened by touch): Down/Tab start at the top pill, Up/Shift+Tab at the bottom one.
+      const back = e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)
+      const n = i < 0 ? (e.key === 'End' || back ? list.length - 1 : 0) : e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1
         : (i + ((e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) ? -1 : 1) + list.length) % list.length
       list[n].focus()
     }
     document.addEventListener('keydown', k)
     return () => document.removeEventListener('keydown', k)
-  }, [])
-  const pill = 'anim-pop-in tap flex h-[52px] items-center gap-2.5 rounded-full border border-line bg-card pl-4 pr-5 text-[17px] font-bold text-ink shadow-[0_8px_24px_rgba(42,36,32,.16)]'
+  }, []) // fromKeyboard is fixed for the menu's life
+  const pill = 'anim-pop-in tap pill-press flex h-[52px] items-center gap-2.5 rounded-full bg-card pl-4 pr-5 text-[17px] font-bold text-ink shadow-[0_8px_24px_rgba(42,36,32,.16)]'
   return (
     <div className="absolute inset-0 z-30" data-testid="ai-menu">
-      <div className="anim-fade absolute inset-0 bg-[rgba(42,36,32,.22)]" onClick={onClose} aria-hidden="true" data-testid="ai-menu-scrim" />
+      <div className="anim-fade absolute inset-0 bg-[rgba(42,36,32,.22)]" onClick={() => onClose()} aria-hidden="true" data-testid="ai-menu-scrim" />
       <div ref={box} role="menu" aria-label="Estimate with AI" className="absolute flex flex-col items-end gap-2.5" style={{ right: pos.right, bottom: pos.bottom + 56 + 14 }}>
-        <button role="menuitem" type="button" onClick={onTypeIt} className={pill} style={{ animationDelay: '40ms' }} data-testid="menu-type">
+        <button role="menuitem" type="button" onClick={onTypeIt} className={pill} style={{ animationDelay: '80ms' }} data-testid="menu-type">
           <PencilIcon className="h-[22px] w-[22px] text-g" />Type it
+        </button>
+        <button role="menuitem" type="button" onClick={onFromLibrary} className={pill} style={{ animationDelay: '40ms' }} data-testid="menu-library">
+          <GalleryIcon className="h-[22px] w-[22px] text-g" />From library
         </button>
         <button role="menuitem" type="button" onClick={onTakePhoto} className={pill} data-testid="menu-photo">
           <CameraIcon className="h-[22px] w-[22px] text-g" />Take photo
         </button>
       </div>
-      <button type="button" onClick={onClose} aria-label="Close AI menu" tabIndex={-1} className="tap absolute grid h-[56px] w-[56px] place-items-center rounded-full border-2 border-line bg-card text-g" style={{ right: pos.right, bottom: pos.bottom }}>
+      <button type="button" onClick={() => onClose()} aria-label="Close AI menu" tabIndex={-1} className="tap absolute grid h-[56px] w-[56px] place-items-center rounded-full border-2 border-line bg-card text-g" style={{ right: pos.right, bottom: pos.bottom }}>
         <SparkleIcon gradient className="h-[34px] w-[34px]" />
       </button>
     </div>
