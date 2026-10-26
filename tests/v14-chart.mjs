@@ -37,7 +37,9 @@ export function historySeed() {
 export async function seedHistory(p, BASE) {
   await p.goto(BASE + '/')
   await p.evaluate((s) => { localStorage.clear(); localStorage.setItem('calorie-app:v1', JSON.stringify(s)); localStorage.setItem('calorie-app:backup', JSON.stringify({ lastExportAt: Date.now(), dismissedAt: null })) }, historySeed())
-  await p.goto(BASE + '/history'); await p.getByTestId('trend-chart').waitFor()
+  // In-app navigation, so a cold GitHub Pages visit does not log the 404 status its deep-link fallback returns.
+  await p.goto(BASE + '/'); await p.getByRole('link', { name: 'History', exact: true }).click()
+  await p.getByTestId('trend-chart').waitFor()
 }
 
 export async function chartTools(p, ctx) {
