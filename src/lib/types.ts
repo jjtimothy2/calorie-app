@@ -54,7 +54,7 @@ export type Entry = Macros & {
   qty: number
   createdAt: number
   // values above (kcal/protein/carbs/fat) are per 1 qty of the chosen serving
-  /** v1.5: 'photo' when logged from an AI photo estimate. Optional, so older data loads unchanged. The photo itself is never stored. */
+  /** v1.5: 'photo' when logged from an AI estimate (v1.6: with or without a photo; the value stays 'photo' for older data). Optional, so older data loads unchanged. The photo itself is never stored. */
   source?: 'photo'
 }
 

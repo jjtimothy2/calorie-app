@@ -112,7 +112,7 @@ export default function Home() {
                           <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
                           <span className="min-w-0 flex-1">
                             <span className="block text-[16px] font-semibold leading-snug">{e.name}</span>
-                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : e.source === 'photo' ? ` · ${e.servingLabel}` : ' · quick add'}{e.source === 'photo' ? ' · 📷 photo' : ''}</span>
+                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : e.source === 'photo' ? ` · ${e.servingLabel}` : ' · quick add'}{e.source === 'photo' ? ' · ✨ AI' : ''}</span>
                           </span>
                           <span className="num text-[18px]">{fmt(entryTotals(e).kcal)}</span>
                         </button>

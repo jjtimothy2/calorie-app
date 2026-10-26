@@ -2,10 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
-import { CameraIcon, NoKeySheet, PhotoFlow, type LogItem } from '../components/PhotoSheets'
+import { AiFlow, NoKeySheet, SparkleIcon, type LogItem } from '../components/PhotoSheets'
 import { Screen } from '../components/Layout'
 import { Button, Chip } from '../components/ui'
-import { Sheet } from '../components/Sheet'
 import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
@@ -41,38 +40,42 @@ export default function Log() {
     setToast({ ids: [entry.id], text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
     timer.current = window.setTimeout(() => setToast(null), 4000)
   }
-  // v1.5: AI photo estimate. The photo is a downscaled data URL in memory only, dropped when the sheets close.
+  // v1.5: AI photo estimate. v1.6: AI estimate, photo optional. The photo is a downscaled data URL in memory only,
+  // dropped when the sheet closes.
   const online = useOnline()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [photo, setPhoto] = useState<{ url: string; ai: AiSettings } | null>(null)
+  const [aiFlow, setAiFlow] = useState<{ ai: AiSettings; photo: string | null; photoError: boolean } | null>(null)
   const [noKey, setNoKey] = useState(false)
-  const [photoErr, setPhotoErr] = useState(false)
-  const openCamera = () => {
+  const openAi = () => {
     if (!online) return
-    if (!readAi()) { setNoKey(true); return }
-    fileRef.current?.click()
+    const ai = readAi()
+    if (!ai) { setNoKey(true); return }
+    setAiFlow({ ai, photo: null, photoError: false })
   }
   const onFile = async (file: File | undefined) => {
     if (fileRef.current) fileRef.current.value = '' // same photo can be picked again
-    const ai = readAi()
-    if (!file || !ai) return
-    try { setPhoto({ url: await downscalePhoto(file), ai }) } catch { setPhotoErr(true); setPhoto(null) }
+    if (!file) return
+    try {
+      const url = await downscalePhoto(file)
+      setAiFlow((f) => (f ? { ...f, photo: url, photoError: false } : f))
+    } catch { setAiFlow((f) => (f ? { ...f, photoError: true } : f)) }
   }
-  const logPhoto = (rows: LogItem[]) => {
+  const logAi = (rows: LogItem[]) => {
+    // v1.6: always the AI's own numbers, scaled by grams. Marked as from AI (source 'photo', kept for older data).
     const added: Entry[] = rows.map(({ item, grams }) => {
-      if (item.food) return { ...entryFromFood(item.food.id, { meal, date: today, mult: grams / item.food.grams, servingLabel: `${grams} g` }), source: 'photo' as const }
       const r = grams / item.ai.grams
       return {
-        id: newId(), date: today, meal, foodId: null, name: item.ai.name, servingLabel: `${grams} g`, servingMult: 1, qty: 1,
+        id: newId(), date: today, meal, foodId: null, name: item.ai.name,
+        servingLabel: grams === item.ai.grams && item.ai.portion ? `${item.ai.portion} (${grams} g)` : `${grams} g`, servingMult: 1, qty: 1,
         kcal: Math.round(item.ai.kcal * r), protein: +(item.ai.protein * r).toFixed(1), carbs: +(item.ai.carbs * r).toFixed(1), fat: +(item.ai.fat * r).toFixed(1),
         createdAt: Date.now(), source: 'photo' as const,
       }
     })
     for (const entry of added) dispatch({ type: 'addEntry', entry })
-    setPhoto(null)
+    setAiFlow(null)
     window.clearTimeout(timer.current)
     const kcal = added.reduce((a, e) => a + entryTotals(e).kcal, 0)
-    setToast({ ids: added.map((e) => e.id), text: `Added ${added.length} ${added.length === 1 ? 'item' : 'items'} from photo · ${fmt(kcal)} kcal` })
+    setToast({ ids: added.map((e) => e.id), text: `Added ${added.length} ${added.length === 1 ? 'item' : 'items'} from AI · ${fmt(kcal)} kcal` })
     timer.current = window.setTimeout(() => setToast(null), 4000)
   }
   const [exToast, setExToast] = useState<ExerciseEntry | null>(null)
@@ -205,14 +208,15 @@ export default function Log() {
             <span aria-hidden="true">⚡</span>{mode === 'food' ? 'Quick add calories' : 'Quick add burn'}
           </button>
           {/* v1.5: AI photo estimate (Reed's mock). Food mode only. Offline it says so instead of opening anything.
-              v1.5.2: on the right (easier for the thumb), 56 px target, 8 px from the edge plus the safe area. */}
+              v1.5.2: on the right (easier for the thumb), 56 px target, 8 px from the edge plus the safe area.
+              v1.6: the AI button (sparkle + "AI"); the photo is optional inside the sheet. */}
           {mode === 'food' && (online ? (
-            <button type="button" onClick={openCamera} aria-label="Estimate from a photo" data-testid="camera-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-ink">
-              <CameraIcon />
+            <button type="button" onClick={openAi} aria-label="AI estimate" data-testid="ai-btn" className="tap flex h-[56px] w-[56px] shrink-0 flex-col items-center justify-center rounded-full border-2 border-line bg-card leading-none text-ink">
+              <SparkleIcon className="h-[22px] w-[22px]" /><span className="mt-0.5 text-[12px] font-extrabold tracking-wide" aria-hidden="true">AI</span>
             </button>
           ) : (
-            <span role="note" data-testid="camera-offline" className="flex h-[56px] shrink-0 items-center gap-1.5 rounded-full border-2 border-dashed border-line px-3 text-[13px] font-semibold leading-tight text-mute">
-              <CameraIcon className="h-5 w-5" /><span>Needs<br />internet</span>
+            <span role="note" data-testid="ai-offline" className="flex h-[56px] shrink-0 items-center gap-1.5 rounded-full border-2 border-dashed border-line px-3 text-[13px] font-semibold leading-tight text-mute">
+              <SparkleIcon className="h-5 w-5" /><span>Needs<br />internet</span>
             </span>
           ))}
         </div>
@@ -243,23 +247,17 @@ export default function Log() {
       )}
       <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" data-testid="photo-input" onChange={(e) => onFile(e.target.files?.[0])} />
       {noKey && <NoKeySheet onClose={() => setNoKey(false)} onSetup={() => nav('/settings?ai=1')} />}
-      {photoErr && (
-        <Sheet label="Photo problem" onClose={() => setPhotoErr(false)}>
-          <h2 className="title text-[24px]">Couldn’t open that photo</h2>
-          <p className="text-[16px] leading-snug">Try another photo, or take a new one. JPEG and PNG work everywhere.</p>
-          <Button data-autofocus onClick={() => { setPhotoErr(false); fileRef.current?.click() }}>Pick another photo</Button>
-          <button type="button" className="tap -mt-1 py-2 text-center text-[16px] font-bold text-g-ink underline" onClick={() => { setPhotoErr(false); setQuick(true) }}>Use Quick add instead</button>
-        </Sheet>
-      )}
-      {photo && (
-        <PhotoFlow
-          settings={photo.ai}
-          photo={photo.url}
-          onRetake={() => fileRef.current?.click()}
-          onClose={() => setPhoto(null)}
-          onQuickAdd={() => { setPhoto(null); setQuick(true) }}
-          onFixKey={() => { setPhoto(null); nav('/settings?ai=1') }}
-          onLog={logPhoto}
+      {aiFlow && (
+        <AiFlow
+          settings={aiFlow.ai}
+          photo={aiFlow.photo}
+          photoError={aiFlow.photoError}
+          onPickPhoto={() => fileRef.current?.click()}
+          onRemovePhoto={() => setAiFlow((f) => (f ? { ...f, photo: null, photoError: false } : f))}
+          onClose={() => setAiFlow(null)}
+          onQuickAdd={() => { setAiFlow(null); setQuick(true) }}
+          onFixKey={() => { setAiFlow(null); nav('/settings?ai=1') }}
+          onLog={logAi}
         />
       )}
       {quick && (

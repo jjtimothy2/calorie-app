@@ -31,7 +31,7 @@ export function AiCard({ focus = false }: { focus?: boolean }) {
     if (!trimmed) return
     saveAi({ provider, key: trimmed })
     setStored({ provider, key: trimmed })
-    setStatus({ tone: 'ok', text: 'Saved. The camera button on Log is ready.' })
+    setStatus({ tone: 'ok', text: 'Saved. The AI button on Log is ready.' })
   }
   const test = async () => {
     if (!trimmed) return

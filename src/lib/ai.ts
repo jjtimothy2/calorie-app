@@ -1,8 +1,8 @@
 // v1.5: AI photo estimate with the user's own API key ("bring your own key").
+// v1.6: photo optional (text, photo or both); the AI's numbers are always used, our food list only picks the emoji.
 // Pure module (no React, no runtime imports) so unit tests can compile and run it on Node.
 // The key lives in its own localStorage entry, never inside calorie-app:v2, never in a backup, never logged.
 import type { Food } from '../data/foods'
-import { formatAmount } from './amount'
 
 export type Provider = 'openai' | 'gemini'
 export type AiSettings = { provider: Provider; key: string }
@@ -48,9 +48,9 @@ export function errorText(kind: AiErrorKind, provider: Provider): { title: strin
   const p = PROVIDER_LABEL[provider]
   switch (kind) {
     case 'key': return { title: 'Your key didn’t work', body: `${p} said the API key is wrong or turned off. Check it in Me › AI photo estimate.` }
-    case 'offline': return { title: 'No internet', body: 'The photo couldn’t be sent. Check your connection and try again.' }
+    case 'offline': return { title: 'No internet', body: 'Your meal couldn’t be sent. Check your connection and try again.' }
     case 'busy': return { title: `${p} is busy`, body: `Too many requests, or your ${p} account is out of credit. Wait a minute and try again.` }
-    case 'noFood': return { title: 'No food found', body: 'The AI couldn’t see any food in this photo. Try a closer, brighter shot.' }
+    case 'noFood': return { title: 'No food found', body: 'The AI couldn’t find any food in that. Describe what you ate in a few words, or try a closer, brighter photo.' }
     case 'model': return { title: 'Model not available', body: `This ${p} key can’t use ${MODELS[provider]}. Check the key’s project or billing.` }
     default: return { title: 'Something went wrong', body: `${p} sent an answer we couldn’t read. Try again.` }
   }
@@ -68,10 +68,10 @@ export const ESTIMATE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['name', 'match', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'confidence'],
+        required: ['name', 'portion', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'confidence'],
         properties: {
           name: { type: 'string' },
-          match: { type: 'string', description: 'Exact name from the food list, or empty string' },
+          portion: { type: 'string', description: 'Short everyday portion for these grams, e.g. "1 plate", "2 pieces", "1 tbsp", or empty string' },
           grams: { type: 'number' },
           kcal: { type: 'number' },
           protein_g: { type: 'number' },
@@ -84,19 +84,27 @@ export const ESTIMATE_SCHEMA = {
   },
 } as const
 
-export function systemPrompt(foodNames: string[]) {
+/** v1.6: one prompt for photo, text or both. No food list is sent; the AI's own numbers are used as they are. */
+export function systemPrompt(hasPhoto: boolean) {
   return [
-    'You estimate food from a meal photo for a calorie counter used mostly in Indonesia.',
-    'Meals are often Indonesian: nasi campur, nasi padang, warteg plates, gorengan, sambal, santan (coconut milk) curries, krupuk.',
-    'List each separate food you can see and estimate the portion actually eaten in grams. kcal, protein_g, carbs_g and fat_g are for those grams.',
-    'Follow the user note: "Shared" means only the user’s share (about half unless the note says otherwise), "Half eaten" means half the portion, "Extra sambal" means more sambal, "Santan" means the dish is cooked with coconut milk, "No rice" means leave rice out.',
-    'When an item is one of the foods in this list, put its exact list name in "match", otherwise use an empty string:',
-    foodNames.join('; '),
-    'If there is no food in the photo, return an empty items array.',
-    'Answer with JSON only: {"dish": string, "items": [{"name", "match", "grams", "kcal", "protein_g", "carbs_g", "fat_g", "confidence"}]}.',
+    'You are a careful nutritionist estimating a meal for a calorie counter used mostly in Indonesia.',
+    hasPhoto
+      ? 'You get a photo of the meal and maybe a note from the user. The note is the user’s own words about what they ate: trust it over what the photo seems to show, and use it for anything the photo can’t show (hidden fillings, cooking method, how much was eaten).'
+      : 'There is no photo. The user’s description is the whole meal: list exactly the foods it names, with the amounts it gives. When no amount is given, use a typical Indonesian portion (e.g. warung or warteg plate, one piece of gorengan, one porsi as sold by street vendors), not a Western or restaurant portion.',
+    'Meals are often Indonesian: nasi campur, nasi padang, warteg plates, gorengan, sate, bakso, mie ayam, martabak, sambal, santan (coconut milk) curries, krupuk.',
+    'Be accurate rather than low. Count what is easy to miss: frying oil soaked into gorengan, ayam goreng, tempe and tahu goreng and fried rice or noodles; santan in gulai, rendang, opor, sayur lodeh and nasi uduk; sweet kecap, peanut sauce, sambal and oil-based sauces; sugar in drinks and desserts; margarine and condensed milk on martabak manis.',
+    'Rice: a plain warung portion of nasi putih is about 150 to 200 g cooked (about 200 to 260 kcal); a nasi padang or warteg plate often has more.',
+    'List each separate food as its own item (rice, each side, sambal, krupuk, drinks). grams is the portion actually eaten. kcal, protein_g, carbs_g and fat_g are for those grams. portion is a short everyday description of those grams, e.g. "1 plate", "2 pieces", "1 tbsp", "1 glass", or an empty string.',
+    'Follow the note: "Shared" means only the user’s share (about half unless the note says otherwise), "Half eaten" means half the portion, "Extra sambal" means more sambal, "Santan" means the dish is cooked with coconut milk, "No rice" means leave rice out.',
+    hasPhoto ? 'If there is no food in the photo or note, return an empty items array.' : 'If the description is not food, return an empty items array.',
+    'Answer with JSON only: {"dish": string, "items": [{"name", "portion", "grams", "kcal", "protein_g", "carbs_g", "fat_g", "confidence"}]}.',
   ].join('\n')
 }
-export const userPrompt = (note: string) => (note.trim() ? `My note: ${note.trim()}` : 'No note.') + '\nEstimate this meal.'
+export function userPrompt(note: string, hasPhoto: boolean) {
+  const t = note.trim()
+  if (!hasPhoto) return `What I ate: ${t}\nEstimate this meal.`
+  return (t ? `My note: ${t}` : 'No note.') + '\nEstimate this meal.'
+}
 
 /** Chip tap: append to the note (or take it out again), comma separated. */
 export function toggleNoteChip(note: string, chip: string): string {
@@ -109,7 +117,7 @@ export function toggleNoteChip(note: string, chip: string): string {
 export const noteHas = (note: string, chip: string) => note.split(',').some((p) => p.trim().toLowerCase() === chip.toLowerCase())
 
 // ---------- Parsing ----------
-export type AiItem = { name: string; match: string; grams: number; kcal: number; protein: number; carbs: number; fat: number; confidence: number }
+export type AiItem = { name: string; portion: string; grams: number; kcal: number; protein: number; carbs: number; fat: number; confidence: number }
 export type AiEstimate = { dish: string; items: AiItem[] }
 
 const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/[^0-9.]/g, '')) : NaN)
@@ -142,7 +150,7 @@ export function parseEstimate(text: string): AiEstimate | null {
     const conf = num(x.confidence)
     items.push({
       name,
-      match: typeof x.match === 'string' ? x.match.trim() : '',
+      portion: typeof x.portion === 'string' ? x.portion.trim().slice(0, 30) : '',
       grams,
       kcal: Number.isFinite(k) && k >= 0 ? Math.min(k, 10000) : 0,
       protein: g(x.protein_g ?? x.protein),
@@ -155,7 +163,7 @@ export function parseEstimate(text: string): AiEstimate | null {
   return { dish, items }
 }
 
-// ---------- Matching to our food list ----------
+// ---------- Food list: emoji only (v1.6) ----------
 export const normName = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
@@ -190,12 +198,10 @@ function namesOf(f: Food): string[] {
   return [...new Set([full, main, ...(inner ? [normName(inner)] : [])])].filter(Boolean)
 }
 
-/** Our food for an AI item: exact list name ("match"), then same name, then an alias, then the longest list name inside the AI's name. */
-export function matchFood(item: Pick<AiItem, 'name' | 'match'>, foods: Food[]): Food | null {
+/** v1.6: used only to pick an emoji. Our food for an AI name: same name, then an alias, then the longest list name inside the AI's name. */
+export function matchFood(item: Pick<AiItem, 'name'>, foods: Food[]): Food | null {
   const byName = new Map<string, Food>()
   for (const f of foods) for (const n of namesOf(f)) if (!byName.has(n)) byName.set(n, f)
-  const m = normName(item.match ?? '')
-  if (m && byName.has(m)) return byName.get(m)!
   const n = normName(item.name)
   if (!n) return null
   if (byName.has(n)) return byName.get(n)!
@@ -214,47 +220,43 @@ export function matchFood(item: Pick<AiItem, 'name' | 'match'>, foods: Food[]): 
   return null
 }
 
-/** One row on the results sheet. Matched rows use our per-gram values; others keep the AI's numbers per gram. */
-export type PhotoItem = { key: string; name: string; grams: number; food: Food | null; ai: AiItem }
+/** One row on the results sheet. v1.6: always the AI's own numbers; the stepper scales them per gram of the AI's grams. */
+export type PhotoItem = { key: string; name: string; grams: number; emojiName: string; ai: AiItem }
 export type PhotoMacros = { kcal: number; protein: number; carbs: number; fat: number }
 export function toPhotoItems(est: AiEstimate, foods: Food[]): PhotoItem[] {
-  return est.items.map((ai, i) => {
-    const food = matchFood(ai, foods)
-    return { key: `${i}-${ai.name}`, name: food ? food.name : ai.name, grams: ai.grams, food, ai }
-  })
+  return est.items.map((ai, i) => ({ key: `${i}-${ai.name}`, name: ai.name, grams: ai.grams, emojiName: matchFood(ai, foods)?.name ?? ai.name, ai }))
 }
-export function itemMacros(it: Pick<PhotoItem, 'food' | 'ai'>, grams: number): PhotoMacros {
-  const base = it.food ? { g: it.food.grams, kcal: it.food.kcal, protein: it.food.protein, carbs: it.food.carbs, fat: it.food.fat } : { g: it.ai.grams, kcal: it.ai.kcal, protein: it.ai.protein, carbs: it.ai.carbs, fat: it.ai.fat }
-  const r = grams / base.g
-  return { kcal: base.kcal * r, protein: base.protein * r, carbs: base.carbs * r, fat: base.fat * r }
+export function itemMacros(it: Pick<PhotoItem, 'ai'>, grams: number): PhotoMacros {
+  const r = grams / it.ai.grams
+  return { kcal: it.ai.kcal * r, protein: it.ai.protein * r, carbs: it.ai.carbs * r, fat: it.ai.fat * r }
 }
 /** Stepper size: 5 g for small items (sambal), 10 g otherwise. */
 export const gramStep = (g: number) => (g < 50 ? 5 : 10)
 
-/** v1.5.1: portion in the food's own serving words, to the nearest quarter ("1 cup cooked", "1.25 thighs"). Empty for AI-only items (grams are in the stepper). */
-export function portionLabel(it: Pick<PhotoItem, 'food'>, grams: number): string {
-  if (!it.food || !(grams > 0)) return ''
-  const q = Math.max(0.25, Math.round((grams / it.food.grams) * 4) / 4)
-  return formatAmount(it.food.servingLabel, q)
+/** v1.6: the AI's own portion words ("1 plate"). Shown only at the AI's grams; once the stepper moves, the grams say it. */
+export function portionLabel(it: Pick<PhotoItem, 'ai'>, grams: number): string {
+  return grams === it.ai.grams ? it.ai.portion : ''
 }
 
 // ---------- Requests ----------
-export function openaiBody(dataUrl: string, note: string, foodNames: string[]) {
+/** v1.6: photo is optional. With no photo, the request has no image part at all. */
+export function openaiBody(dataUrl: string | null, note: string) {
+  const text = { type: 'text', text: userPrompt(note, !!dataUrl) }
   return {
     model: MODELS.openai,
     reasoning_effort: 'low',
     messages: [
-      { role: 'system', content: systemPrompt(foodNames) },
-      { role: 'user', content: [{ type: 'text', text: userPrompt(note) }, { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } }] },
+      { role: 'system', content: systemPrompt(!!dataUrl) },
+      { role: 'user', content: dataUrl ? [text, { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } }] : [text] },
     ],
     response_format: { type: 'json_schema', json_schema: { name: 'meal_estimate', strict: true, schema: ESTIMATE_SCHEMA } },
   }
 }
-export function geminiBody(dataUrl: string, note: string, foodNames: string[]) {
-  const data = dataUrl.replace(/^data:[^,]*,/, '')
+export function geminiBody(dataUrl: string | null, note: string) {
+  const text = { text: userPrompt(note, !!dataUrl) }
   return {
-    systemInstruction: { parts: [{ text: systemPrompt(foodNames) }] },
-    contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data } }, { text: userPrompt(note) }] }],
+    systemInstruction: { parts: [{ text: systemPrompt(!!dataUrl) }] },
+    contents: [{ role: 'user', parts: dataUrl ? [{ inlineData: { mimeType: 'image/jpeg', data: dataUrl.replace(/^data:[^,]*,/, '') } }, text] : [text] }],
     generationConfig: { temperature: 0.2, responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema: ESTIMATE_SCHEMA } } },
   }
 }
@@ -310,13 +312,14 @@ export async function testKey(s: AiSettings, f: Fetch = fetch): Promise<true> {
   return true
 }
 
-/** Sends the downscaled photo and note, returns the parsed estimate. Throws AiError. Nothing is stored. */
-export async function estimatePhoto(s: AiSettings, dataUrl: string, note: string, foodNames: string[], opts: { signal?: AbortSignal; fetch?: Fetch } = {}): Promise<AiEstimate> {
+/** Sends the downscaled photo (or none) and the text, returns the parsed estimate. Throws AiError. Nothing is stored. */
+export async function estimateMeal(s: AiSettings, dataUrl: string | null, note: string, opts: { signal?: AbortSignal; fetch?: Fetch } = {}): Promise<AiEstimate> {
   const f = opts.fetch ?? fetch
+  if (!dataUrl && !note.trim()) throw new AiError('noFood')
   if (!online()) throw new AiError('offline')
   const req: { url: string; headers: Record<string, string>; body: unknown } = s.provider === 'openai'
-    ? { url: `${OPENAI_BASE}/chat/completions`, headers: { Authorization: `Bearer ${s.key}`, 'Content-Type': 'application/json' }, body: openaiBody(dataUrl, note, foodNames) }
-    : { url: `${GEMINI_BASE}/models/${MODELS.gemini}:generateContent`, headers: { 'x-goog-api-key': s.key, 'Content-Type': 'application/json' }, body: geminiBody(dataUrl, note, foodNames) }
+    ? { url: `${OPENAI_BASE}/chat/completions`, headers: { Authorization: `Bearer ${s.key}`, 'Content-Type': 'application/json' }, body: openaiBody(dataUrl, note) }
+    : { url: `${GEMINI_BASE}/models/${MODELS.gemini}:generateContent`, headers: { 'x-goog-api-key': s.key, 'Content-Type': 'application/json' }, body: geminiBody(dataUrl, note) }
   let res: Response
   try {
     res = await send(f, req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) }, opts.signal)

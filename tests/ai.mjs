@@ -1,4 +1,4 @@
-// v1.5 unit checks: AI photo estimate parsing, food-list matching, per-gram maths, error mapping, request shapes,
+// v1.5/v1.6 unit checks: AI estimate parsing (v1.6: AI numbers only, food list for emoji), food-list matching, per-gram maths, error mapping, request shapes,
 // and that the AI key never leaves the phone in a backup. Run: node tests/ai.mjs  (add LIVE=1 to also check the
 // Gemini request body against the real API with a fake key: field names are validated before the key.)
 import { execSync } from 'node:child_process'
@@ -20,8 +20,9 @@ const t = async (name, fn) => { await fn(); results.push('PASS ' + name) }
 const byName = (n) => FOODS.find((f) => f.name === n)
 
 await t('parseEstimate: plain JSON, fences, prose around it, strings for numbers, junk rows dropped', () => {
-  const a = ai.parseEstimate('{"dish":"Nasi campur","items":[{"name":"White rice","match":"Nasi putih (white rice)","grams":180,"kcal":230,"protein_g":4.3,"carbs_g":50,"fat_g":0.5,"confidence":0.8}]}')
-  assert.equal(a.dish, 'Nasi campur'); assert.equal(a.items.length, 1); assert.equal(a.items[0].protein, 4.3); assert.equal(a.items[0].match, 'Nasi putih (white rice)')
+  const a = ai.parseEstimate('{"dish":"Nasi campur","items":[{"name":"White rice","portion":"1 plate","grams":180,"kcal":230,"protein_g":4.3,"carbs_g":50,"fat_g":0.5,"confidence":0.8}]}')
+  assert.equal(a.dish, 'Nasi campur'); assert.equal(a.items.length, 1); assert.equal(a.items[0].protein, 4.3); assert.equal(a.items[0].portion, '1 plate')
+  assert.equal(ai.parseEstimate('{"dish":"X","items":[{"name":"Egg","grams":50,"kcal":70}]}').items[0].portion, '', 'portion optional')
   const b = ai.parseEstimate('```json\n{"dish":"X","items":[{"name":"Sambal","grams":"20 g","kcal":"40","protein_g":0.4}]}\n```')
   assert.equal(b.items[0].grams, 20); assert.equal(b.items[0].kcal, 40); assert.equal(b.items[0].carbs, 0); assert.equal(b.items[0].confidence, 0.5)
   const c = ai.parseEstimate('Sure! Here it is: {"dish":"Y","items":[{"name":"","grams":10,"kcal":1},{"name":"Egg","grams":-5,"kcal":1},{"name":"Tempe","grams":50,"kcal":-3,"protein_g":"x","confidence":85}]} hope this helps')
@@ -33,9 +34,8 @@ await t('parseEstimate: plain JSON, fences, prose around it, strings for numbers
   assert.equal(ai.parseEstimate('[{"name":"Rice","grams":100,"kcal":130}]').items.length, 1)
 })
 
-await t('matchFood: exact list name, own name, bracket name, alias, phrase inside, no false hits', () => {
-  const m = (name, match = '') => ai.matchFood({ name, match }, FOODS)?.name ?? null
-  assert.equal(m('steamed white rice', 'Nasi putih (white rice)'), 'Nasi putih (white rice)')
+await t('matchFood (emoji only): own name, bracket name, alias, phrase inside, no false hits', () => {
+  const m = (name) => ai.matchFood({ name }, FOODS)?.name ?? null
   assert.equal(m('Ayam goreng'), 'Ayam goreng')
   assert.equal(m('white rice'), 'Nasi putih (white rice)')
   assert.equal(m('nasi putih'), 'Nasi putih (white rice)')
@@ -46,37 +46,31 @@ await t('matchFood: exact list name, own name, bracket name, alias, phrase insid
   assert.equal(m('Ayam goreng kremes'), 'Ayam goreng')
   assert.equal(m('Grilled chicken breast'), 'Chicken breast, grilled')
   assert.equal(m('Égg fried rice') === 'Fried egg', false, 'egg fried rice is not a fried egg')
-  assert.equal(m('Rendang daging', 'Not in the list'), byName('Rendang daging') ? 'Rendang daging' : m('Rendang daging'))
   assert.equal(m('Perkedel jagung'), null)
   assert.equal(m('Mystery stew'), null)
 })
 
-await t('toPhotoItems + itemMacros: matched rows use our per-gram values, others keep the AI numbers', () => {
+await t('v1.6 toPhotoItems + itemMacros: AI numbers always, even when a list name matches; list only picks the emoji', () => {
   const est = ai.parseEstimate(JSON.stringify({ dish: 'Nasi campur', items: [
-    { name: 'White rice', match: 'Nasi putih (white rice)', grams: 180, kcal: 999, protein_g: 99 },
-    { name: 'Perkedel jagung', match: '', grams: 60, kcal: 150, protein_g: 3, carbs_g: 15, fat_g: 9 },
+    { name: 'Nasi putih', portion: '1 plate', grams: 180, kcal: 250, protein_g: 5, carbs_g: 55, fat_g: 0.5 },
+    { name: 'Perkedel jagung', portion: '2 pieces', grams: 60, kcal: 150, protein_g: 3, carbs_g: 15, fat_g: 9 },
   ] }))
   const [rice, perk] = ai.toPhotoItems(est, FOODS)
   const nasi = byName('Nasi putih (white rice)')
-  assert.equal(rice.food.id, nasi.id); assert.equal(rice.name, nasi.name)
-  const r = ai.itemMacros(rice, 180)
-  assert.ok(Math.abs(r.kcal - nasi.kcal / nasi.grams * 180) < 1e-9, 'rice kcal from our list, not the AI')
-  assert.ok(Math.abs(r.protein - nasi.protein / nasi.grams * 180) < 1e-9)
-  assert.equal(perk.food, null); assert.equal(perk.name, 'Perkedel jagung')
-  assert.deepEqual(ai.itemMacros(perk, 60), { kcal: 150, protein: 3, carbs: 15, fat: 9 })
-  assert.deepEqual(ai.itemMacros(perk, 120), { kcal: 300, protein: 6, carbs: 30, fat: 18 }, 'stepper scales AI numbers per gram')
+  assert.equal(rice.name, 'Nasi putih', 'keeps the AI name'); assert.equal(rice.emojiName, nasi.name, 'list match only for the emoji')
+  assert.equal('food' in rice, false, 'no catalog food on the row')
+  assert.deepEqual(ai.itemMacros(rice, 180), { kcal: 250, protein: 5, carbs: 55, fat: 0.5 }, 'AI numbers, not our list (list rice would be ' + Math.round(nasi.kcal / nasi.grams * 180) + ' kcal)')
+  assert.deepEqual(ai.itemMacros(rice, 90), { kcal: 125, protein: 2.5, carbs: 27.5, fat: 0.25 }, 'stepper scales every AI value by grams')
+  assert.equal(perk.emojiName, 'Perkedel jagung')
+  assert.deepEqual(ai.itemMacros(perk, 120), { kcal: 300, protein: 6, carbs: 30, fat: 18 })
   assert.equal(ai.gramStep(20), 5); assert.equal(ai.gramStep(180), 10)
-  // v1.5.1: carbs and fat come from our list too.
-  assert.ok(Math.abs(r.carbs - nasi.carbs / nasi.grams * 180) < 1e-9 && Math.abs(r.fat - nasi.fat / nasi.grams * 180) < 1e-9, 'rice carbs/fat from our list')
 })
 
-await t('portionLabel (v1.5.1): serving words to the nearest quarter, none for AI-only items', () => {
-  const food = (n) => ({ food: byName(n) })
-  assert.equal(ai.portionLabel(food('Nasi putih (white rice)'), 150), '1 cup cooked')
-  assert.equal(ai.portionLabel(food('Nasi putih (white rice)'), 200), '1.25 cups cooked')
-  assert.equal(ai.portionLabel(food('Ayam goreng'), 240), '2 thighs')
-  assert.equal(ai.portionLabel(food('Sambal'), 5), '0.25 tbsp', 'never shows 0')
-  assert.equal(ai.portionLabel({ food: null }, 80), '')
+await t('v1.6 portionLabel: the AI portion words at the AI grams, nothing once the stepper moves', () => {
+  const it = { ai: { grams: 180, portion: '1 plate' } }
+  assert.equal(ai.portionLabel(it, 180), '1 plate')
+  assert.equal(ai.portionLabel(it, 190), '')
+  assert.equal(ai.portionLabel({ ai: { grams: 50, portion: '' } }, 50), '')
 })
 
 await t('note chips toggle in and out of the note', () => {
@@ -86,49 +80,69 @@ await t('note chips toggle in and out of the note', () => {
   assert.equal(ai.toggleNoteChip(n, 'Shared'), 'fried, No rice')
 })
 
-await t('prompt carries the note, the food list and Indonesian context; models are constants; Gemini first', () => {
-  const sp = ai.systemPrompt(FOODS.map((f) => f.name))
-  assert.match(sp, /Indonesia/); assert.match(sp, /santan/); assert.ok(sp.includes('Nasi putih (white rice)')); assert.ok(sp.includes('Sayur lodeh'))
-  assert.match(ai.userPrompt('Half portion, fried'), /My note: Half portion, fried/)
+await t('v1.6 prompt: no food list, Indonesian context with oil, santan, sauces, rice; note used heavily; text-only asks typical Indonesian portions', () => {
+  const sp = ai.systemPrompt(true), st = ai.systemPrompt(false)
+  for (const p of [sp, st]) {
+    assert.match(p, /Indonesia/); assert.match(p, /santan/); assert.match(p, /oil/); assert.match(p, /sauce/); assert.match(p, /Rice: /); assert.match(p, /portion/)
+    assert.ok(!p.includes('Nasi putih (white rice)') && !p.includes('Sayur lodeh;') && !/"match"/.test(p), 'no food list or match field')
+  }
+  assert.match(sp, /trust it over what the photo/); assert.match(st, /no photo/i); assert.match(st, /typical Indonesian portion/)
+  assert.match(ai.userPrompt('Half portion, fried', true), /My note: Half portion, fried/)
+  assert.match(ai.userPrompt('2 slices martabak manis', false), /^What I ate: 2 slices martabak manis/)
+  assert.ok(ai.ESTIMATE_SCHEMA.properties.items.items.properties.portion && !ai.ESTIMATE_SCHEMA.properties.items.items.properties.match)
   assert.deepEqual(ai.PROVIDERS, ['gemini', 'openai']); assert.equal(ai.DEFAULT_PROVIDER, 'gemini')
   assert.equal(ai.MODELS.gemini, 'gemini-3.5-flash-lite'); assert.equal(ai.MODELS.openai, 'gpt-6-luna')
-  const o = ai.openaiBody('data:image/jpeg;base64,AAAA', 'Shared', ['A'])
+  const o = ai.openaiBody('data:image/jpeg;base64,AAAA', 'Shared')
   assert.equal(o.model, 'gpt-6-luna'); assert.equal(o.response_format.json_schema.strict, true); assert.equal(o.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,AAAA')
-  const g = ai.geminiBody('data:image/jpeg;base64,AAAA', 'Shared', ['A'])
+  const g = ai.geminiBody('data:image/jpeg;base64,AAAA', 'Shared')
   assert.equal(g.contents[0].parts[0].inlineData.data, 'AAAA'); assert.equal(g.generationConfig.responseFormat.text.mimeType, 'APPLICATION_JSON')
+})
+
+await t('v1.6 text-only requests have no image part (both providers)', () => {
+  const g = ai.geminiBody(null, 'nasi padang with rendang and egg')
+  assert.deepEqual(g.contents[0].parts, [{ text: 'What I ate: nasi padang with rendang and egg\nEstimate this meal.' }])
+  assert.ok(!JSON.stringify(g).includes('inlineData')); assert.match(g.systemInstruction.parts[0].text, /There is no photo/)
+  const o = ai.openaiBody(null, 'nasi padang')
+  assert.equal(o.messages[1].content.length, 1); assert.equal(o.messages[1].content[0].type, 'text'); assert.ok(!JSON.stringify(o).includes('image_url'))
 })
 
 const res = (status, body, ok = status < 300) => ({ ok, status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)), json: async () => (typeof body === 'string' ? JSON.parse(body) : body) })
 const S = { gemini: { provider: 'gemini', key: 'AIza-test' }, openai: { provider: 'openai', key: 'sk-test' } }
-const okText = '{"dish":"Nasi campur","items":[{"name":"Rice","match":"","grams":150,"kcal":190,"protein_g":4,"carbs_g":40,"fat_g":0.4,"confidence":0.7}]}'
+const okText = '{"dish":"Nasi campur","items":[{"name":"Rice","portion":"1 plate","grams":150,"kcal":190,"protein_g":4,"carbs_g":40,"fat_g":0.4,"confidence":0.7}]}'
 const kind = async (p) => { try { await p; return 'ok' } catch (e) { return e.kind ?? e.message } }
 
-await t('estimatePhoto: success, no food, unreadable, wrong key, busy, offline, for both providers', async () => {
+await t('estimateMeal: success, no food, unreadable, wrong key, busy, offline, for both providers', async () => {
   const gem = (r) => async (url, init) => { assert.match(url, /gemini-3\.5-flash-lite:generateContent$/); assert.equal(init.headers['x-goog-api-key'], 'AIza-test'); assert.equal(init.credentials, 'omit'); return typeof r === 'function' ? r() : r }
-  const est = await ai.estimatePhoto(S.gemini, 'data:image/jpeg;base64,AAAA', '', ['Rice'], { fetch: gem(res(200, { candidates: [{ content: { parts: [{ text: okText }] } }] })) })
-  assert.equal(est.items[0].name, 'Rice')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(res(200, { candidates: [{ content: { parts: [{ text: '{"dish":"","items":[]}' }] } }] })) })), 'noFood')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(res(200, { candidates: [{ content: { parts: [{ text: 'lol no' }] } }] })) })), 'failed')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(res(400, { error: { code: 400, message: 'API key not valid.', status: 'INVALID_ARGUMENT', details: [{ reason: 'API_KEY_INVALID' }] } })) })), 'key')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(res(403, { error: { status: 'PERMISSION_DENIED' } })) })), 'key')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(res(429, { error: { status: 'RESOURCE_EXHAUSTED' } })) })), 'busy')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(() => { throw new TypeError('Failed to fetch') }) })), 'offline')
-  assert.equal(await kind(ai.estimatePhoto(S.gemini, 'x', '', [], { fetch: gem(res(200, { promptFeedback: { blockReason: 'OTHER' } })) })), 'noFood')
+  const est = await ai.estimateMeal(S.gemini, 'data:image/jpeg;base64,AAAA', '', { fetch: gem(res(200, { candidates: [{ content: { parts: [{ text: okText }] } }] })) })
+  assert.equal(est.items[0].name, 'Rice'); assert.equal(est.items[0].portion, '1 plate')
+  // Text only: no image in the body; empty text and no photo never calls out.
+  let body = null
+  await ai.estimateMeal(S.gemini, null, 'soto ayam', { fetch: async (u, i) => { body = JSON.parse(i.body); return res(200, { candidates: [{ content: { parts: [{ text: okText }] } }] }) } })
+  assert.equal(body.contents[0].parts.length, 1); assert.match(body.contents[0].parts[0].text, /soto ayam/)
+  let called = false
+  assert.equal(await kind(ai.estimateMeal(S.gemini, null, '  ', { fetch: async () => { called = true; return res(200, {}) } })), 'noFood'); assert.equal(called, false)
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(res(200, { candidates: [{ content: { parts: [{ text: '{"dish":"","items":[]}' }] } }] })) })), 'noFood')
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(res(200, { candidates: [{ content: { parts: [{ text: 'lol no' }] } }] })) })), 'failed')
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(res(400, { error: { code: 400, message: 'API key not valid.', status: 'INVALID_ARGUMENT', details: [{ reason: 'API_KEY_INVALID' }] } })) })), 'key')
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(res(403, { error: { status: 'PERMISSION_DENIED' } })) })), 'key')
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(res(429, { error: { status: 'RESOURCE_EXHAUSTED' } })) })), 'busy')
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(() => { throw new TypeError('Failed to fetch') }) })), 'offline')
+  assert.equal(await kind(ai.estimateMeal(S.gemini, 'x', '', { fetch: gem(res(200, { promptFeedback: { blockReason: 'OTHER' } })) })), 'noFood')
 
   const oai = (r, probe) => async (url, init) => {
     if (url.endsWith('/models')) return probe()
     assert.equal(url, 'https://api.openai.com/v1/chat/completions'); assert.equal(init.headers.Authorization, 'Bearer sk-test')
     return typeof r === 'function' ? r() : r
   }
-  assert.equal((await ai.estimatePhoto(S.openai, 'x', 'Shared', [], { fetch: oai(res(200, { choices: [{ message: { content: okText } }] })) })).dish, 'Nasi campur')
-  assert.equal(await kind(ai.estimatePhoto(S.openai, 'x', '', [], { fetch: oai(res(401, { error: { code: 'invalid_api_key' } })) })), 'key')
-  assert.equal(await kind(ai.estimatePhoto(S.openai, 'x', '', [], { fetch: oai(res(429, { error: { code: 'insufficient_quota' } })) })), 'busy')
+  assert.equal((await ai.estimateMeal(S.openai, 'x', 'Shared', { fetch: oai(res(200, { choices: [{ message: { content: okText } }] })) })).dish, 'Nasi campur')
+  assert.equal(await kind(ai.estimateMeal(S.openai, 'x', '', { fetch: oai(res(401, { error: { code: 'invalid_api_key' } })) })), 'key')
+  assert.equal(await kind(ai.estimateMeal(S.openai, 'x', '', { fetch: oai(res(429, { error: { code: 'insufficient_quota' } })) })), 'busy')
   // Real OpenAI 401s on /chat/completions carry no CORS header, so the browser only sees a network error. The /models probe tells us.
   const cors = () => { throw new TypeError('Failed to fetch') }
-  assert.equal(await kind(ai.estimatePhoto(S.openai, 'x', '', [], { fetch: oai(cors, () => res(401, {})) })), 'key')
-  assert.equal(await kind(ai.estimatePhoto(S.openai, 'x', '', [], { fetch: oai(cors, () => res(200, { data: [] })) })), 'failed')
-  assert.equal(await kind(ai.estimatePhoto(S.openai, 'x', '', [], { fetch: oai(cors, cors) })), 'offline')
-  assert.equal(await kind(ai.estimatePhoto(S.openai, 'x', '', [], { fetch: oai(res(200, { choices: [{ message: { refusal: 'no' } }] })) })), 'noFood')
+  assert.equal(await kind(ai.estimateMeal(S.openai, 'x', '', { fetch: oai(cors, () => res(401, {})) })), 'key')
+  assert.equal(await kind(ai.estimateMeal(S.openai, 'x', '', { fetch: oai(cors, () => res(200, { data: [] })) })), 'failed')
+  assert.equal(await kind(ai.estimateMeal(S.openai, 'x', '', { fetch: oai(cors, cors) })), 'offline')
+  assert.equal(await kind(ai.estimateMeal(S.openai, 'x', '', { fetch: oai(res(200, { choices: [{ message: { refusal: 'no' } }] })) })), 'noFood')
 })
 
 await t('testKey: free model lookup, maps bad key and missing model', async () => {
@@ -171,7 +185,7 @@ await t('service worker never touches API calls (non-GET or cross-origin is pass
 })
 
 if (process.env.LIVE) await t('LIVE: Gemini accepts our request body (fake key reaches the key check)', async () => {
-  const r = await fetch(`${ai.GEMINI_BASE}/models/${ai.MODELS.gemini}:generateContent`, { method: 'POST', headers: { 'x-goog-api-key': 'AIzaFakeKeyForShapeCheck', 'Content-Type': 'application/json' }, body: JSON.stringify(ai.geminiBody('data:image/jpeg;base64,/9j/4AAQ', 'Shared', FOODS.map((f) => f.name))) })
+  const r = await fetch(`${ai.GEMINI_BASE}/models/${ai.MODELS.gemini}:generateContent`, { method: 'POST', headers: { 'x-goog-api-key': 'AIzaFakeKeyForShapeCheck', 'Content-Type': 'application/json' }, body: JSON.stringify(ai.geminiBody('data:image/jpeg;base64,/9j/4AAQ', 'Shared')) })
   const body = await r.text()
   assert.match(body, /API_KEY_INVALID/, body.slice(0, 300))
 })

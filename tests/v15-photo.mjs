@@ -1,4 +1,5 @@
 // v1.5 AI photo estimate, end to end with mocked Gemini and OpenAI (no real key, no network).
+// v1.6: AI button, photo optional (text only, photo only, both), AI numbers always used.
 // Usage: npm run build && npx vite preview --port 4174 & node tests/v15-photo.mjs
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
@@ -71,24 +72,34 @@ const setup = async (opts = {}) => {
 const saveKey = (page, provider, key) => page.evaluate(([p, k]) => localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: p, key: k })), [provider, key])
 const state = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2') ?? '{}'))
 const dialog = (page) => page.getByRole('dialog')
+const AI_BTN = { name: 'AI estimate', exact: true }
+/** Opens the AI sheet from the Log bar. */
+const openAi = async (page) => { await page.getByRole('button', AI_BTN).click(); await dialog(page).getByRole('textbox', { name: /What did you eat/ }).waitFor() }
+/** Opens the AI sheet and adds the test photo. */
 const snap = async (page) => {
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Estimate from a photo' }).click()])
+  await openAi(page)
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), dialog(page).getByTestId('add-photo').click()])
   assert.equal(chooser.isMultiple(), false)
   await chooser.setFiles(PLATE)
-  await dialog(page).getByRole('button', { name: /Estimate/ }).waitFor()
+  await dialog(page).getByTestId('photo-added').waitFor()
 }
 const errorKind = (page) => dialog(page).getByTestId('photo-error').getAttribute('data-kind')
 
 try {
   const { ctx, page } = await setup()
 
-  await step('old v1 data loads; camera sits right of Quick add on Log (Food only), input has no capture attribute', async () => {
+  await step('old v1 data loads; AI button (sparkle + "AI") sits right of Quick add on Log (Food only), input has no capture attribute', async () => {
     await page.goto(BASE + '/log')
-    const cam = page.getByRole('button', { name: 'Estimate from a photo' })
+    const cam = page.getByRole('button', AI_BTN)
+    await cam.waitFor()
+    assert.equal(await cam.innerText(), 'AI', 'visible label')
+    assert.equal(await cam.locator('svg').count(), 1, 'sparkle icon')
+    assert.equal(await page.getByTestId('camera-btn').count(), 0, 'camera button is gone')
     const qa = page.getByRole('button', { name: /Quick add calories/ })
     await cam.waitFor()
     const [cb, qb] = [await cam.boundingBox(), await qa.boundingBox()]
-    assert.ok(cb.x >= qb.x + qb.width, 'camera is right of Quick add')
+    assert.ok(cb.x >= qb.x + qb.width, 'AI button is right of Quick add')
+    assert.equal(Math.round(cb.height), 56)
     assert.ok(Math.abs(cb.y + cb.height / 2 - (qb.y + qb.height / 2)) < 3, 'same row')
     assert.equal(Math.round(cb.width), 56)
     const input = page.getByTestId('photo-input')
@@ -103,11 +114,11 @@ try {
     assert.ok(s.entries.some((e) => e.name === 'Chicken rice'), 'v1 data migrated')
   })
 
-  await step('no key: camera opens the set-up sheet (no file picker), button goes to Me > AI with the key field focused', async () => {
+  await step('no key: AI button opens the set-up sheet (no file picker), button goes to Me > AI with the key field focused', async () => {
     let chooser = false
     page.once('filechooser', () => { chooser = true })
-    await page.getByRole('button', { name: 'Estimate from a photo' }).click()
-    await dialog(page).getByRole('heading', { name: 'Estimate from a photo' }).waitFor()
+    await page.getByRole('button', AI_BTN).click()
+    await dialog(page).getByRole('heading', { name: 'AI estimate' }).waitFor()
     assert.match(await dialog(page).innerText(), /Gemini or OpenAI/)
     assert.equal(chooser, false)
     await dialog(page).getByRole('button', { name: 'Add a key in Me' }).click()
@@ -149,13 +160,72 @@ try {
     assert.ok(!txt.includes(GEMINI_KEY) && !txt.includes('calorie-app:ai'), 'key not in backup')
   })
 
-  await step('success: photo sheet (Retake pill, note, chips toggle), downscaled JPEG sent with note and food list', async () => {
+  await step('v1.6 AI sheet: text box first, Add photo below, chips; Estimate disabled until text or photo; one tap focuses the text', async () => {
     await page.goto(BASE + '/log')
+    await openAi(page)
+    const d = dialog(page)
+    const note = d.getByRole('textbox', { name: 'What did you eat?' })
+    assert.equal(await note.getAttribute('placeholder'), 'What did you eat? e.g. 2 slices martabak manis, half a plate')
+    const order = await d.evaluate((el) => {
+      const y = (sel) => el.querySelector(sel).getBoundingClientRect().top
+      return [y('textarea'), y('[data-testid=add-photo]'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
+    })
+    assert.deepEqual([...order].sort((a, b) => a - b), order, 'text, Add photo, chips, Estimate from top to bottom')
+    assert.match(await d.getByTestId('add-photo').innerText(), /Add photo\s+Camera or library, optional/)
+    const est = d.getByRole('button', { name: /Estimate/ })
+    assert.equal(await est.isDisabled(), true, 'empty: Estimate disabled')
+    await note.fill('   ')
+    assert.equal(await est.isDisabled(), true, 'spaces only: still disabled')
+    await note.fill('')
+    await note.tap()
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA')
+    await page.keyboard.type('nasi padang')
+    assert.equal(await est.isDisabled(), false, 'text: Estimate enabled')
+    await note.fill('')
+    assert.equal(await est.isDisabled(), true)
+    // A chip alone counts as text.
+    await d.getByRole('group', { name: 'Quick notes' }).getByRole('button', { name: 'No rice' }).click()
+    assert.equal(await est.isDisabled(), false)
+    await page.keyboard.press('Escape')
+    await d.waitFor({ state: 'detached' })
+  })
+
+  await step('v1.6 text only: request has no image part, description sent as the main input, results say "from your description"', async () => {
+    await openAi(page)
+    const d = dialog(page)
+    await d.getByRole('textbox').fill('nasi padang with rendang and egg')
+    seen.length = 0
+    await d.getByRole('button', { name: /Estimate/ }).click()
+    await d.getByText('Estimated from your description').waitFor()
+    const req = seen.find((s) => s.method === 'POST')
+    const body = JSON.parse(req.body)
+    assert.equal(body.contents[0].parts.length, 1, 'one part only')
+    assert.deepEqual(Object.keys(body.contents[0].parts[0]), ['text'])
+    assert.ok(!req.body.includes('inlineData') && !req.body.includes('image/jpeg'), 'no image in a text-only request')
+    assert.match(body.contents[0].parts[0].text, /^What I ate: nasi padang with rendang and egg/)
+    assert.match(body.systemInstruction.parts[0].text, /There is no photo.*typical Indonesian portion/s)
+    assert.ok(!req.body.includes('Nasi putih (white rice)'), 'food list not sent')
+    assert.match(await d.getByTestId('photo-note').innerText(), /You said: nasi padang with rendang and egg/)
+    // Edit goes back with the text kept.
+    await d.getByRole('button', { name: 'Edit' }).click()
+    assert.equal(await d.getByRole('textbox').inputValue(), 'nasi padang with rendang and egg')
+    await page.keyboard.press('Escape')
+    await d.waitFor({ state: 'detached' })
+  })
+
+  await step('photo + text: Add photo, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
     await snap(page)
     const d = dialog(page)
-    await d.getByRole('button', { name: 'Retake' }).waitFor()
+    assert.equal(await d.getByTestId('add-photo').count(), 0, 'Add photo becomes the photo row')
+    await d.getByRole('button', { name: 'Change' }).waitFor()
+    await d.getByRole('button', { name: 'Remove photo' }).click()
+    await d.getByTestId('add-photo').waitFor()
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByTestId('add-photo').click()])
+    await chooser.setFiles(PLATE)
+    await d.getByTestId('photo-added').waitFor()
+    const est = d.getByRole('button', { name: /Estimate/ })
+    assert.equal(await est.isDisabled(), false, 'photo only: Estimate enabled')
     const note = d.getByRole('textbox')
-    assert.equal(await note.getAttribute('placeholder'), "Anything the photo can't show? Half portion, fried, no rice")
     const chips = d.getByRole('group', { name: 'Quick notes' })
     assert.deepEqual(await chips.getByRole('button').allInnerTexts(), ['Shared', 'Half eaten', 'Extra sambal', 'Santan', 'No rice'])
     await chips.getByRole('button', { name: 'Extra sambal' }).click()
@@ -167,7 +237,7 @@ try {
     assert.match(nv, /Extra sambal/i)
     assert.doesNotMatch(nv, /Half eaten/i)
     seen.length = 0
-    await d.getByRole('button', { name: /Estimate/ }).click()
+    await est.click()
     await d.getByText('Estimated from your photo').waitFor()
     const req = seen.find((s) => s.method === 'POST')
     assert.match(req.url, /gemini-3\.5-flash-lite:generateContent$/)
@@ -178,50 +248,49 @@ try {
     const size = jpegSize(Buffer.from(img.data, 'base64'))
     assert.deepEqual(size, { w: 1024, h: 614 }, 'downscaled to 1024 px')
     const all = JSON.stringify(body)
-    assert.match(all, /Extra sambal/i)
-    assert.match(all, /Nasi putih/)
+    assert.match(all, /My note: Extra sambal/i)
+    assert.ok(!all.includes('Nasi putih (white rice)') && !all.includes('Sayur lodeh;'), 'food list not sent')
     assert.match(all, /Indonesia/)
+    assert.match(all, /portion/)
     assert.ok(body.generationConfig?.responseFormat || body.generationConfig, 'JSON output requested')
   })
 
-  await step('results: dish, note echo, our per-gram values for matched items, AI numbers for the rest, carbs/fat lines and total pills, no-wrap rule, live stepper, remove', async () => {
+  await step('results: AI numbers for every item (even list names), no source tags, AI portion words, carbs/fat lines and total pills, no-wrap rule, live stepper, remove', async () => {
     const d = dialog(page)
     assert.equal(await d.getByTestId('photo-dish').innerText(), 'Nasi ayam goreng')
     assert.match(await d.getByTestId('photo-note').innerText(), /Your note: .*Extra sambal/i)
     const rows = d.getByRole('list', { name: 'Estimated items' }).getByRole('listitem')
     assert.equal(await rows.count(), 4)
     const row = (n) => rows.filter({ hasText: n })
-    // Rice matched: our 205 kcal / 160 g, not the model's 999.
-    assert.match(await row('Nasi putih').getByTestId('item-kcal').innerText(), /^192/)
-    assert.equal(await row('Nasi putih').getAttribute('data-matched'), 'yes')
-    assert.match(await row('Ayam goreng').getByTestId('item-kcal').innerText(), /^320/)
-    assert.match(await row('Dragonfruit salsa').innerText(), /AI estimate/)
-    assert.equal(await row('Dragonfruit salsa').getAttribute('data-matched'), 'no')
-    assert.match(await d.getByTestId('photo-total').innerText(), /^602/)
-    assert.match(await d.innerText(), /Estimates are rough\. Adjust before logging\./)
-    // v1.5.1: carbs and fat beside protein, in the macro ink colours, with screen-reader words.
-    // What a sighted user sees (screen-reader-only words removed, hidden portion skipped).
+    // Rice and chicken are named like foods on our list, but the AI's numbers are used (ours: 192 and 320).
+    assert.match(await row('Nasi putih').getByTestId('item-kcal').innerText(), /^250/)
+    assert.match(await row('Ayam goreng').getByTestId('item-kcal').innerText(), /^330/)
+    assert.equal(await row('Nasi putih').locator('.tile').innerText(), '🍚', 'list used for the emoji')
+    assert.equal(await rows.filter({ hasText: 'Nasi putih (white rice)' }).count(), 0, 'AI name kept, not our list name')
+    const txt = await d.innerText()
+    assert.doesNotMatch(txt, /From our food list|AI estimate\n/, 'no source tags')
+    assert.match(await d.getByTestId('photo-total').innerText(), /^670/)
+    assert.match(txt, /Estimates are rough\. Adjust before logging\./)
     const seen = (el) => { const c = el.cloneNode(true); c.querySelectorAll('.sr-only').forEach((x) => x.remove()); if (el.querySelector('[data-testid=item-portion]')?.offsetParent === null) c.querySelector('[data-testid=item-portion]')?.remove(); return c.textContent.replace(/\s+/g, ' ').trim() }
     const macros = async (n) => row(n).getByTestId('item-macros').evaluate(seen)
     const vis = async (n) => (await macros(n)).replace(/.* · /, '')
-    assert.equal(await row('Ayam goreng').getByTestId('item-protein').locator('[aria-hidden="true"]').innerText(), '26P')
-    assert.match(await macros('Ayam goreng'), /^1 thigh · 26P 6C 21F$/)
-    assert.match(await macros('Sambal'), /^1 tbsp · 0P 2C 2F$/)
-    assert.match(await vis('Nasi putih'), /^4P 42C 0F$/, 'matched: our per-gram values, not the model\'s 99 g protein')
-    assert.equal(await vis('Dragonfruit salsa'), '1P 13C 0F', 'unmatched: the AI numbers')
-    assert.equal(await row('Dragonfruit salsa').getByTestId('item-portion').count(), 0, 'AI-only items have no portion label')
-    assert.equal((await row('Ayam goreng').getByTestId('item-protein').locator('.sr-only').textContent()).replace(/,$/, ''), '26 g protein')
-    assert.equal((await row('Ayam goreng').getByTestId('item-carbs').locator('.sr-only').textContent()).replace(/,$/, ''), '6 g carbs')
-    assert.equal(await row('Ayam goreng').getByTestId('item-fat').locator('.sr-only').textContent(), '21 g fat')
+    assert.equal(await row('Ayam goreng').getByTestId('item-protein').locator('[aria-hidden="true"]').innerText(), '25P')
+    assert.equal(await macros('Ayam goreng'), '1 thigh · 25P 5C 23F')
+    assert.equal(await macros('Nasi putih'), '1 plate · 5P 55C 1F', 'AI numbers, not our list (4P 42C 0F)')
+    assert.equal(await macros('Sambal'), '1 tbsp · 0P 2C 2F')
+    assert.equal(await vis('Dragonfruit salsa'), '1P 13C 0F')
+    assert.equal((await row('Ayam goreng').getByTestId('item-protein').locator('.sr-only').textContent()).replace(/,$/, ''), '25 g protein')
+    assert.equal((await row('Ayam goreng').getByTestId('item-carbs').locator('.sr-only').textContent()).replace(/,$/, ''), '5 g carbs')
+    assert.equal(await row('Ayam goreng').getByTestId('item-fat').locator('.sr-only').textContent(), '23 g fat')
     const ink = await row('Ayam goreng').getByTestId('item-macros').evaluate((el) => ['protein', 'carbs', 'fat'].map((k) => getComputedStyle(el.querySelector(`[data-testid=item-${k}]`)).color))
     assert.deepEqual(ink, ['rgb(194, 51, 106)', 'rgb(138, 95, 0)', 'rgb(47, 98, 201)'], 'protein/carbs/fat text inks')
     const totals = async () => Promise.all(['protein', 'carbs', 'fat'].map((k) => d.getByTestId(`total-${k}`).innerText()))
-    assert.deepEqual(await totals(), ['31 g Protein', '63 g Carbs', '24 g Fat'])
+    assert.deepEqual(await totals(), ['31 g Protein', '75 g Carbs', '26 g Fat'])
     // No-wrap rule at 390 and 375: each macro line stays on one line at 15 px; the portion goes first if it doesn't fit.
     for (const width of [390, 375]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 667 })
       await page.waitForTimeout(150)
-      const lines = await d.getByTestId('item-macros').evaluateAll((els) => els.map((el) => ({ fs: getComputedStyle(el).fontSize, h: el.getBoundingClientRect().height, over: el.scrollWidth > el.clientWidth + 0.5, lh: parseFloat(getComputedStyle(el).lineHeight) || 0, rects: el.getClientRects().length, text: el.textContent })))
+      const lines = await d.getByTestId('item-macros').evaluateAll((els) => els.map((el) => ({ fs: getComputedStyle(el).fontSize, h: el.getBoundingClientRect().height, over: el.scrollWidth > el.clientWidth + 0.5, text: el.textContent })))
       assert.equal(lines.length, 4)
       for (const l of lines) {
         assert.equal(l.fs, '15px', `${width}: text never shrinks`)
@@ -229,35 +298,36 @@ try {
         assert.ok(l.h < 26, `${width}: "${l.text}" wraps (${l.h}px)`)
       }
       assert.ok(await row('Ayam goreng').getByTestId('item-portion').isVisible(), `${width}: short portion label is kept`)
-      assert.ok(!(await row('Nasi putih').getByTestId('item-portion').isVisible()), `${width}: long portion label is dropped instead of wrapping`)
+      assert.ok(!(await row('Dragonfruit salsa').getByTestId('item-portion').isVisible()), `${width}: long portion label is dropped instead of wrapping`)
     }
     await page.setViewportSize({ width: 390, height: 844 })
-    await d.getByRole('button', { name: 'More Nasi putih (white rice)' }).click()
+    await d.getByRole('button', { name: 'More Nasi putih' }).click()
     assert.equal(await row('Nasi putih').getByTestId('item-grams').innerText(), '160 g')
-    assert.match(await row('Nasi putih').getByTestId('item-kcal').innerText(), /^205/)
-    assert.match(await d.getByTestId('photo-total').innerText(), /^615/)
-    assert.equal(await vis('Nasi putih'), '4P 45C 0F', 'carbs follow the stepper')
-    assert.deepEqual(await totals(), ['31 g Protein', '66 g Carbs', '24 g Fat'], 'total pills follow the stepper')
+    assert.match(await row('Nasi putih').getByTestId('item-kcal').innerText(), /^267/, 'AI kcal scaled per gram (250 / 150 g x 160 g)')
+    assert.match(await d.getByTestId('photo-total').innerText(), /^687/)
+    assert.equal(await macros('Nasi putih'), '5P 59C 1F', 'all macros follow the stepper; the AI portion words drop once grams change')
+    assert.deepEqual(await totals(), ['31 g Protein', '79 g Carbs', '26 g Fat'], 'total pills follow the stepper')
     await d.getByRole('button', { name: 'Less Sambal' }).click()
     assert.equal(await row('Sambal').getByTestId('item-grams').innerText(), '10 g', 'small items step by 5 g')
-    assert.equal(await macros('Sambal'), '0.75 tbsp · 0P 1C 2F', 'portion and macros follow the stepper')
+    assert.equal(await macros('Sambal'), '0P 1C 2F')
     await d.getByRole('button', { name: 'Remove Sambal' }).click()
     assert.equal(await rows.count(), 3)
     await d.getByRole('button', { name: 'Log 3 items' }).waitFor()
   })
 
-  await step('log: entries carry source photo, matched keep foodId, unmatched keep AI numbers, photo never stored, Undo removes all', async () => {
+  await step('log: entries are AI (source photo, no foodId), AI numbers scaled, portion in the label, photo never stored, Undo removes all', async () => {
     await dialog(page).getByRole('button', { name: 'Log 3 items' }).click()
     await dialog(page).waitFor({ state: 'detached' })
-    await page.getByTestId('toast').filter({ hasText: 'Added 3 items from photo' }).waitFor()
+    await page.getByTestId('toast').filter({ hasText: 'Added 3 items from AI' }).waitFor()
     const s = await state(page)
     const ph = s.entries.filter((e) => e.source === 'photo')
     assert.equal(ph.length, 3)
-    const rice = ph.find((e) => e.foodId && e.name.startsWith('Nasi putih'))
-    assert.equal(rice.servingLabel, '160 g')
-    assert.ok(ph.find((e) => e.name === 'Ayam goreng' && e.foodId))
+    assert.ok(ph.every((e) => e.foodId === null), 'no catalog entries')
+    const rice = ph.find((e) => e.name === 'Nasi putih')
+    assert.equal(rice.servingLabel, '160 g'); assert.equal(rice.kcal, 267); assert.equal(rice.carbs, 58.7)
+    const chicken = ph.find((e) => e.name === 'Ayam goreng')
+    assert.equal(chicken.servingLabel, '1 thigh (120 g)'); assert.equal(chicken.kcal, 330)
     const salsa = ph.find((e) => e.name === 'Dragonfruit salsa')
-    assert.equal(salsa.foodId, null)
     assert.equal(salsa.kcal, 60)
     assert.ok(ph.every((e) => e.date === TODAY))
     const dump = await page.evaluate(() => Object.entries(localStorage).map(([k, v]) => k + v).join('') + document.cookie)
@@ -269,10 +339,10 @@ try {
     await dialog(page).getByRole('button', { name: /Estimate/ }).click()
     await dialog(page).getByRole('button', { name: 'Log 4 items' }).click()
     await page.goto(BASE + '/')
-    await page.getByText('📷 photo').first().waitFor()
+    await page.getByText('✨ AI').first().waitFor()
   })
 
-  await step('partial match + fenced JSON + string numbers: unmatched items keep AI values', async () => {
+  await step('fenced JSON + string numbers + missing portion: AI values kept', async () => {
     mode.gemini = 'partial'
     await page.goto(BASE + '/log')
     await snap(page)
@@ -281,10 +351,10 @@ try {
     await d.getByTestId('photo-dish').filter({ hasText: 'Mystery plate' }).waitFor()
     const rows = d.getByRole('list', { name: 'Estimated items' }).getByRole('listitem')
     assert.equal(await rows.count(), 2)
-    assert.equal(await rows.filter({ hasText: 'Dragonfruit' }).getAttribute('data-matched'), 'no')
-    // "Krupuk-ish cracker thing" isn't Kerupuk by our rules either way; whichever it is, numbers must be sane.
-    assert.match(await d.getByTestId('photo-total').innerText(), /^\d+/)
-    await d.getByRole('button', { name: 'Retake' }).waitFor()
+    // 60 + 95 from the AI; the cracker has no portion field (optional).
+    assert.match(await d.getByTestId('photo-total').innerText(), /^155/)
+    assert.equal(await rows.filter({ hasText: 'Krupuk-ish' }).getByTestId('item-portion').count(), 0)
+    await d.getByRole('button', { name: 'Edit' }).waitFor()
     await page.keyboard.press('Escape')
     await d.waitFor({ state: 'detached' })
   })
@@ -298,10 +368,10 @@ try {
     assert.equal(await errorKind(page), kind)
     assert.match(await dialog(page).innerText(), new RegExp(title))
     assert.ok(!(await dialog(page).innerText()).includes('RESOURCE_EXHAUSTED'), 'no raw provider text')
-    await dialog(page).getByRole('button', { name: 'Retake' }).waitFor()
+    await dialog(page).getByRole('button', { name: 'Edit' }).waitFor()
     await dialog(page).getByRole('button', { name: 'Use Quick add instead' }).waitFor()
   }
-  await step('errors in plain words, each with Retake and Quick add: wrong key, rate limit, no food, unreadable, connection dropped', async () => {
+  await step('errors in plain words, each with Edit and Quick add: wrong key, rate limit, no food, unreadable, connection dropped', async () => {
     await errorCase('badkey', 'key', 'Your key didn’t work')
     await dialog(page).getByRole('button', { name: 'Check key in Me' }).click()
     await page.waitForURL('**/settings?ai=1')
@@ -310,7 +380,9 @@ try {
     await dialog(page).getByRole('button', { name: 'Try again' }).click()
     await dialog(page).getByText('Estimated from your photo').waitFor()
     await errorCase('nofood', 'noFood', 'No food found')
-    await dialog(page).getByRole('button', { name: 'Take another photo' }).waitFor()
+    assert.match(await dialog(page).innerText(), /Describe what you ate/)
+    await dialog(page).getByRole('button', { name: 'Add more detail' }).click()
+    await dialog(page).getByTestId('photo-added').waitFor()
     await errorCase('garbage', 'failed', 'Something went wrong')
     await errorCase('drop', 'offline', 'No internet')
     await dialog(page).getByRole('button', { name: 'Use Quick add instead' }).click()
@@ -333,15 +405,15 @@ try {
     await page.keyboard.press('Escape')
   })
 
-  await step('offline: camera becomes "Needs internet" and opens nothing; back online it returns', async () => {
+  await step('offline: AI button becomes "Needs internet" and opens nothing; back online it returns', async () => {
     mode.gemini = 'ok'
     await ctx.setOffline(true)
-    await page.getByTestId('camera-offline').filter({ hasText: 'Needs' }).waitFor()
-    assert.equal(await page.getByRole('button', { name: 'Estimate from a photo' }).count(), 0)
-    await page.getByTestId('camera-offline').click()
+    await page.getByTestId('ai-offline').filter({ hasText: 'Needs' }).waitFor()
+    assert.equal(await page.getByRole('button', AI_BTN).count(), 0)
+    await page.getByTestId('ai-offline').click()
     assert.equal(await dialog(page).count(), 0)
     await ctx.setOffline(false)
-    await page.getByRole('button', { name: 'Estimate from a photo' }).waitFor()
+    await page.getByRole('button', AI_BTN).waitFor()
   })
 
   await step('OpenAI: success, then wrong key whose 401 has no CORS headers is still named via the /v1/models probe', async () => {
@@ -365,13 +437,13 @@ try {
     await errorCase('busy', 'busy', 'OpenAI is busy', 'openai')
   })
 
-  await step('Remove key: gone from storage; camera shows the set-up sheet again; Reset all data also clears it', async () => {
+  await step('Remove key: gone from storage; AI button shows the set-up sheet again; Reset all data also clears it', async () => {
     await page.goto(BASE + '/settings')
     await page.getByRole('button', { name: 'Remove key' }).click()
     assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:ai')), null)
     assert.equal(await page.getByTestId('ai-key').inputValue(), '')
     await page.goto(BASE + '/log')
-    await page.getByRole('button', { name: 'Estimate from a photo' }).click()
+    await page.getByRole('button', AI_BTN).click()
     await dialog(page).getByRole('button', { name: 'Add a key in Me' }).waitFor()
     await saveKey(page, 'gemini', GEMINI_KEY)
     await page.goto(BASE + '/settings')
@@ -381,8 +453,8 @@ try {
   })
   await ctx.close()
 
-  // Closed day: the bar (and camera) is hidden.
-  await step('closed day: no camera (the whole bar is hidden)', async () => {
+  // Closed day: the bar (and AI button) is hidden.
+  await step('closed day: no AI button (the whole bar is hidden)', async () => {
     const closed = structuredClone(V1_STATE)
     closed.closedDays[TODAY] = { ...Object.values(closed.closedDays)[0], closedAt: Date.now() }
     const c2 = await browser.newContext({ viewport: { width: 375, height: 667 }, serviceWorkers: 'block' })
@@ -392,7 +464,7 @@ try {
     await p2.getByRole('link', { name: 'Close and go back to Today' }).waitFor()
     await p2.waitForTimeout(300)
     assert.equal(await p2.getByTestId('qa-bar').count(), 0)
-    assert.equal(await p2.getByRole('button', { name: 'Estimate from a photo' }).count(), 0)
+    assert.equal(await p2.getByRole('button', AI_BTN).count(), 0)
     await c2.close()
   })
 } finally {
@@ -400,5 +472,5 @@ try {
   console.log(results.join('\n'))
   if (results.some((r) => r.startsWith('FAIL'))) process.exitCode = 1
   if (errors.length) { console.log('Console errors:\n' + errors.join('\n')); process.exitCode = 1 }
-  else if (!process.exitCode) console.log(`\n${results.filter((r) => r.startsWith('PASS')).length} v1.5 photo checks passed, no console errors`)
+  else if (!process.exitCode) console.log(`\n${results.filter((r) => r.startsWith('PASS')).length} v1.5/v1.6 AI estimate checks passed, no console errors`)
 }

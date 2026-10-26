@@ -52,6 +52,16 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.6 AI button, text or photo, AI numbers only
+
+- Log > Food: the camera is now a round ✨ "AI" button (56 px, right of Quick add, aria-label "AI estimate"). Offline it reads "Needs internet"; with no key it opens the set-up sheet.
+- One sheet: "What did you eat?" text box on top, an optional Add photo button (camera or library) below it, the same chips, then Estimate. Estimate works with text only, photo only or both, and is disabled when there is neither.
+- A text-only request sends no image; the prompt asks for typical Indonesian portions when no size is given.
+- Every item uses the AI's grams, kcal, protein, carbs and fat; the stepper scales them per gram. Our food list only picks the emoji, and is no longer sent in the prompt. The AI returns an optional portion ("1 plate", "1 tbsp"), shown at the AI's grams and dropped before the line would wrap.
+- Better prompt: Indonesian dishes, cooking oil, santan, sauces and sambal, rice portions, and the user's words over the photo.
+- Results, edit before logging and "nothing saved but the entries" are unchanged. Entries keep `source: 'photo'` (now meaning AI) so older data stays valid; Today shows them as ✨ AI.
+- Tests: `node tests/ai.mjs`, `node tests/v15-photo.mjs`, `node tests/v152-ios.mjs` (`SHOTS=1` writes `screenshots/v16-*.png`).
+
 ## v1.5.2 Camera on the right, note field fix (iPhone)
 
 - Log > Food: Quick add on the left, camera on the right. The camera is a 56 px round button, 8 px from the screen edge plus the safe area (`.pr-safe-cam`). Still Food only, hidden on closed days and with the keyboard up.

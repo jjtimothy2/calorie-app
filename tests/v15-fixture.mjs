@@ -59,14 +59,15 @@ const pad = (n) => String(n).padStart(2, '0')
 const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 export const TODAY = key(new Date())
 
-// Model answers (the JSON our schema asks for). Rice, chicken and sambal are on our list; the salsa isn't.
+// Model answers (the JSON our schema asks for). v1.6: rice, chicken and sambal have the same names as foods on our list,
+// but the AI's own numbers must be used (our list would give rice 192 kcal and chicken 320); the salsa isn't on the list.
 export const EST = {
   dish: 'Nasi ayam goreng',
   items: [
-    { name: 'Steamed rice', match: 'Nasi putih (white rice)', grams: 150, kcal: 999, protein_g: 99, carbs_g: 40, fat_g: 0.5, confidence: 'high' },
-    { name: 'Fried chicken thigh', match: 'Ayam goreng', grams: 120, kcal: 300, protein_g: 25, carbs_g: 5, fat_g: 20, confidence: 'medium' },
-    { name: 'Sambal', match: 'Sambal', grams: 15, kcal: 30, protein_g: 0.3, carbs_g: 2, fat_g: 2.4, confidence: 'high' },
-    { name: 'Dragonfruit salsa', match: null, grams: 80, kcal: 60, protein_g: 1, carbs_g: 13, fat_g: 0.2, confidence: 'low' },
+    { name: 'Nasi putih', portion: '1 plate', grams: 150, kcal: 250, protein_g: 4.5, carbs_g: 55, fat_g: 0.5, confidence: 'high' },
+    { name: 'Ayam goreng', portion: '1 thigh', grams: 120, kcal: 330, protein_g: 25, carbs_g: 5, fat_g: 23, confidence: 'medium' },
+    { name: 'Sambal', portion: '1 tbsp', grams: 15, kcal: 30, protein_g: 0.3, carbs_g: 2, fat_g: 2.4, confidence: 'high' },
+    { name: 'Dragonfruit salsa', portion: 'a small bowl with extra lime', grams: 80, kcal: 60, protein_g: 1, carbs_g: 13, fat_g: 0.2, confidence: 'low' },
   ],
 }
 export const geminiOk = (obj) => ({ candidates: [{ content: { role: 'model', parts: [{ text: typeof obj === 'string' ? obj : JSON.stringify(obj) }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 2900, candidatesTokenCount: 300 } })
