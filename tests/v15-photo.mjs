@@ -82,13 +82,13 @@ const errorKind = (page) => dialog(page).getByTestId('photo-error').getAttribute
 try {
   const { ctx, page } = await setup()
 
-  await step('old v1 data loads; camera sits left of Quick add on Log (Food only), input has no capture attribute', async () => {
+  await step('old v1 data loads; camera sits right of Quick add on Log (Food only), input has no capture attribute', async () => {
     await page.goto(BASE + '/log')
     const cam = page.getByRole('button', { name: 'Estimate from a photo' })
     const qa = page.getByRole('button', { name: /Quick add calories/ })
     await cam.waitFor()
     const [cb, qb] = [await cam.boundingBox(), await qa.boundingBox()]
-    assert.ok(cb.x + cb.width <= qb.x, 'camera is left of Quick add')
+    assert.ok(cb.x >= qb.x + qb.width, 'camera is right of Quick add')
     assert.ok(Math.abs(cb.y + cb.height / 2 - (qb.y + qb.height / 2)) < 3, 'same row')
     assert.equal(Math.round(cb.width), 56)
     const input = page.getByTestId('photo-input')

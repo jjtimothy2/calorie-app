@@ -52,6 +52,13 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.5.2 Camera on the right, note field fix (iPhone)
+
+- Log > Food: Quick add on the left, camera on the right. The camera is a 56 px round button, 8 px from the screen edge plus the safe area (`.pr-safe-cam`). Still Food only, hidden on closed days and with the keyboard up.
+- Fixed: on iPhone a tap on the photo note only nudged the sheet and the keyboard closed. Opening the keyboard shrinks the viewport, Log re-renders (its keyboard check) and passes a new `onClose` to `Sheet`; Sheet's focus effect depended on `onClose`, so it re-ran and moved focus back to the sheet. `Sheet` now keeps `onClose` in a ref and runs its focus setup once on open. This fixes every sheet.
+- With the keyboard up, sheets sit above it and keep the focused field and the main button (`data-keep-visible`, e.g. Estimate) in view. Chips tapped while typing keep the keyboard; tapped otherwise they do not open it.
+- Tests: `tests/v152-ios.mjs` (WebKit, iPhone emulation with touch, in `test:e2e`; keyboard simulated by a shorter viewport). Screenshots: `node scripts/v152-shots.mjs` -> `screenshots/v152-*.png`.
+
 ## v1.5.1 Photo results show carbs and fat
 
 - Each item's second line is portion, then protein, carbs and fat in the Nutrition colours, e.g. `1 thigh · 26P 6C 21F`. Screen readers hear "26 g protein, 6 g carbs, 21 g fat".
@@ -62,7 +69,7 @@ Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, st
 
 ## v1.5 AI photo estimate (bring your own key)
 
-- Log > Food: round camera button left of Quick add (hidden on closed days and with the keyboard up, like the bar). Offline it reads "Needs internet". No key yet: a set-up sheet with a button to Me.
+- Log > Food: round camera button next to Quick add (right of it since v1.5.2) (hidden on closed days and with the keyboard up, like the bar). Offline it reads "Needs internet". No key yet: a set-up sheet with a button to Me.
 - Me > AI photo estimate: Gemini (default) or OpenAI, masked key with Show/Hide, Save, Test key (free model lookup, no tokens), Remove key. The key lives only in `localStorage["calorie-app:ai"]`: never in backups (export or restore), never logged, cleared by Reset all data.
 - Models are constants in `src/lib/ai.ts` (`MODELS`): `gemini-3.5-flash-lite` (on the Gemini free tier) and `gpt-6-luna`. Calls go straight from the browser (both providers allow CORS). OpenAI drops CORS headers on 401 from chat completions, so a network error while online is checked against `GET /v1/models` to tell "wrong key" from "no internet".
 - Flow: pick or take a photo (`input type=file accept=image/*`, no capture) -> downscaled in the browser to 1024 px JPEG -> optional note and chips (Shared, Half eaten, Extra sambal, Santan, No rice) -> strict JSON (dish, items with grams, kcal, protein, optional carbs, fat, confidence). Items that match our food list use our per-gram values; others keep the AI's numbers and are marked "AI estimate". Grams stepper, remove, then Log N items. Entries get `source: 'photo'` (optional field, old data unchanged). The photo is never stored.

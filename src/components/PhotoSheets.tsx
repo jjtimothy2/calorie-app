@@ -104,6 +104,8 @@ type Props = {
 export function PhotoFlow({ settings, photo, onRetake, onClose, onQuickAdd, onFixKey, onLog }: Props) {
   const [note, setNote] = useState('')
   const [phase, setPhase] = useState<Phase>({ k: 'note' })
+  const noteRef = useRef<HTMLTextAreaElement>(null)
+  const typing = useRef(false)
   const ctl = useRef<AbortController | null>(null)
   useEffect(() => () => ctl.current?.abort(), [])
   // A new photo (Retake) starts over at the note step but keeps the note.
@@ -172,6 +174,7 @@ export function PhotoFlow({ settings, photo, onRetake, onClose, onQuickAdd, onFi
       <label className="flex flex-col gap-1.5 text-[17px] font-semibold">
         <span>Add a note <span className="font-normal text-mute">(optional)</span></span>
         <textarea
+          ref={noteRef}
           rows={3}
           value={note}
           disabled={loading}
@@ -182,12 +185,22 @@ export function PhotoFlow({ settings, photo, onRetake, onClose, onQuickAdd, onFi
         />
       </label>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Quick notes">
-        {NOTE_CHIPS.map((c) => <Chip key={c} on={noteHas(note, c)} disabled={loading} onClick={() => setNote((n) => toggleNoteChip(n, c))}>{c}</Chip>)}
+        {/* A chip tapped while typing keeps the keyboard up (focus stays in the note); otherwise it never opens it. */}
+        {NOTE_CHIPS.map((c) => (
+          <Chip
+            key={c}
+            on={noteHas(note, c)}
+            disabled={loading}
+            onPointerDown={() => { typing.current = document.activeElement === noteRef.current }}
+            onMouseDown={(e) => { if (document.activeElement === noteRef.current) e.preventDefault() }}
+            onClick={() => { setNote((n) => toggleNoteChip(n, c)); if (typing.current) noteRef.current?.focus({ preventScroll: true }); typing.current = false }}
+          >{c}</Chip>
+        ))}
       </div>
       {loading ? (
         <Button variant="ghost" className="mt-1" onClick={() => { ctl.current?.abort(); setPhase({ k: 'note' }) }}>Cancel</Button>
       ) : (
-        <Button className="mt-1" onClick={run}><span aria-hidden="true">✨ </span>Estimate</Button>
+        <Button className="mt-1" data-keep-visible onClick={run}><span aria-hidden="true">✨ </span>Estimate</Button>
       )}
       <p className="-mt-2 text-center text-[13px] text-mute">Sent to {PROVIDER_LABEL[settings.provider]} ({MODELS[settings.provider]}). The photo isn’t saved.</p>
     </Sheet>

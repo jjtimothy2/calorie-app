@@ -200,8 +200,12 @@ export default function Log() {
       {/* v1.3.4: Quick add lives in a sticky full-width bar at the bottom of Log (Reed, option 1). Hidden when the
           day is closed, and while the on-screen keyboard is up so it never rides up over the list. */}
       {!day.closed && !keyboard && (
-        <div className="flex shrink-0 items-center gap-3 border-t border-line bg-bg px-5 pt-3 pb-safe-qa" data-testid="qa-bar">
-          {/* v1.5: AI photo estimate (Reed's mock). Food mode only. Offline it says so instead of opening anything. */}
+        <div className={`flex shrink-0 items-center gap-3 border-t border-line bg-bg pl-5 pt-3 pb-safe-qa ${mode === 'food' ? 'pr-safe-cam' : 'pr-5'}`} data-testid="qa-bar">
+          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="tap flex min-w-0 flex-1 items-center justify-center gap-2 rounded-[18px] bg-ink p-4 text-[17px] font-bold text-bg shadow-[0_8px_20px_rgba(42,36,32,.22)]">
+            <span aria-hidden="true">⚡</span>{mode === 'food' ? 'Quick add calories' : 'Quick add burn'}
+          </button>
+          {/* v1.5: AI photo estimate (Reed's mock). Food mode only. Offline it says so instead of opening anything.
+              v1.5.2: on the right (easier for the thumb), 56 px target, 8 px from the edge plus the safe area. */}
           {mode === 'food' && (online ? (
             <button type="button" onClick={openCamera} aria-label="Estimate from a photo" data-testid="camera-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-ink">
               <CameraIcon />
@@ -211,9 +215,6 @@ export default function Log() {
               <CameraIcon className="h-5 w-5" /><span>Needs<br />internet</span>
             </span>
           ))}
-          <button type="button" onClick={() => (mode === 'food' ? setQuick(true) : setQuickEx(true))} className="tap flex min-w-0 flex-1 items-center justify-center gap-2 rounded-[18px] bg-ink p-4 text-[17px] font-bold text-bg shadow-[0_8px_20px_rgba(42,36,32,.22)]">
-            <span aria-hidden="true">⚡</span>{mode === 'food' ? 'Quick add calories' : 'Quick add burn'}
-          </button>
         </div>
       )}
       {toast && (
