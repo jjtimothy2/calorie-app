@@ -1,4 +1,4 @@
-// v1.8 onboarding: welcome (plate-in-ring illustration, Get started, Restore a backup), one question per screen with a
+// v1.8 onboarding (v1.10: a watch question before activity, tests/v110.mjs covers the Yes path): welcome (plate-in-ring illustration, Get started, Restore a backup), one question per screen with a
 // thin progress bar (sex, age, height + weight, goal, activity, pace; pace skipped for Keep), the target reveal (count-up,
 // "How we worked this out" sheet), then a skippable extras screen. New profiles start with daily movement on; the 20%
 // deficit cap is gone (floor only). Existing v2 profiles are never sent back to onboarding and their storage is untouched.
@@ -34,13 +34,15 @@ const fresh = async (ctx) => {
   return pg
 }
 /** Walk to the activity step and pick it. Answers default to the 32-year-old 92 kg 175 cm man (Jordy's simulation). */
-const answer = async (pg, { sex = 'male', age = 32, h = 175, w = 92, goal = 'lose', act = 'light' } = {}) => {
+const answer = async (pg, { sex = 'male', age = 32, h = 175, w = 92, goal = 'lose', act = 'light', watchYes = false } = {}) => {
   await pg.getByTestId('ob-start').click()
   await pg.getByTestId(`ob-sex-${sex}`).click()
   await pg.getByTestId('ob-age').fill(String(age)); await pg.getByTestId('ob-next').click()
   await pg.getByTestId('ob-height').fill(String(h)); await pg.getByTestId('ob-weight').fill(String(w)); await pg.getByTestId('ob-next').click()
   await pg.getByTestId(`ob-goal-${goal}`).click()
-  await pg.getByTestId(`ob-act-${act}`).click()
+  // v1.10: the watch question sits before Activity. No keeps the v1.8 path; Yes skips Activity.
+  await pg.getByTestId(watchYes ? 'ob-watch-yes' : 'ob-watch-no').click()
+  if (!watchYes) await pg.getByTestId(`ob-act-${act}`).click()
 }
 const ls = (pg) => pg.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
 /** Nothing sticks out sideways, and the step's main button (if any) is on screen without scrolling. */
@@ -113,7 +115,7 @@ await step('with motion allowed: the illustration animates and the target counts
 })
 
 // ---------- Flow ----------
-await step('step order sex, age, body, goal, activity, pace, target, extras; progress bar advances every step', async () => {
+await step('step order sex, age, body, goal, watch, activity, pace, target, extras; progress bar advances every step', async () => {
   const ctx = await ctxFor(390, 844)
   const pg = await fresh(ctx)
   const seen = []
@@ -128,12 +130,14 @@ await step('step order sex, age, body, goal, activity, pace, target, extras; pro
   await pg.getByTestId('ob-height').fill('175'); await pg.getByTestId('ob-weight').fill('92'); await pg.getByTestId('ob-next').click()
   await pg.getByTestId('ob-goal-lose').waitFor(); seen.push([await where(), await pnow(pg)])
   await pg.getByTestId('ob-goal-lose').click()
+  await pg.getByTestId('ob-watch-no').waitFor(); seen.push([await where(), await pnow(pg)])
+  await pg.getByTestId('ob-watch-no').click()
   await pg.getByTestId('ob-act-light').waitFor(); seen.push([await where(), await pnow(pg)])
   await pg.getByTestId('ob-act-light').click()
   await pg.getByTestId('ob-pace').waitFor(); seen.push([await where(), await pnow(pg)])
   await pg.getByTestId('ob-next').click()
   await pg.getByTestId('ob-target').waitFor(); seen.push(['target', await pnow(pg)])
-  assert.deepEqual(seen.map((s) => s[0]), ["What's your sex?", 'How old are you?', 'Your height and weight', "What's your goal?", 'How active is a normal week?', 'How fast should you lose?', 'target'])
+  assert.deepEqual(seen.map((s) => s[0]), ["What's your sex?", 'How old are you?', 'Your height and weight', "What's your goal?", 'Do you wear a watch that tracks your burn?', 'How active is a normal week?', 'How fast should you lose?', 'target'])
   const vals = seen.map((s) => s[1])
   for (let i = 1; i < vals.length; i++) assert.ok(vals[i] > vals[i - 1], `progress ${vals.join(' -> ')}`)
   assert.equal(vals.at(-1), 100)
@@ -143,19 +147,23 @@ await step('step order sex, age, body, goal, activity, pace, target, extras; pro
   assert.equal(await pg.getByTestId('ob-pace-standard').getAttribute('aria-pressed'), 'true')
   await pg.getByTestId('ob-back').click()
   assert.equal(await pg.getByTestId('ob-act-light').getAttribute('aria-pressed'), 'true')
+  await pg.getByTestId('ob-back').click()
+  assert.equal(await pg.getByTestId('ob-watch-no').getAttribute('aria-pressed'), 'true')
+  assert.equal(await pg.getByTestId('ob-watch-yes').getAttribute('aria-pressed'), 'false')
   await ctx.close()
 })
-await step('Keep skips pace: activity goes straight to the target; 5 questions, not 6', async () => {
+await step('Keep skips pace: activity goes straight to the target; 6 questions, not 7', async () => {
   const ctx = await ctxFor(390, 844)
   const pg = await fresh(ctx)
   await pg.getByTestId('ob-start').click()
-  assert.equal(await pg.getByRole('progressbar').getAttribute('aria-label'), 'Question 1 of 6')
+  assert.equal(await pg.getByRole('progressbar').getAttribute('aria-label'), 'Question 1 of 7')
   await pg.getByTestId('ob-sex-male').click()
   await pg.getByTestId('ob-age').fill('32'); await pg.getByTestId('ob-next').click()
   await pg.getByTestId('ob-height').fill('175'); await pg.getByTestId('ob-weight').fill('92'); await pg.getByTestId('ob-next').click()
   await pg.getByTestId('ob-goal-keep').click()
+  await pg.getByTestId('ob-watch-no').click()
   await pg.getByTestId('ob-act-light').waitFor()
-  assert.equal(await pg.getByRole('progressbar').getAttribute('aria-label'), 'Question 5 of 5')
+  assert.equal(await pg.getByRole('progressbar').getAttribute('aria-label'), 'Question 6 of 6')
   await pg.getByTestId('ob-act-light').click()
   await pg.getByTestId('ob-target').waitFor()
   assert.equal(await pg.getByTestId('ob-pace').count(), 0)
@@ -311,6 +319,9 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await pg.getByTestId('ob-goal-lose').waitFor()
     if (w === 375) await noOverflow(pg, 'question-goal')
     await pg.getByTestId('ob-goal-lose').click()
+    await pg.getByTestId('ob-watch-no').waitFor()
+    if (w === 375) await noOverflow(pg, 'question-watch')
+    await pg.getByTestId('ob-watch-no').click()
     await pg.getByTestId('ob-act-light').waitFor()
     if (w === 375) await noOverflow(pg, 'question-activity')
     await pg.getByTestId('ob-act-light').click()

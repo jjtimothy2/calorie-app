@@ -63,6 +63,7 @@ try {
     await page.fill('input[name=weightKg]', '68')
     await page.getByTestId('ob-next').click()
     await page.getByTestId('ob-goal-lose').click()
+    await page.getByTestId('ob-watch-no').click() // v1.10 watch question
     await page.getByTestId('ob-act-light').click()
     // Pace chips (Standard is the default) show this person's real targets. v1.3.3: no goal weight field.
     await page.getByTestId('ob-pace').waitFor()

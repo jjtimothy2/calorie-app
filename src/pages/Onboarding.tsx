@@ -15,7 +15,13 @@ import type { Activity, Goal, Sex } from '../lib/types'
  * what v1.7 saved (bmrCustom false, goal weight defaults to the current weight), except daily movement now starts
  * on (Jordy, v1.8) and the 20% cap is gone. Activity is asked before pace so the pace chips can show real numbers.
  */
-type Step = 'welcome' | 'sex' | 'age' | 'body' | 'goal' | 'pace' | 'activity' | 'target' | 'extras'
+type Step = 'welcome' | 'sex' | 'age' | 'body' | 'goal' | 'watch' | 'pace' | 'activity' | 'target' | 'extras'
+
+/** v1.10: the question order. Watch users skip Activity (their watch counts movement), Keep skips Pace. */
+const orderFor = (goal: Goal, watch: boolean | null): Step[] => ['welcome', 'sex', 'age', 'body', 'goal', 'watch', ...(watch === true ? [] : ['activity' as Step]), ...(goal === 'keep' ? [] : ['pace' as Step]), 'target', 'extras']
+
+/** Real wording of the burn button in Log (exercise mode). */
+const WATCH_LINE = 'Add your watch’s active calories each day with Quick add burn.'
 
 const GOALS: { g: Goal; title: string; hint: string }[] = [
   { g: 'lose', title: 'Lose weight', hint: 'Eat a little under what you burn' },
@@ -44,16 +50,22 @@ export default function Onboarding() {
   // Cards only show a tick once the person has picked them (the draft keeps v1.7's defaults underneath).
   const [answered, setAnswered] = useState<Set<keyof Draft>>(new Set())
   const [d, setD] = useState<Draft>({ age: NaN, sex: 'female', heightCm: NaN, weightKg: NaN, activity: 'light', goal: 'lose', pace: 'standard' })
-  const profile = () => normaliseProfile({ ...d, bmr: calcBmr(d), bmrCustom: false, includeMovement: true })
+  // v1.10: asked before Activity. Yes turns daily movement off (the watch counts it) and skips Activity.
+  const [watch, setWatch] = useState<boolean | null>(null)
+  const profile = () => normaliseProfile({ ...d, bmr: calcBmr(d), bmrCustom: false, includeMovement: watch !== true })
   const plan = validBody(d) ? dailyPlan(profile()) : null
 
   // Question order. Activity comes before pace (pace results depend on it). Pace is skipped for Keep.
-  const flow: Step[] = ['sex', 'age', 'body', 'goal', 'activity', ...(d.goal === 'keep' ? [] : ['pace' as Step])]
-  const order: Step[] = ['welcome', ...flow, 'target', 'extras']
+  const order = orderFor(d.goal, watch)
+  const flow: Step[] = order.filter((s) => s !== 'welcome' && s !== 'target' && s !== 'extras')
   const go = (s: Step) => setStep(s)
-  const next = (from: Step = step, goal = d.goal) => {
-    const o: Step[] = ['welcome', 'sex', 'age', 'body', 'goal', 'activity', ...(goal === 'keep' ? [] : ['pace' as Step]), 'target', 'extras']
+  const next = (from: Step = step, goal = d.goal, w = watch) => {
+    const o = orderFor(goal, w)
     go(o[o.indexOf(from) + 1])
+  }
+  const pickWatch = (w: boolean) => {
+    setWatch(w)
+    setTimeout(() => next('watch', d.goal, w), 220)
   }
   const back = () => go(order[Math.max(0, order.indexOf(step) - 1)])
   // Auto-advance: show the picked card for a beat, then move on.
@@ -144,7 +156,7 @@ export default function Onboarding() {
         )}
 
         {step === 'pace' && (
-          <Question title={d.goal === 'gain' ? 'How fast should you gain?' : 'How fast should you lose?'} hint="Slower is easier to stick with." footer={<Button onClick={() => next()} data-testid="ob-next">Continue</Button>}>
+          <Question title={d.goal === 'gain' ? 'How fast should you gain?' : 'How fast should you lose?'} hint={watch === true ? 'Worked out from your resting burn. Your watch adds the rest.' : 'Slower is easier to stick with.'} footer={<Button onClick={() => next()} data-testid="ob-next">Continue</Button>}>
             <div className="flex flex-col gap-3" data-testid="ob-pace">
               {PACES.map((p) => {
                 // Each chip shows this person's real result for that pace (after the floor), not the nominal kg.
@@ -162,8 +174,18 @@ export default function Onboarding() {
                 )
               })}
               <p className="px-2 pt-1 text-center text-[15px] text-mute" data-testid="ob-pace-hint">
-                {plan ? paceLine(d.goal, d.pace, plan) : ''}
+                {plan ? paceLine(d.goal, d.pace, plan, watch === true) : ''}
               </p>
+              {watch === true && <WatchNote />}
+            </div>
+          </Question>
+        )}
+
+        {step === 'watch' && (
+          <Question title="Do you wear a watch that tracks your burn?" hint="Like an Apple Watch, Garmin or Fitbit.">
+            <div className="flex flex-col gap-3" data-testid="ob-watch">
+              <WatchOption on={watch === true} onClick={() => pickWatch(true)} title="Yes, I use a watch" hint="It counts my movement" icon={<WatchIcon />} testid="ob-watch-yes" />
+              <WatchOption on={watch === false} onClick={() => pickWatch(false)} title="No" hint="I’ll tell you how active I am" icon={<WalkIcon />} testid="ob-watch-no" />
             </div>
           </Question>
         )}
@@ -178,7 +200,7 @@ export default function Onboarding() {
           </Question>
         )}
 
-        {step === 'target' && plan && <Target d={d} plan={plan} onHow={() => setHow(true)} onNext={() => next()} />}
+        {step === 'target' && plan && <Target d={d} plan={plan} watch={watch === true} onHow={() => setHow(true)} onNext={() => next()} />}
 
         {step === 'extras' && (
           <div className="flex flex-1 flex-col pt-6" data-testid="ob-extras">
@@ -210,7 +232,7 @@ export default function Onboarding() {
         )}
       </div>
 
-      {how && plan && <HowSheet d={d} plan={plan} onClose={() => setHow(false)} />}
+      {how && plan && <HowSheet d={d} plan={plan} watch={watch === true} onClose={() => setHow(false)} />}
     </main>
   )
 }
@@ -239,6 +261,40 @@ function Option({ on, onClick, title, hint, testid, big, compact }: { on: boolea
       </span>
     </button>
   )
+}
+
+/** v1.10: a big card for the watch question, with an icon so the two answers read at a glance. */
+function WatchOption({ on, onClick, title, hint, icon, testid }: { on: boolean; onClick: () => void; title: string; hint: string; icon: ReactNode; testid: string }) {
+  return (
+    <button type="button" aria-pressed={on} onClick={onClick} data-testid={testid}
+      className={`opt flex min-h-[104px] w-full items-center gap-4 rounded-[22px] border-2 bg-card px-5 py-4 text-left ${on ? 'border-ink' : 'border-line'}`}>
+      <span className="tile !h-14 !w-14 shrink-0 text-g" aria-hidden="true">{icon}</span>
+      <span className="flex flex-1 flex-col gap-0.5">
+        <span className="text-[20px] font-bold">{title}</span>
+        <span className="text-[15px] leading-snug text-mute">{hint}</span>
+      </span>
+      <span aria-hidden="true" className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 ${on ? 'border-ink bg-ink text-bg' : 'border-line'}`}>
+        {on && <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}
+      </span>
+    </button>
+  )
+}
+
+/** The one thing a watch user has to do each day. */
+function WatchNote() {
+  return (
+    <div className="flex items-start gap-3 rounded-[18px] bg-g-soft px-4 py-3 text-left text-[15px] leading-snug text-g-soft-ink" data-testid="ob-watch-note">
+      <span className="mt-0.5 shrink-0" aria-hidden="true"><WatchIcon className="h-5 w-5" /></span>
+      <span>{WATCH_LINE}</span>
+    </div>
+  )
+}
+
+function WatchIcon({ className = 'h-7 w-7' }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3.5" /><path d="M9 6l.6-3h4.8L15 6M9 18l.6 3h4.8L15 18M12 9.5V12l1.6 1.2" /></svg>
+}
+function WalkIcon() {
+  return <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="13" cy="4.5" r="1.8" /><path d="M10 21l2-6 2.5 2.5V21M8 11.5l3-3.5h2.5l2.5 3.5H19M11 8l-1.5 5.5" /></svg>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -280,10 +336,10 @@ type Plan = ReturnType<typeof dailyPlan>
 const floorName = (plan: Plan) => (plan.floor === plan.bmr ? `your resting burn (${fmt(plan.floor)} kcal)` : `the ${fmt(plan.floor)} kcal minimum`)
 
 /** One line under the pace chips, from the real plan for the picked pace (after the floor). */
-function paceLine(goal: Goal, pace: Draft['pace'], plan: Plan) {
+function paceLine(goal: Goal, pace: Draft['pace'], plan: Plan, watch = false) {
   if (plan.atMinimum) return `You're already at ${floorName(plan)}. Exercise creates your deficit.`
   if (plan.floored) return `${PACE[pace].label} is held at ${floorName(plan)}, so it works out to about ${weekKg(plan.planDeficit)} kg a week, not ${PACE[pace].kg}.`
-  return `About ${fmt(Math.abs(plan.planDeficit))} kcal a day ${goal === 'gain' ? 'over' : 'under'} your ${fmt(plan.planBase)} kcal daily burn.`
+  return `About ${fmt(Math.abs(plan.planDeficit))} kcal a day ${goal === 'gain' ? 'over' : 'under'} your ${fmt(plan.planBase)} kcal ${watch ? 'resting' : 'daily'} burn.`
 }
 
 function goalLine(goal: Goal, plan: Plan) {
@@ -292,7 +348,7 @@ function goalLine(goal: Goal, plan: Plan) {
   return `${goal === 'lose' ? 'Lose' : 'Gain'} about ${kg} kg a week`
 }
 
-function Target({ d, plan, onHow, onNext }: { d: Draft; plan: Plan; onHow: () => void; onNext: () => void }) {
+function Target({ d, plan, watch, onHow, onNext }: { d: Draft; plan: Plan; watch: boolean; onHow: () => void; onNext: () => void }) {
   const shown = useCountUp(plan.target, undefined, 800, 150)
   return (
     <div className="flex flex-1 flex-col" data-testid="ob-target">
@@ -302,6 +358,7 @@ function Target({ d, plan, onHow, onNext }: { d: Draft; plan: Plan; onHow: () =>
         <div className="mt-2 text-[17px] text-mute">kcal a day</div>
         <p className="mt-8 text-[20px] font-bold" data-testid="goal-line">{goalLine(d.goal, plan)}</p>
         {plan.floored && <p className="mt-1.5 max-w-[280px] text-[15px] text-mute" data-testid="floor-line">Held at {floorName(plan)}, the lowest we go.</p>}
+        {watch && <div className="mt-6 w-full max-w-[320px]"><WatchNote /></div>}
         <button type="button" onClick={onHow} className="mt-6 px-2 py-1 text-[16px] font-bold text-g-ink underline decoration-g/40 underline-offset-4" data-testid="ob-how">How we worked this out</button>
       </div>
       <p className="pb-3 text-center text-[14px] text-mute">You can change any of this in Me.</p>
@@ -310,14 +367,14 @@ function Target({ d, plan, onHow, onNext }: { d: Draft; plan: Plan; onHow: () =>
   )
 }
 
-function HowSheet({ d, plan, onClose }: { d: Draft; plan: Plan; onClose: () => void }) {
+function HowSheet({ d, plan, watch, onClose }: { d: Draft; plan: Plan; watch: boolean; onClose: () => void }) {
   const want = paceKcal(d.pace)
   const pace = PACE[d.pace].label
   // BMR + movement = daily burn, then the pace takes off (or adds) to give the target.
   const rows: [string, string, boolean?][] = [
     ['Resting burn (BMR)', `${fmt(plan.bmr)} kcal`],
-    [`Daily movement (${ACTIVITY_SHORT[d.activity].toLowerCase()})`, `+${fmt(plan.movement)} kcal`],
-    ['Your daily burn', `${fmt(plan.planBase)} kcal`, true],
+    watch ? ['Daily movement', 'From your watch'] : [`Daily movement (${ACTIVITY_SHORT[d.activity].toLowerCase()})`, `+${fmt(plan.movement)} kcal`],
+    [watch ? 'Plan base' : 'Your daily burn', `${fmt(plan.planBase)} kcal`, true],
   ]
   if (d.goal === 'lose' && plan.planDeficit > 0) rows.push([plan.floored ? `${pace} pace, held at the floor` : `${pace} pace`, `−${fmt(plan.planDeficit)} kcal`])
   if (d.goal === 'gain' && plan.planDeficit < 0) rows.push([`${pace} pace`, `+${fmt(-plan.planDeficit)} kcal`])
@@ -325,7 +382,7 @@ function HowSheet({ d, plan, onClose }: { d: Draft; plan: Plan; onClose: () => v
   const kg = weekKg(plan.planDeficit)
   const why =
     d.goal === 'keep'
-      ? `Keep matches your daily burn${plan.target > plan.planBase ? `, raised to ${floorName(plan)}` : ''}.`
+      ? `Keep matches your ${watch ? 'resting' : 'daily'} burn${plan.target > plan.planBase ? `, raised to ${floorName(plan)}` : ''}.`
       : plan.atMinimum
         ? `You're already at ${floorName(plan)}, so exercise creates your deficit.`
         : plan.floored
@@ -352,9 +409,9 @@ function HowSheet({ d, plan, onClose }: { d: Draft; plan: Plan; onClose: () => v
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[15px] leading-snug text-mute">Set from your daily burn ({fmt(plan.maintenance)} kcal) and current weight. They stay the same on exercise days.</p>
+          <p className="mt-2 text-[15px] leading-snug text-mute">Set from your {watch ? 'resting' : 'daily'} burn ({fmt(plan.maintenance)} kcal) and current weight. They stay the same on exercise days.</p>
         </div>
-        <p className="text-[15px] leading-snug text-mute">Watch already counts your movement? Turn daily movement off in Me.</p>
+        <p className="text-[15px] leading-snug text-mute">{watch ? 'Daily movement is off because your watch counts it. Each day, add its active calories with Quick add burn and your budget grows to match.' : 'Got a watch later? Turn daily movement off in Me.'}</p>
         <Button variant="ghost" onClick={onClose} data-testid="ob-how-close">Got it</Button>
       </div>
     </Sheet>

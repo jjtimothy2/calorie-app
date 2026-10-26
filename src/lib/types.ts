@@ -56,6 +56,10 @@ export type Entry = Macros & {
   // values above (kcal/protein/carbs/fat) are per 1 qty of the chosen serving
   /** v1.5: 'photo' when logged from an AI estimate (v1.6: with or without a photo; the value stays 'photo' for older data). Optional, so older data loads unchanged. The photo itself is never stored. */
   source?: 'photo'
+  /** v1.10: items logged together from one AI estimate share a groupId (Home shows them as one row). Optional, so older entries stay single rows. */
+  groupId?: string
+  /** v1.10: the AI's name for the whole meal (e.g. "Nasi ayam goreng"), on every item of the group. */
+  groupName?: string
 }
 
 export type ExerciseEntry = {

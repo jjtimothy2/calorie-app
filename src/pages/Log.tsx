@@ -11,7 +11,7 @@ import { foodEmoji } from '../data/foodEmoji'
 import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
 import { entryFromFood, entryFromUserFood, newId, useStore } from '../lib/store'
 import { USER_SERVING, type UserFood } from '../lib/myFoods'
-import { MineTag, MyFoodSheet } from '../components/MyFoodSheet'
+import { SavedMark, MyFoodSheet } from '../components/MyFoodSheet'
 import { readAi, type AiSettings } from '../lib/ai'
 import { downscalePhoto } from '../lib/photo'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
@@ -81,7 +81,9 @@ export default function Log() {
       setAiFlow((f) => (f ? { ...f, photo: url, photoError: false } : ai ? { ai, photo: url, photoError: false } : f))
     } catch { setAiFlow((f) => (f ? { ...f, photoError: true } : ai ? { ai, photo: null, photoError: true } : f)) }
   }
-  const logAi = (rows: LogItem[]) => {
+  const logAi = (rows: LogItem[], dish: string) => {
+    // v1.10: one groupId for everything logged from this estimate, so Home can show it as one meal row.
+    const groupId = rows.length > 1 ? newId() : undefined
     // v1.6: always the AI's own numbers, scaled by grams. Marked as from AI (source 'photo', kept for older data).
     const added: Entry[] = rows.map(({ item, grams }) => {
       const r = grams / item.ai.grams
@@ -90,6 +92,7 @@ export default function Log() {
         servingLabel: grams === item.ai.grams && item.ai.portion ? `${item.ai.portion} (${grams} g)` : `${grams} g`, servingMult: 1, qty: 1,
         kcal: Math.round(item.ai.kcal * r), protein: +(item.ai.protein * r).toFixed(1), carbs: +(item.ai.carbs * r).toFixed(1), fat: +(item.ai.fat * r).toFixed(1),
         createdAt: Date.now(), source: 'photo' as const,
+        ...(groupId ? { groupId, groupName: dish } : {}),
       }
     })
     for (const entry of added) dispatch({ type: 'addEntry', entry })
@@ -113,7 +116,7 @@ export default function Log() {
     setParams(next, { replace: true })
   }
 
-  // v1.9: the user's own foods sit in the same list as built-in foods (Recent, search, All foods) with a Mine tag.
+  // v1.9: the user's own foods sit in the same list as built-in foods (Recent, search, All foods) with a bookmark icon (v1.10, was a Mine tag).
   const mineAsFood = useMemo(() => new Map(myFoods.map((m) => [m.id, { id: m.id, name: m.name, category: 'My foods', servingLabel: USER_SERVING, grams: 0, kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat } as Food])), [myFoods])
   const anyFood = (id: string) => FOOD_BY_ID.get(id) ?? mineAsFood.get(id)
   const list = useMemo(() => {
@@ -207,11 +210,11 @@ export default function Log() {
         <ul aria-label="Foods" data-testid="food-list">
           {list.map((f) => (
             <li key={f.id} className="flex items-center justify-between gap-2 border-b border-line">
-              <button type="button" className="flex flex-1 items-center gap-3 py-2.5 text-left" onClick={() => pick(f)} aria-label={`${f.name}${mineAsFood.has(f.id) ? ' (my food)' : ''}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
+              <button type="button" className="flex flex-1 items-center gap-3 py-2.5 text-left" onClick={() => pick(f)} aria-label={`${f.name}${mineAsFood.has(f.id) ? ', saved food' : ''}, ${f.servingLabel}, ${f.kcal} kcal. Choose amount`}>
                 <span className="tile" aria-hidden="true">{foodEmoji(f.name)}</span>
                 <span className="min-w-0">
-                <div className="text-base font-semibold">{state.favourites.includes(f.id) && <span aria-hidden="true" className="text-carbs">★ </span>}{f.name}{mineAsFood.has(f.id) && <MineTag />}</div>
-                <div className="text-[13px] text-mute">{mineAsFood.has(f.id) ? `${f.servingLabel} · your food` : `${f.servingLabel} (${f.grams} g)`}</div>
+                <div className="text-base font-semibold">{state.favourites.includes(f.id) && <span aria-hidden="true" className="text-carbs">★ </span>}{f.name}{mineAsFood.has(f.id) && <SavedMark />}</div>
+                <div className="text-[13px] text-mute">{mineAsFood.has(f.id) ? f.servingLabel : `${f.servingLabel} (${f.grams} g)`}</div>
                 </span>
               </button>
               <div className="flex items-center gap-3">

@@ -52,6 +52,15 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.10 Watch question, saved food bookmark, AI meal groups
+
+- Onboarding asks "Do you wear a watch that tracks your burn?" after the goal. Yes turns daily movement off (includeMovement false), skips Activity, works the pace from resting burn and shows a note: add your watch's active calories each day with Quick add burn. No goes to Activity with movement on, as before. The pace you pick is kept, even when it lands on the floor (the example man with a watch: gentle 1,584, standard and faster 1,500 kcal).
+- Saved foods (calorie-app:foods) show a small bookmark icon in Recent, search and their sheets, with no text (screen readers hear "Saved food"). The Mine tag and the "your food" copy are gone.
+- An AI estimate with 2 or more items logs as one meal row on Today (name, item count, AI, total). Tapping it opens a breakdown: each item's kcal and macros, tap to edit, X to remove, and Delete whole meal with a Keep or Delete check. A 1-item estimate stays a normal row. History and other days still list items one by one.
+- Entries get optional groupId and groupName. Old calorie-app:v2 data loads unchanged, calorie-app:ai and calorie-app:foods keep their shape, and backups carry groups both ways.
+- Fix: editing an entry with decimal macros (AI items, like 4.9 g protein) no longer gets stuck on the number field's whole-number check.
+- Tests: tests/v110.mjs (390x844 and 375x667), plus updated v18-onboarding, v19-myfoods, v15-photo, v162-sheet, e2e, single and live. Screenshots: screenshots/v110-*.
+
 ## v1.9 My foods
 
 - A named quick add saves your food to My foods, kept in a new key, calorie-app:foods ({ version: 1, foods }). Unnamed quick adds stay one-off. calorie-app:v2 and calorie-app:ai are unchanged, and no foods key is written until you save one.

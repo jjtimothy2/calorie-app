@@ -1,5 +1,5 @@
 // v1.9 My foods: a named quick add saves (or updates, de-duped by name, case and spaces ignored) a food in a NEW key
-// calorie-app:foods; calorie-app:v2 keeps its shape. Your foods show in Recent and Log search with a "Mine" tag (ids u_<id>)
+// calorie-app:foods; calorie-app:v2 keeps its shape. Your foods show in Recent and Log search with a bookmark icon (v1.10, was a "Mine" tag; ids u_<id>)
 // and log like any food. Edit and delete them from Me; past entries are kept. Old foodId:null entries still render.
 // Backup export includes the key, import restores it (an older backup without it clears it), reset clears it.
 // WebKit with touch at 390x844 and 375x667. Screenshots: screenshots/v19-*.png.
@@ -99,21 +99,23 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal((await foods()).length, 2)
   })
 
-  await step(`${tag} Recent shows your foods with the Mine tag`, async () => {
+  await step(`${tag} Recent shows your foods with the saved mark`, async () => {
     await toHome(); await toLog()
     await page.getByRole('group', { name: 'Food list' }).getByRole('button', { name: 'Recent' }).click()
-    const row = page.getByRole('button', { name: /^Mum's nasi goreng \(my food\), 1 serving, 500 kcal/ })
+    const row = page.getByRole('button', { name: /^Mum's nasi goreng, saved food, 1 serving, 500 kcal/ })
     await row.waitFor()
-    assert.equal(await page.getByTestId('food-list').getByTestId('mine-tag').count(), 2)
+    assert.equal(await page.getByTestId('food-list').getByTestId('saved-mark').count(), 2)
     await shot('recent')
   })
 
-  await step(`${tag} search shows the Mine tag first; one tap and the sheet log it like a food`, async () => {
+  await step(`${tag} search shows the saved mark first; one tap and the sheet log it like a food`, async () => {
     await page.getByLabel('Search foods').fill('nasi gor')
     const list = page.getByTestId('food-list')
     const first = list.getByRole('listitem').first()
-    assert.match(await first.innerText(), /Mum's nasi goreng\s*Mine/i)
-    assert.match(await first.innerText(), /1 serving · your food/)
+    // v1.10: a bookmark icon (aria-label Saved food), no Mine tag and no "your food" text.
+    assert.match(await first.innerText(), /Mum's nasi goreng\s*1 serving/)
+    assert.doesNotMatch(await first.innerText(), /Mine|your food/i)
+    assert.equal(await first.getByRole('img', { name: 'Saved food' }).count(), 1)
     await shot('search-mine')
     const before = (await mineEntries()).length
     await first.getByRole('button', { name: /^Add one serving of Mum's nasi goreng/ }).click()
@@ -121,8 +123,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     let m = await mineEntries()
     assert.equal(m.length, before + 1)
     assert.equal(m.at(-1).foodId, foodId); assert.equal(m.at(-1).kcal, 500); assert.equal(m.at(-1).servingLabel, '1 serving')
-    await first.getByRole('button', { name: /^Mum's nasi goreng \(my food\)/ }).click()
-    await dialog.getByTestId('mine-tag').waitFor()
+    await first.getByRole('button', { name: /^Mum's nasi goreng, saved food/ }).click()
+    await dialog.getByTestId('saved-mark').waitFor()
     await dialog.getByRole('button', { name: 'Increase amount' }).click()
     await dialog.getByRole('button', { name: 'Add 1,000 kcal' }).click()
     await page.getByTestId('toast').waitFor()
@@ -136,7 +138,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal(await rows.count(), 4)
     assert.match(await rows.last().innerText(), /2 servings/)
     await rows.last().click()
-    await dialog.getByTestId('mine-tag').waitFor()
+    await dialog.getByTestId('saved-mark').waitFor()
     assert.equal(await page.inputValue('input[name=kcal]'), '1000')
     await page.fill('input[name=kcal]', '900')
     await dialog.getByRole('button', { name: 'Save' }).click()
@@ -191,13 +193,13 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal(await page.getByRole('button', { name: /^Edit Mum's nasi goreng/ }).count(), 4)
     // An orphaned entry still edits (as a plain quick add) and keeps its amount.
     await page.getByRole('button', { name: /^Edit Mum's nasi goreng/ }).last().click()
-    assert.equal(await dialog.getByTestId('mine-tag').count(), 0)
+    assert.equal(await dialog.getByTestId('saved-mark').count(), 0)
     await dialog.getByRole('button', { name: 'Save' }).click()
     assert.equal((await mineEntries()).at(-1).qty, 2)
     // Gone from search.
     await toLog()
     await page.getByLabel('Search foods').fill('nasi goreng spesial')
-    assert.equal(await page.getByTestId('food-list').getByTestId('mine-tag').count(), 0)
+    assert.equal(await page.getByTestId('food-list').getByTestId('saved-mark').count(), 0)
   })
 
   const importFile = async (text, name) => {

@@ -11,9 +11,13 @@ import { AfterThis, DeleteButton } from './FoodSheet'
 import { Sheet, Stepper } from './Sheet'
 import { Button, Chip } from './ui'
 
-/** Small "Mine" tag next to a user food's name. */
-export function MineTag() {
-  return <span className="ml-1.5 inline-block rounded-full bg-g-soft px-2 py-0.5 align-[2px] text-[11px] font-bold uppercase tracking-wide text-g-soft-ink" data-testid="mine-tag">Mine</span>
+/** v1.10: a small muted bookmark next to a saved food's name (no visible text, Jordy). Screen readers hear "Saved food". */
+export function SavedMark({ className = 'ml-1.5 h-[15px] w-[15px] align-[-2px]' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" role="img" aria-label="Saved food" data-testid="saved-mark" className={`inline-block shrink-0 text-mute-soft ${className}`} fill="currentColor">
+      <path d="M7 3.5h10A1.5 1.5 0 0 1 18.5 5v15.2a.6.6 0 0 1-.95.49L12 16.8l-5.55 3.89a.6.6 0 0 1-.95-.49V5A1.5 1.5 0 0 1 7 3.5z" />
+    </svg>
+  )
 }
 
 const macroLine = (f: { protein: number; carbs: number; fat: number }) =>
@@ -52,8 +56,8 @@ export function MyFoodSheet(props: Props) {
       <div className="flex items-start justify-between gap-3">
         <span className="tile h-12 w-12 text-[26px]" aria-hidden="true">{foodEmoji(food.name)}</span>
         <div className="min-w-0 flex-1">
-          <h2 className="title text-[24px] leading-tight">{init ? init.name : food.name}<MineTag /></h2>
-          <div className="text-[15px] text-mute">Your food · {fmt(food.kcal)} kcal a serving</div>
+          <h2 className="title text-[24px] leading-tight">{init ? init.name : food.name}<SavedMark className="ml-2 h-[18px] w-[18px] align-[1px]" /></h2>
+          <div className="text-[15px] text-mute">{fmt(food.kcal)} kcal a serving</div>
         </div>
         <button type="button" onClick={() => setEditing(true)} className="tap shrink-0 px-1 py-1 text-[15px] font-bold text-g-ink" data-testid="myfood-edit">Edit food</button>
       </div>
@@ -118,7 +122,7 @@ export function MyFoodEditSheet({ food, onClose, onDeleted }: { food: UserFood; 
           {([['Protein', p, setP], ['Carbs', c, setC], ['Fat', f, setF]] as const).map(([l, v, set]) => (
             <label key={l} className="flex flex-col gap-1 text-[13px] text-mute">
               {l}
-              <input className={input} type="number" inputMode="decimal" min={0} value={v} onChange={(ev) => set(ev.target.value)} name={`food-${l.toLowerCase()}`} />
+              <input className={input} type="number" inputMode="decimal" min={0} step="any" value={v} onChange={(ev) => set(ev.target.value)} name={`food-${l.toLowerCase()}`} />
             </label>
           ))}
         </fieldset>
@@ -127,7 +131,7 @@ export function MyFoodEditSheet({ food, onClose, onDeleted }: { food: UserFood; 
         <Button type="submit" disabled={!valid}>Save food</Button>
         {confirmDelete ? (
           <div className="flex flex-col gap-2 rounded-[18px] border border-line bg-bg p-3" role="group" aria-label="Confirm delete">
-            <p className="text-[15px] font-semibold">Delete {food.name} from your foods? Past entries stay in your log.</p>
+            <p className="text-[15px] font-semibold">Delete {food.name} from My foods? Past entries stay in your log.</p>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Keep</Button>
               <Button variant="danger" data-testid="myfood-delete-confirm" onClick={() => { deleteMyFood(food.id); (onDeleted ?? onClose)() }}>Delete</Button>

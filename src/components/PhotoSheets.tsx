@@ -139,7 +139,7 @@ type Props = {
   onClose: () => void
   onQuickAdd: () => void
   onFixKey: () => void
-  onLog: (rows: LogItem[]) => void
+  onLog: (rows: LogItem[], dish: string) => void
 }
 
 const Thumb = ({ photo, dim = false }: { photo: string | null; dim?: boolean }) => photo
@@ -292,7 +292,7 @@ export function AiFlow({ settings, photo, photoError, photoSource = 'camera', on
   )
 }
 
-function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }: { dish: string; scaleRef: string; items: PhotoItem[]; photo: string | null; note: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[]) => void }) {
+function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }: { dish: string; scaleRef: string; items: PhotoItem[]; photo: string | null; note: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[], dish: string) => void }) {
   const [rows, setRows] = useState(() => items.map((it) => ({ it, g: it.grams })))
   const view = rows.map((r) => ({ ...r, m: itemMacros(r.it, r.g), step: gramStep(r.it.grams) }))
   const total = view.reduce<PhotoMacros>((a, r) => ({ kcal: a.kcal + r.m.kcal, protein: a.protein + r.m.protein, carbs: a.carbs + r.m.carbs, fat: a.fat + r.m.fat }), { kcal: 0, protein: 0, carbs: 0, fat: 0 })
@@ -351,7 +351,7 @@ function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }:
       <p className="-mt-2 text-center text-[14px] text-mute">Estimates are rough. Adjust before logging.</p>
       <div className="flex gap-2.5">
         <Button variant="ghost" className={ghost} onClick={onEdit}>Edit</Button>
-        <Button className="flex-1" disabled={!n} onClick={() => onLog(rows.map((r) => ({ item: r.it, grams: r.g })))}>Log {n} {n === 1 ? 'item' : 'items'}</Button>
+        <Button className="flex-1" disabled={!n} onClick={() => onLog(rows.map((r) => ({ item: r.it, grams: r.g })), dish)}>Log {n} {n === 1 ? 'item' : 'items'}</Button>
       </div>
     </Sheet>
   )

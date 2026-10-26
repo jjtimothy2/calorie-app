@@ -3,7 +3,7 @@ import { fmt } from '../lib/calc'
 import { newId, useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
 import { cleanName, findByName, USER_SERVING } from '../lib/myFoods'
-import { MineTag, MyFoodEditSheet } from './MyFoodSheet'
+import { SavedMark, MyFoodEditSheet } from './MyFoodSheet'
 import { AfterThis, DeleteButton } from './FoodSheet'
 import { Sheet } from './Sheet'
 import { Button, Chip } from './ui'
@@ -19,9 +19,9 @@ export function QuickAddSheet(props: Props) {
   const e = props.mode === 'edit' ? props.entry : null
   const [name, setName] = useState(e ? e.name : '')
   const [kcal, setKcal] = useState(e ? String(Math.round(e.kcal * e.qty)) : '')
-  const [p, setP] = useState(e && e.protein ? String(e.protein * e.qty) : '')
-  const [c, setC] = useState(e && e.carbs ? String(e.carbs * e.qty) : '')
-  const [f, setF] = useState(e && e.fat ? String(e.fat * e.qty) : '')
+  const [p, setP] = useState(e && e.protein ? String(+(e.protein * e.qty).toFixed(1)) : '')
+  const [c, setC] = useState(e && e.carbs ? String(+(e.carbs * e.qty).toFixed(1)) : '')
+  const [f, setF] = useState(e && e.fat ? String(+(e.fat * e.qty).toFixed(1)) : '')
   const [meal, setMeal] = useState<Meal>(e ? e.meal : props.mode === 'add' ? props.meal : 'snacks')
   // v1.9: an entry logged from one of your foods is edited here too (its own numbers); the food itself via "Edit food".
   const mineFood = e?.foodId ? myFoodById.get(e.foodId) : undefined
@@ -54,6 +54,7 @@ export function QuickAddSheet(props: Props) {
       fat: (Number(f) || 0) / q,
       createdAt: e ? e.createdAt : Date.now(),
       ...(e?.source ? { source: e.source } : {}),
+      ...(e?.groupId ? { groupId: e.groupId, groupName: e.groupName } : {}),
     }
     if (props.mode === 'add') {
       dispatch({ type: 'addEntry', entry })
@@ -69,7 +70,7 @@ export function QuickAddSheet(props: Props) {
   return (
     <Sheet label={props.mode === 'add' ? 'Quick add calories' : 'Edit quick add'} onClose={props.onClose}>
       <div className="flex items-start justify-between gap-3">
-        <h2 className="title text-[24px] leading-tight">{props.mode === 'add' ? 'Quick add' : 'Edit quick add'}{mineFood && <MineTag />}</h2>
+        <h2 className="title text-[24px] leading-tight">{props.mode === 'add' ? 'Quick add' : e?.source === 'photo' ? 'Edit item' : 'Edit quick add'}{mineFood && <SavedMark className="ml-2 h-[18px] w-[18px] align-[1px]" />}</h2>
         {mineFood && (
           <button type="button" onClick={() => setEditFood(true)} className="tap shrink-0 px-1 py-1 text-[15px] font-bold text-g-ink" data-testid="myfood-edit">Edit food</button>
         )}
@@ -93,7 +94,7 @@ export function QuickAddSheet(props: Props) {
           {([['Protein', p, setP], ['Carbs', c, setC], ['Fat', f, setF]] as const).map(([l, v, set]) => (
             <label key={l} className="flex flex-col gap-1 text-[13px] text-mute">
               {l}
-              <input className={input} type="number" inputMode="decimal" min={0} value={v} onChange={(ev) => set(ev.target.value)} />
+              <input className={input} type="number" inputMode="decimal" min={0} step="any" value={v} onChange={(ev) => set(ev.target.value)} />
             </label>
           ))}
         </fieldset>

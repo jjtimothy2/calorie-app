@@ -1,4 +1,4 @@
-// v1.6.2 AI sheet checks, updated for v1.7 (no live camera: the AI button opens a Take photo / Type it menu, Type it opens
+// v1.6.2 AI sheet checks, updated for v1.7 and v1.10 (2+ items log as one AI meal row) (no live camera: the AI button opens a Take photo / Type it menu, Type it opens
 // the text-first sheet with the dashed photo strip). Acceptance checks in WebKit (Safari's engine) with touch at 390x844 (plus 375x667 for
 // layout and screenshots, and a reduced-motion run). Keyboard simulated by shrinking the viewport, as in v152-ios.mjs.
 // Usage: npm run build && npx vite preview --port 4174 & node tests/v162-sheet.mjs   (SHOTS=1 also writes v162-*.png)
@@ -148,6 +148,26 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
     await page.evaluate(() => document.activeElement?.blur())
     await keyboard(false)
     await close()
+  })
+
+  await step(`${tag}: v1.10 a typed estimate with 4 items logs as one AI meal row on Today; tap opens the breakdown`, async () => {
+    await open()
+    await note.tap(); await page.keyboard.type('Nasi ayam goreng')
+    await page.evaluate(() => document.activeElement?.blur())
+    await est.tap()
+    await dlg.getByText('Estimated from your description').waitFor()
+    await dlg.getByRole('button', { name: 'Log 4 items' }).tap()
+    await dlg.waitFor({ state: 'detached' })
+    await page.goto(BASE + '/')
+    const row = page.getByTestId('ai-group-row').last()
+    await row.waitFor()
+    assert.match(await row.innerText(), /Nasi ayam goreng[\s\S]*4 items/)
+    const rb = await row.boundingBox(); assert.ok(rb.height >= 44, 'row is a 44 px target')
+    await row.tap()
+    const sheet = page.getByTestId('ai-group-sheet')
+    await sheet.waitFor()
+    assert.equal(await sheet.getByTestId('ai-group-item').count(), 4)
+    await page.keyboard.press('Escape'); await sheet.waitFor({ state: 'detached' })
   })
   await ctx.close()
 }

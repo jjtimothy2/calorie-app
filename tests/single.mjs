@@ -32,6 +32,7 @@ try {
     await page.fill('input[name=weightKg]', '68')
     await page.getByTestId('ob-next').click()
     await page.getByTestId('ob-goal-lose').click()
+    await page.getByTestId('ob-watch-no').click() // v1.10 watch question
     await page.getByTestId('ob-act-light').click()
     await page.getByTestId('ob-next').click()
     await page.getByTestId('ob-target').waitFor()

@@ -6,6 +6,7 @@ import { FoodSheet } from '../components/FoodSheet'
 import { ProteinCard } from '../components/ProteinCard'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { SparkleIcon } from '../components/PhotoSheets'
+import { AiGroupSheet, groupRows, groupTitle } from '../components/AiGroupSheet'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
@@ -31,6 +32,9 @@ export default function Home() {
   const s = streak(state.entries, today)
   const [editing, setEditing] = useState<Entry | null>(null)
   const [editingEx, setEditingEx] = useState<ExerciseEntry | null>(null)
+  // v1.10: an open AI meal (its groupId). Editing one of its items hides the sheet, and it comes back after.
+  const [group, setGroup] = useState<string | null>(null)
+  const groupItems = group ? entries.filter((e) => e.groupId === group) : []
   const dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
   // Food you can still eat today while hitting the daily goal.
   const left = day.balance - day.goal
@@ -107,7 +111,23 @@ export default function Home() {
                 </div>
                 {list.length > 0 && (
                   <ul className="mt-2">
-                    {list.map((e) => (
+                    {groupRows(list).map((row) => row.kind === 'group' ? (
+                      <li key={row.id} className={row.items.some((e) => fresh.has(e.id)) ? 'row-in' : ''}>
+                        {/* v1.10: items from one AI estimate show as one row. Tap for the breakdown. */}
+                        <button type="button" disabled={closed} onClick={() => setGroup(row.id)} data-testid="ai-group-row" className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`${groupTitle(row.items)}, ${row.items.length} items from AI, ${fmt(row.kcal)} kcal. Open breakdown`}>
+                          <span className="tile relative" aria-hidden="true">
+                            {foodEmoji(row.lead.name)}
+                            <span className="absolute -bottom-1 -right-1 grid h-[18px] w-[18px] place-items-center rounded-full border border-line bg-card text-g"><SparkleIcon className="h-2.5 w-2.5" /></span>
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[16px] font-semibold leading-snug">{groupTitle(row.items)}</span>
+                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]} · {row.items.length} items · <SparkleIcon className="inline-block h-3 w-3 align-[-1px]" /> AI</span>
+                          </span>
+                          <span className="num text-[18px]">{fmt(row.kcal)}</span>
+                          <svg viewBox="0 0 24 24" className="-ml-1 h-4 w-4 shrink-0 text-mute-soft" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+                        </button>
+                      </li>
+                    ) : (() => { const e = row.entry; return (
                       <li key={e.id} className={fresh.has(e.id) ? 'row-in' : ''}>
                         <button type="button" disabled={closed} onClick={() => setEditing(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
                           <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
@@ -118,7 +138,7 @@ export default function Home() {
                           <span className="num text-[18px]">{fmt(entryTotals(e).kcal)}</span>
                         </button>
                       </li>
-                    ))}
+                    ) })())}
                   </ul>
                 )}
               </section>
@@ -140,6 +160,9 @@ export default function Home() {
       ) : editing ? (
         <QuickAddSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} />
       ) : null}
+      {group && !editing && groupItems.length > 0 && (
+        <AiGroupSheet key={group} items={groupItems} onEdit={(e) => setEditing(e)} onClose={() => setGroup(null)} />
+      )}
       {editingEx && editingEx.activityId ? (
         <ExerciseEditSheet key={editingEx.id} entry={editingEx} onClose={() => setEditingEx(null)} />
       ) : editingEx ? (
