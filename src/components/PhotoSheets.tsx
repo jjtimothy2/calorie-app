@@ -130,7 +130,9 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
   // A new or removed photo goes back to the input step; the text is kept.
   useEffect(() => { ctl.current?.abort(); setPhase({ k: 'input' }) }, [photo])
   const back = () => { ctl.current?.abort(); setPhase({ k: 'input' }) }
-  const ready = !!photo || !!note.trim()
+  const [textFirst, setTextFirst] = useState(false)
+  // v1.6.2: a photo, 2+ typed characters, or a chip.
+  const ready = !!photo || note.trim().length >= 2 || NOTE_CHIPS.some((c) => noteHas(note, c))
 
   const run = async () => {
     if (!ready) return
@@ -178,42 +180,68 @@ export function AiFlow({ settings, photo, photoError, onPickPhoto, onRemovePhoto
   }
 
   const loading = phase.k === 'loading'
+  // v1.6.2 photo-first sheet. The frame is big until the text field is tapped with no photo yet; then it folds into a
+  // slim "Add a photo" strip (one element, its height animates, so the field and chips slide with it). A photo always
+  // keeps it big. The textarea never remounts, so the v1.5.2 focus handling is untouched.
+  const strip = textFirst && !photo
+  const askWhat = strip
   return (
     <Sheet label="AI estimate" onClose={onClose}>
       <h2 className="title flex items-center gap-2 text-[26px] leading-tight"><SparkleIcon className="h-6 w-6 text-g" />AI estimate</h2>
-      <textarea
-        ref={noteRef}
-        rows={3}
-        value={note}
-        disabled={loading}
-        onChange={(e) => setNote(e.target.value)}
-        maxLength={300}
-        aria-label={photo ? 'What did you eat? (optional with a photo)' : 'What did you eat?'}
-        placeholder="What did you eat? e.g. 2 slices martabak manis, half a plate"
-        className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-3 text-[17px] font-normal leading-snug placeholder:text-mute"
-      />
       {photo ? (
-        <div className="flex items-center gap-3 rounded-xl border border-line bg-bg p-2" data-testid="photo-added">
-          <div className="relative shrink-0">
-            <Thumb photo={photo} dim={loading} />
-          </div>
-          <span className="min-w-0 flex-1 text-[16px] font-semibold">Photo added</span>
-          {!loading && <>
-            <button type="button" onClick={onPickPhoto} className="tap rounded-full px-3 py-2 text-[15px] font-bold text-g-ink">Change</button>
-            <button type="button" onClick={onRemovePhoto} aria-label="Remove photo" className="tap grid h-10 w-10 place-items-center rounded-full text-[18px] text-mute">✕</button>
-          </>}
+        <div className="frame-h relative shrink-0 overflow-hidden rounded-2xl border border-line bg-bg" data-testid="photo-added">
+          <img src={photo} alt="Your meal photo" className={`h-full w-full object-cover ${loading ? 'opacity-60' : ''}`} />
+          <span className="sr-only">Photo added</span>
+          {!loading && <div className="absolute inset-x-2 bottom-2 flex justify-end gap-2">
+            <button type="button" onClick={onPickPhoto} className="tap rounded-full bg-card/95 px-4 py-2 text-[15px] font-bold text-g-ink shadow-sm">Change</button>
+            <button type="button" onClick={onRemovePhoto} aria-label="Remove photo" className="tap grid h-10 w-10 place-items-center rounded-full bg-card/95 text-[18px] text-ink shadow-sm">✕</button>
+          </div>}
         </div>
       ) : (
-        <button type="button" onClick={onPickPhoto} disabled={loading} data-testid="add-photo" className="tap flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-dashed border-line px-4 py-2.5 text-left disabled:opacity-50">
-          <CameraIcon className="h-6 w-6 shrink-0" />
-          <span className="flex flex-col leading-tight">
-            <span className="text-[17px] font-bold">Add photo</span>
-            <span className="text-[14px] text-mute">Camera or library, optional</span>
+        <button
+          type="button"
+          onClick={() => { setTextFirst(false); onPickPhoto() }}
+          onTransitionEnd={(e) => { if (e.target === e.currentTarget && e.propertyName === 'height' && document.activeElement === noteRef.current) e.currentTarget.closest('[role=dialog]')?.querySelector<HTMLElement>('[data-keep-visible]')?.scrollIntoView({ block: 'nearest' }) }}
+          disabled={loading}
+          data-testid="add-photo"
+          data-state={strip ? 'strip' : 'big'}
+          aria-label={strip ? 'Add a photo (optional)' : 'Tap to take a photo'}
+          className={`frame-anim relative block w-full shrink-0 overflow-hidden rounded-2xl text-left disabled:opacity-50 ${strip ? 'h-[56px] bg-card' : 'frame-h bg-bg'}`}
+        >
+          <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl border-2 border-dashed border-line transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'opacity-0'}`} />
+          <span aria-hidden="true" className={`absolute inset-0 flex flex-col items-center justify-center gap-2 text-center transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-0' : 'opacity-100'}`}>
+            <span className="grid h-14 w-14 place-items-center rounded-full border border-line bg-card text-g"><CameraIcon className="h-7 w-7" /></span>
+            <span className="text-[17px] font-bold">Tap to take a photo</span>
+            <span className="-mt-1.5 text-[14px] text-mute">Camera or library</span>
+          </span>
+          <span aria-hidden="true" className={`absolute inset-x-0 top-0 flex h-[56px] items-center gap-3 px-4 transition-opacity duration-[280ms] ease-out ${strip ? 'opacity-100' : 'opacity-0'}`}>
+            <CameraIcon className="h-6 w-6 shrink-0 text-g" />
+            <span className="text-[16px] font-bold">Add a photo <span className="font-normal text-mute">(optional)</span></span>
           </span>
         </button>
       )}
-      {/* v1.6.1: a size reference in the shot gives better grams (the prompt looks for one). */}
-      {!photo && <p className="-mt-1.5 px-1 text-[13px] leading-snug text-mute [text-wrap:balance]" data-testid="photo-tip">Tip: put a spoon or your hand in the shot for better portions.</p>}
+      {/* v1.6.1: a size reference in the shot gives better grams. Folds away with the frame. */}
+      {!photo && (
+        <div className={`-mt-1.5 grid transition-[grid-template-rows,opacity] duration-[280ms] ease-out ${strip ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`} aria-hidden={strip}>
+          <p className="overflow-hidden px-1 text-[13px] leading-snug text-mute [text-wrap:balance]" data-testid="photo-tip">Tip: put a spoon or your hand in the shot for better portions.</p>
+        </div>
+      )}
+      <div className="-mb-1.5 grid px-1 text-[15px] font-bold" data-testid="note-label">
+        <span aria-hidden={askWhat} className={`col-start-1 row-start-1 transition-opacity duration-[280ms] ease-out ${askWhat ? 'opacity-0' : 'opacity-100'}`}>Add a note <span className="font-normal text-mute">(optional)</span></span>
+        <span aria-hidden={!askWhat} className={`col-start-1 row-start-1 transition-opacity duration-[280ms] ease-out ${askWhat ? 'opacity-100' : 'opacity-0'}`}>What did you eat?</span>
+      </div>
+      <textarea
+        ref={noteRef}
+        rows={2}
+        value={note}
+        disabled={loading}
+        onFocus={() => { if (!photo) setTextFirst(true) }}
+        onChange={(e) => setNote(e.target.value)}
+        maxLength={300}
+        aria-label={askWhat ? 'What did you eat?' : 'Add a note (optional)'}
+        placeholder="e.g. 2 slices martabak manis, half a plate"
+        className="w-full shrink-0 resize-none rounded-xl border border-line bg-bg px-3 py-3 text-[17px] font-normal leading-snug placeholder:text-mute"
+      />
       {photoError && <p role="alert" className="-mt-1 text-[15px] leading-snug text-danger" data-testid="photo-problem">Couldn’t open that photo. Try another one; JPEG and PNG work everywhere.</p>}
       <div className="flex flex-wrap gap-2" role="group" aria-label="Quick notes">
         {/* A chip tapped while typing keeps the keyboard up (focus stays in the text); otherwise it never opens it. */}

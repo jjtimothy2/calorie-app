@@ -67,7 +67,7 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
   })
 
   await step(`${tag}: one tap on the text focuses it, typing works, and focus survives the keyboard opening (Log re-render)`, async () => {
-    const note = dlg.getByRole('textbox', { name: 'What did you eat?' })
+    const note = dlg.getByRole('textbox') // v1.6.2: 'Add a note (optional)' until tapped with no photo, then 'What did you eat?'
     assert.notEqual(await active(page), 'textarea[What did you eat?]')
     await note.tap()
     assert.equal(await active(page), 'textarea[What did you eat?]', 'tap focuses the text field')

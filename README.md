@@ -52,6 +52,15 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.6.2 Photo-first AI sheet
+
+- Tapping the sparkle opens a big empty photo frame ("Tap to take a photo"), the spoon tip under it, an "Add a note (optional)" field, the chips and Estimate. The keyboard stays down.
+- Text first: tapping the field with no photo folds the frame into a 56 px dashed "Add a photo (optional)" strip, and the label crossfades to "What did you eat?". Tapping the strip unfolds the frame and opens the picker. A photo always keeps the frame big.
+- Estimate needs a photo, 2 or more typed characters, or a chip.
+- The fold is one 280 ms ease-out height animation (field and chips move with it, dashed border fades in). With reduced motion it switches instantly.
+- The sparkle in the 56 px Log button is 34 px.
+- Acceptance tests: tests/v162-sheet.mjs (iPhone WebKit).
+
 ## v1.6.1 AI button polish, size-aware photo prompt
 
 - The AI button on Log is sparkle only (no text), 56 px round, card background, line border, green sparkle. Its accessible name is "Estimate with AI".

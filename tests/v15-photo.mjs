@@ -74,7 +74,7 @@ const state = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('cal
 const dialog = (page) => page.getByRole('dialog')
 const AI_BTN = { name: 'Estimate with AI', exact: true } // v1.6.1
 /** Opens the AI sheet from the Log bar. */
-const openAi = async (page) => { await page.getByRole('button', AI_BTN).click(); await dialog(page).getByRole('textbox', { name: /What did you eat/ }).waitFor() }
+const openAi = async (page) => { await page.getByRole('button', AI_BTN).click(); await dialog(page).getByRole('textbox').waitFor() }
 /** Opens the AI sheet and adds the test photo. */
 const snap = async (page) => {
   await openAi(page)
@@ -162,40 +162,46 @@ try {
     assert.ok(!txt.includes(GEMINI_KEY) && !txt.includes('calorie-app:ai'), 'key not in backup')
   })
 
-  await step('v1.6 AI sheet: text box first, Add photo below, chips; Estimate disabled until text or photo; one tap focuses the text', async () => {
+  await step('v1.6.2 AI sheet: photo frame first, note field, chips, Estimate; Estimate needs a photo, 2+ characters or a chip; text tap folds the frame', async () => {
     await page.goto(BASE + '/log')
     await openAi(page)
     const d = dialog(page)
-    const note = d.getByRole('textbox', { name: 'What did you eat?' })
-    assert.equal(await note.getAttribute('placeholder'), 'What did you eat? e.g. 2 slices martabak manis, half a plate')
+    const note = d.getByRole('textbox', { name: 'Add a note (optional)' })
+    assert.equal(await note.getAttribute('placeholder'), 'e.g. 2 slices martabak manis, half a plate')
+    assert.notEqual(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA', 'keyboard stays down on open')
     const order = await d.evaluate((el) => {
       const y = (sel) => el.querySelector(sel).getBoundingClientRect().top
-      return [y('textarea'), y('[data-testid=add-photo]'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
+      return [y('[data-testid=add-photo]'), y('[data-testid=photo-tip]'), y('textarea'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
     })
-    assert.deepEqual([...order].sort((a, b) => a - b), order, 'text, Add photo, chips, Estimate from top to bottom')
-    assert.match(await d.getByTestId('add-photo').innerText(), /Add photo\s+Camera or library, optional/)
-    // v1.6.1: tip line right under Add photo, muted.
+    assert.deepEqual([...order].sort((a, b) => a - b), order, 'frame, tip, note, chips, Estimate from top to bottom')
+    const frame = d.getByTestId('add-photo')
+    assert.equal(await frame.getAttribute('data-state'), 'big')
+    assert.match(await frame.innerText(), /Tap to take a photo/)
+    assert.ok((await frame.boundingBox()).height >= 150, 'big frame')
     const tip = d.getByTestId('photo-tip')
     assert.equal(await tip.innerText(), 'Tip: put a spoon or your hand in the shot for better portions.')
-    const [ab, tb] = [await d.getByTestId('add-photo').boundingBox(), await tip.boundingBox()]
-    assert.ok(tb.y >= ab.y + ab.height && tb.y - (ab.y + ab.height) < 12, 'tip sits under Add photo')
+    const [ab, tb] = [await frame.boundingBox(), await tip.boundingBox()]
+    assert.ok(tb.y >= ab.y + ab.height && tb.y - (ab.y + ab.height) < 12, 'tip sits under the frame')
     assert.equal(await tip.evaluate((el) => getComputedStyle(el).color), 'rgb(107, 103, 95)', 'muted ink')
-    assert.equal(await d.locator('svg').evaluateAll((els) => els.length > 0), true)
     assert.ok(!(await d.innerText()).includes('✨'), 'no emoji sparkle in the sheet (SVG in palette colours)')
     const est = d.getByRole('button', { name: /Estimate/ })
     assert.equal(await est.isDisabled(), true, 'empty: Estimate disabled')
-    await note.fill('   ')
-    assert.equal(await est.isDisabled(), true, 'spaces only: still disabled')
-    await note.fill('')
-    await note.tap()
+    await note.click()
     assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA')
-    await page.keyboard.type('nasi padang')
-    assert.equal(await est.isDisabled(), false, 'text: Estimate enabled')
-    await note.fill('')
-    assert.equal(await est.isDisabled(), true)
-    // A chip alone counts as text.
+    await page.waitForTimeout(400)
+    assert.equal(await frame.getAttribute('data-state'), 'strip', 'text first folds the frame')
+    assert.equal(Math.round((await frame.boundingBox()).height), 56)
+    const box = d.getByRole('textbox', { name: 'What did you eat?' })
+    await page.keyboard.type('n')
+    assert.equal(await est.isDisabled(), true, '1 character: still disabled')
+    await page.keyboard.type('a')
+    assert.equal(await est.isDisabled(), false, '2 characters: Estimate enabled')
+    await box.fill('   ')
+    assert.equal(await est.isDisabled(), true, 'spaces only: disabled')
+    await box.fill('')
+    // A chip alone counts.
     await d.getByRole('group', { name: 'Quick notes' }).getByRole('button', { name: 'No rice' }).click()
-    assert.equal(await est.isDisabled(), false)
+    assert.equal(await est.isDisabled(), false, 'chip: Estimate enabled')
     await page.keyboard.press('Escape')
     await d.waitFor({ state: 'detached' })
   })
@@ -228,7 +234,7 @@ try {
   await step('photo + text: Add photo, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
     await snap(page)
     const d = dialog(page)
-    assert.equal(await d.getByTestId('add-photo').count(), 0, 'Add photo becomes the photo row')
+    assert.equal(await d.getByTestId('add-photo').count(), 0, 'the frame shows the photo')
     await d.getByRole('button', { name: 'Change' }).waitFor()
     await d.getByRole('button', { name: 'Remove photo' }).click()
     await d.getByTestId('add-photo').waitFor()

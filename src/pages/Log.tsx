@@ -213,7 +213,7 @@ export default function Log() {
               v1.6.1 (Reed): sparkle only, no label; card background, line border, green sparkle. */}
           {mode === 'food' && (online ? (
             <button type="button" onClick={openAi} aria-label="Estimate with AI" data-testid="ai-btn" className="tap grid h-[56px] w-[56px] shrink-0 place-items-center rounded-full border-2 border-line bg-card text-g">
-              <SparkleIcon className="h-[26px] w-[26px]" />
+              <SparkleIcon className="h-[34px] w-[34px]" />
             </button>
           ) : (
             <span role="note" data-testid="ai-offline" className="flex h-[56px] shrink-0 items-center gap-1.5 rounded-full border-2 border-dashed border-line px-3 text-[13px] font-semibold leading-tight text-mute">
