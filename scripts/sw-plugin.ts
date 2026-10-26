@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import type { Plugin } from 'vite'
 
 // Bumped per release (v1.1: new storage key and formulas). The content hash below changes on every build anyway.
-export const APP_VERSION = 'v1.10.1'
+export const APP_VERSION = 'v1.10.2'
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]))

@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { PhoneFrame } from './components/Layout'
 import { useStore } from './lib/store'
 import History from './pages/History'
@@ -11,10 +12,12 @@ import Nutrition from './pages/Nutrition'
 
 export default function App() {
   const { state } = useStore()
+  const { pathname } = useLocation()
   const has = !!state.profile
   const guard = (el: React.ReactElement) => (has ? el : <Navigate to="/onboarding" replace />)
   return (
     <PhoneFrame>
+      <ErrorBoundary key={pathname}>
       <Routes>
         <Route path="/onboarding" element={has ? <Navigate to={afterOnboarding.to} replace /> : <Onboarding />} />
         <Route path="/" element={guard(<Home />)} />
@@ -25,6 +28,7 @@ export default function App() {
         <Route path="/nutrition" element={guard(<Nutrition />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </ErrorBoundary>
     </PhoneFrame>
   )
 }

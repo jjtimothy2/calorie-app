@@ -99,13 +99,22 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   // Line draws in left to right across the visible window (stroke-dashoffset), bars grow from zero (CSS).
   useLayoutEffect(() => {
     const p = lineRef.current
-    if (!p || reducedMotion() || !p.getTotalLength) return
-    const L = p.getTotalLength()
-    const x0 = cx(start) - slot / 2
-    let lo = 0, hi = L
-    for (let j = 0; j < 24; j++) { const mid = (lo + hi) / 2; if (p.getPointAtLength(mid).x < x0) lo = mid; else hi = mid }
-    p.style.strokeDasharray = `${L} ${L}`
-    const a = p.animate([{ strokeDashoffset: L - lo }, { strokeDashoffset: 0 }], { duration: 650, delay: 200, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'backwards' })
+    // v1.10.2: a new user has no closed days, so there is no average and the path is empty.
+    // Safari throws 'The element's path is empty' when measuring it, which blanked the whole app. Skip the draw-in then.
+    if (!p || reducedMotion() || !p.getTotalLength || !p.animate || !(p.getAttribute('d') ?? '').trim()) return
+    let a: Animation
+    try {
+      const L = p.getTotalLength()
+      if (!(L > 0)) return
+      const x0 = cx(start) - slot / 2
+      let lo = 0, hi = L
+      for (let j = 0; j < 24; j++) { const mid = (lo + hi) / 2; if (p.getPointAtLength(mid).x < x0) lo = mid; else hi = mid }
+      p.style.strokeDasharray = `${L} ${L}`
+      a = p.animate([{ strokeDashoffset: L - lo }, { strokeDashoffset: 0 }], { duration: 650, delay: 200, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'backwards' })
+    } catch {
+      p.style.strokeDasharray = '' // the line just shows without the draw-in
+      return
+    }
     a.onfinish = () => { p.style.strokeDasharray = '' }
     return () => a.cancel()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

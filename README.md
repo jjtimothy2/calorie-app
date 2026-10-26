@@ -52,6 +52,13 @@ Me > Backup. Export downloads `calorie-backup-YYYY-MM-DD.json`: `{ app: "calorie
 
 Design tokens live in `src/index.css` (`@theme`). Calcs in `src/lib/calc.ts`, state in `src/lib/store.tsx`, foods in `src/data/foods.ts`, METs in `src/data/activities.ts`.
 
+## v1.10.2 History no longer goes blank for new users
+
+- Fixed: opening History before your first closed day froze on a blank screen in Safari (iPhone). The 7-day average line has nothing to draw until a day is closed, and measuring that empty line for its draw-in animation threw "The element's path is empty", which took the whole app down. The chart now skips the animation when there is no line. Reduced motion users were never affected.
+- History shows "Your history shows up here after your first full day." until the first day is closed, with today still listed below and the charts in place.
+- Every screen sits inside an error boundary: if a screen crashes it shows a "Something went wrong" card with Reload and Go to Today instead of a blank page. Moving to another tab clears it.
+- No data changes (still version 2). Cache v1.10.2. Tests: tests/v1102.mjs (fresh user, today only, after the first closed day, crash card, with motion on and off, at 390x844 and 375x667).
+
 ## v1.10.1 Add item, favourite saved foods, typed servings, My foods on Log, install hint
 
 - The AI breakdown sheet has "+ Add item": pick a favourite, saved, recent or searched food, or Quick add, and it joins that meal (same groupId, groupName and meal). A single AI item gets "+ Add item to this meal" in its edit sheet; adding one turns it into a group of 2.

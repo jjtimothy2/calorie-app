@@ -65,6 +65,8 @@ export default function History() {
   const hit = pDays.filter((d) => Math.round(d.protein) >= pTarget).length
   const pAvg = pDays.length ? pDays.reduce((s, d) => s + d.protein, 0) / pDays.length : 0
   const periodLabel = `${n === 7 ? 'Week' : '30 days'} · ${range(days[0].key, days[days.length - 1].key)}`
+  // v1.10.2: before the first closed day there is no history yet, so say so (today still shows below).
+  const noHistory = Object.keys(state.closedDays).length === 0
   const onPage = (p: number) => { setPage(p); setScrub(null) }
   const legend = (
     <div className="mt-1.5 flex items-center justify-center gap-3 text-xs text-mute">
@@ -82,6 +84,15 @@ export default function History() {
             <span aria-hidden="true">🔥 </span>{s} day streak
           </span>
         </header>
+        {noHistory && (
+          <div data-testid="history-empty" role="status"><Card className="flex items-start gap-3">
+            <span aria-hidden="true" className="text-[28px] leading-none">🗓️</span>
+            <div>
+              <p className="text-base font-semibold">Your history shows up here after your first full day.</p>
+              <p className="mt-1 text-[13px] text-mute">Log what you eat today. Close the day when you are done, or it closes itself at midnight.</p>
+            </div>
+          </Card></div>
+        )}
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-2" role="group" aria-label="View">
             <Chip on={view === 'balance'} onClick={() => { setView('balance'); setScrub(null) }}>Balance</Chip>
