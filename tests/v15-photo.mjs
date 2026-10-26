@@ -5,7 +5,6 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE as V1_STATE } from './v11-fixture.mjs'
 import { EST, PLATE, TODAY, geminiOk, jpegSize, makePlate, openaiOk } from './v15-fixture.mjs'
-import { CAMERA_MOCK } from './camera-mock.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const results = [], errors = []
@@ -55,10 +54,9 @@ const mock = async (ctx) => {
   })
 }
 
-const setup = async ({ camera, ...opts } = {}) => {
+const setup = async (opts = {}) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, reducedMotion: 'reduce', serviceWorkers: 'block', ...opts })
   await ctx.addInitScript((s) => { if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s)) }, V1_STATE)
-  await ctx.addInitScript(CAMERA_MOCK, camera ?? 'ok') // v1.6.3: live camera in the sheet (mocked)
   await mock(ctx)
   const page = await ctx.newPage()
   page.on('console', (m) => {
@@ -75,12 +73,12 @@ const saveKey = (page, provider, key) => page.evaluate(([p, k]) => localStorage.
 const state = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2') ?? '{}'))
 const dialog = (page) => page.getByRole('dialog')
 const AI_BTN = { name: 'Estimate with AI', exact: true } // v1.6.1
-/** Opens the AI sheet from the Log bar. */
-const openAi = async (page) => { await page.getByRole('button', AI_BTN).click(); await dialog(page).getByRole('textbox').waitFor() }
-/** Opens the AI sheet and adds the test photo. */
+/** v1.7: AI button > Type it opens the AI sheet from the Log bar. */
+const openAi = async (page) => { await page.getByRole('button', AI_BTN).click(); await page.getByRole('menuitem', { name: 'Type it' }).click(); await dialog(page).getByRole('textbox').waitFor() }
+/** v1.7: AI button > Take photo (native camera; a file chooser here) and the shot opens the sheet. */
 const snap = async (page) => {
-  await openAi(page)
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), dialog(page).getByRole('button', { name: 'Choose from gallery' }).click()])
+  await page.getByRole('button', AI_BTN).click()
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('menuitem', { name: 'Take photo' }).click()])
   assert.equal(chooser.isMultiple(), false)
   await chooser.setFiles(PLATE)
   await dialog(page).getByTestId('photo-added').waitFor()
@@ -90,7 +88,7 @@ const errorKind = (page) => dialog(page).getByTestId('photo-error').getAttribute
 try {
   const { ctx, page } = await setup()
 
-  await step('old v1 data loads; AI button (gradient star) sits right of Quick add on Log (Food only), input has no capture attribute', async () => {
+  await step('old v1 data loads; AI button (gradient star) sits right of Quick add on Log (Food only), library input has no capture, camera input has capture=environment', async () => {
     await page.goto(BASE + '/log')
     const cam = page.getByRole('button', AI_BTN)
     await cam.waitFor()
@@ -109,6 +107,9 @@ try {
     const input = page.getByTestId('photo-input')
     assert.equal(await input.getAttribute('accept'), 'image/*')
     assert.equal(await input.getAttribute('capture'), null)
+    const cap = page.getByTestId('photo-capture')
+    assert.equal(await cap.getAttribute('accept'), 'image/*')
+    assert.equal(await cap.getAttribute('capture'), 'environment')
     await page.getByRole('button', { name: 'Exercise', exact: true }).click()
     await page.getByRole('button', { name: /Quick add burn/ }).waitFor()
     assert.equal(await cam.count(), 0, 'not in Exercise mode')
@@ -164,37 +165,33 @@ try {
     assert.ok(!txt.includes(GEMINI_KEY) && !txt.includes('calorie-app:ai'), 'key not in backup')
   })
 
-  await step('v1.6.2 AI sheet: photo frame first, note field, chips, Estimate; Estimate needs a photo, 2+ characters or a chip; text tap folds the frame', async () => {
+  await step('v1.7 Type it sheet: text field focused, dashed strip above it, chips, Estimate; Estimate needs a photo, 2+ characters or a chip', async () => {
     await page.goto(BASE + '/log')
     await openAi(page)
     const d = dialog(page)
-    const note = d.getByRole('textbox', { name: 'Add a note (optional)' })
-    assert.equal(await note.getAttribute('placeholder'), 'e.g. 2 slices martabak manis, half a plate')
-    assert.notEqual(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA', 'keyboard stays down on open')
+    const box = d.getByRole('textbox', { name: 'What did you eat?' })
+    assert.equal(await box.getAttribute('placeholder'), 'e.g. 2 slices martabak manis, half a plate')
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA', 'Type it focuses the field')
     const order = await d.evaluate((el) => {
       const y = (sel) => el.querySelector(sel).getBoundingClientRect().top
-      return [y('[data-testid=photo-frame]'), y('[data-testid=photo-tip]'), y('textarea'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
+      return [y('[data-testid=add-photo]'), y('textarea'), y('[aria-label="Quick notes"]'), y('[data-keep-visible]')]
     })
-    assert.deepEqual([...order].sort((a, b) => a - b), order, 'frame, tip, note, chips, Estimate from top to bottom')
-    const frame = d.getByTestId('photo-frame')
-    assert.equal(await frame.getAttribute('data-state'), 'big')
-    await d.locator('[data-cam=live]').waitFor()
-    await d.getByRole('button', { name: 'Take photo' }).waitFor()
-    assert.ok((await frame.boundingBox()).height >= 150, 'big frame')
+    assert.deepEqual([...order].sort((a, b) => a - b), order, 'strip, note, chips, Estimate from top to bottom')
+    const strip = d.getByTestId('add-photo')
+    assert.equal(Math.round((await strip.boundingBox()).height), 56)
+    assert.equal(await strip.evaluate((el) => getComputedStyle(el).borderTopStyle), 'dashed')
+    assert.equal(await d.getByTestId('photo-tip').count(), 0, 'tip waits for the photo options')
+    await strip.click()
     const tip = d.getByTestId('photo-tip')
     assert.equal(await tip.innerText(), 'Tip: put a spoon or your hand in the shot for better portions.')
-    const [ab, tb] = [await frame.boundingBox(), await tip.boundingBox()]
-    assert.ok(tb.y >= ab.y + ab.height && tb.y - (ab.y + ab.height) < 12, 'tip sits under the frame')
+    const [ob, tb] = [await d.getByTestId('strip-options').boundingBox(), await tip.boundingBox()]
+    assert.ok(tb.y >= ob.y + ob.height && tb.y - (ob.y + ob.height) < 12, 'tip sits under the photo options')
     assert.equal(await tip.evaluate((el) => getComputedStyle(el).color), 'rgb(107, 103, 95)', 'muted ink')
+    await strip.click()
     assert.ok(!(await d.innerText()).includes('✨'), 'no emoji sparkle in the sheet (SVG in palette colours)')
     const est = d.getByRole('button', { name: /Estimate/ })
     assert.equal(await est.isDisabled(), true, 'empty: Estimate disabled')
-    await note.click()
-    assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TEXTAREA')
-    await page.waitForTimeout(400)
-    assert.equal(await frame.getAttribute('data-state'), 'strip', 'text first folds the frame')
-    assert.equal(Math.round((await frame.boundingBox()).height), 56)
-    const box = d.getByRole('textbox', { name: 'What did you eat?' })
+    await box.click()
     await page.keyboard.type('n')
     assert.equal(await est.isDisabled(), true, '1 character: still disabled')
     await page.keyboard.type('a')
@@ -234,14 +231,15 @@ try {
     await d.waitFor({ state: 'detached' })
   })
 
-  await step('photo + text: Add photo, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
+  await step('photo + text: Take photo, Remove, Choose from photos, chips toggle, downscaled JPEG sent with the note, no food list', async () => {
     await snap(page)
     const d = dialog(page)
-    assert.equal(await d.getByTestId('photo-frame').count(), 0, 'the frame shows the photo')
-    await d.getByRole('button', { name: 'Change' }).waitFor()
+    assert.equal(await d.getByTestId('photo-strip').count(), 0, 'the frame shows the photo')
+    await d.getByRole('button', { name: 'Retake' }).waitFor()
     await d.getByRole('button', { name: 'Remove photo' }).click()
-    await d.getByTestId('photo-frame').waitFor()
-    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByRole('button', { name: 'Choose from gallery' }).click()])
+    await d.getByTestId('photo-strip').waitFor()
+    await d.getByTestId('add-photo').click()
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), d.getByRole('button', { name: 'Choose from photos' }).click()])
     await chooser.setFiles(PLATE)
     await d.getByTestId('photo-added').waitFor()
     const est = d.getByRole('button', { name: /Estimate/ })

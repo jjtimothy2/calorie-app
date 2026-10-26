@@ -1,11 +1,11 @@
-// v1.6.2 photo-first AI sheet (v1.6.3: the big frame is the live camera, mocked here), acceptance checks in WebKit (Safari's engine) with touch at 390x844 (plus 375x667 for
+// v1.6.2 AI sheet checks, updated for v1.7 (no live camera: the AI button opens a Take photo / Type it menu, Type it opens
+// the text-first sheet with the dashed photo strip). Acceptance checks in WebKit (Safari's engine) with touch at 390x844 (plus 375x667 for
 // layout and screenshots, and a reduced-motion run). Keyboard simulated by shrinking the viewport, as in v152-ios.mjs.
 // Usage: npm run build && npx vite preview --port 4174 & node tests/v162-sheet.mjs   (SHOTS=1 also writes v162-*.png)
 import { webkit, devices } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE } from './v11-fixture.mjs'
 import { EST, PLATE, geminiOk, makePlate } from './v15-fixture.mjs'
-import { CAMERA_MOCK } from './camera-mock.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const SHOTS = process.env.SHOTS === '1'
@@ -31,7 +31,6 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
     const click = HTMLInputElement.prototype.click
     HTMLInputElement.prototype.click = function () { if (this.type === 'file') window.__picks++; return click.call(this) }
   }, STATE)
-  await ctx.addInitScript(CAMERA_MOCK, 'ok')
   const sent = []
   await ctx.route('https://generativelanguage.googleapis.com/**', (r) => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: CORS })
@@ -44,16 +43,16 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
   const shot = async (name) => { if (SHOTS && !reduced) { await page.waitForTimeout(350); await page.screenshot({ path: `${OUT}v162-${name}-${width}x${height}.png` }) } }
   const keyboard = async (open) => { await page.setViewportSize({ width, height: open ? height - kb : height }); await page.waitForTimeout(400) }
   const dlg = page.getByRole('dialog')
-  const frame = dlg.getByTestId('photo-frame')
   const strip = dlg.getByTestId('add-photo')
   const note = dlg.getByRole('textbox')
   const est = dlg.getByRole('button', { name: /Estimate/ })
   const active = () => page.evaluate(() => document.activeElement?.tagName.toLowerCase())
-  const label = () => page.evaluate(() => [...document.querySelectorAll('[data-testid=note-label] > span')].filter((s) => getComputedStyle(s).opacity === '1').map((s) => s.textContent).join('|'))
+  const label = () => page.evaluate(() => document.querySelector('[data-testid=note-label]').textContent)
   const h = async (l) => (await l.boundingBox()).height
   const open = async () => {
     await page.getByRole('button', { name: 'Estimate with AI', exact: true }).tap()
-    await frame.or(dlg.getByTestId('photo-added')).waitFor()
+    await page.getByRole('menuitem', { name: 'Type it' }).tap()
+    await strip.waitFor()
     await page.waitForTimeout(150)
   }
   const close = async () => { await page.keyboard.press('Escape'); await dlg.waitFor({ state: 'detached' }) }
@@ -69,65 +68,35 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
     await shot('log-bar')
   })
 
-  await step(`${tag}: photo first: big frame with the live camera, shutter and gallery, tip under it, "Add a note (optional)", chips, Estimate; keyboard stays down`, async () => {
+  await step(`${tag}: Type it: 56 px dashed strip, "What did you eat?" focused, chips, Estimate on screen; no frame or camera`, async () => {
     await open()
-    assert.equal(await frame.getAttribute('data-state'), 'big')
-    assert.ok(await h(frame) >= 132, `big frame (${await h(frame)} px)`)
-    await dlg.locator('[data-cam=live]').waitFor()
-    await dlg.getByRole('button', { name: 'Take photo' }).waitFor()
-    await dlg.getByRole('button', { name: 'Choose from gallery' }).waitFor()
-    assert.notEqual(await active(), 'textarea', 'no keyboard on open')
-    assert.equal(await label(), 'Add a note (optional)')
-    assert.equal(await note.getAttribute('aria-label'), 'Add a note (optional)')
-    const ys = await dlg.evaluate((el) => ['[data-testid=photo-frame]', '[data-testid=photo-tip]', '[data-testid=note-label]', 'textarea', '[aria-label="Quick notes"]', '[data-keep-visible]'].map((q) => el.querySelector(q).getBoundingClientRect().top))
-    assert.deepEqual([...ys].sort((a, b) => a - b), ys, 'frame, tip, label, field, chips, Estimate')
-    const [fb, tb] = [await frame.boundingBox(), await dlg.getByTestId('photo-tip').boundingBox()]
-    assert.ok(tb.y - (fb.y + fb.height) < 12, 'tip right under the frame')
+    assert.equal(Math.round(await h(strip)), 56)
+    assert.equal(await strip.evaluate((el) => getComputedStyle(el).borderTopStyle), 'dashed')
+    assert.equal(await active(), 'textarea', 'field focused straight away (keyboard up)')
+    assert.equal(await label(), 'What did you eat?')
+    assert.equal(await note.getAttribute('aria-label'), 'What did you eat?')
+    assert.equal(await dlg.locator('video, canvas').count(), 0, 'no camera preview')
+    const ys = await dlg.evaluate((el) => ['[data-testid=add-photo]', '[data-testid=note-label]', 'textarea', '[aria-label="Quick notes"]', '[data-keep-visible]'].map((q) => el.querySelector(q).getBoundingClientRect().top))
+    assert.deepEqual([...ys].sort((a, b) => a - b), ys, 'strip, label, field, chips, Estimate')
     assert.equal(await est.isDisabled(), true)
     const eb = await est.boundingBox()
     assert.ok(eb.y + eb.height <= height, 'Estimate on screen without scrolling')
-    const tr = await frame.evaluate((el) => { const c = getComputedStyle(el); return [c.transitionDuration, c.transitionTimingFunction, c.transitionProperty] })
-    if (reduced) assert.ok(/^0s/.test(tr[0]), 'reduced motion: no transition ' + tr)
-    else assert.ok(!/height|all/.test(tr[2]), 'v1.6.4: the frame never animates its height: ' + tr)
-    await shot('photo-first')
+    await shot('strip-text')
   })
 
-  await step(`${tag}: text first: tap the field, frame becomes a 56 px dashed strip in one layout change ${reduced ? '(instant)' : '(200 ms crossfade, no height animation)'}, label crossfades, focus and Estimate survive the keyboard`, async () => {
-    const big = await h(frame)
-    await note.tap()
-    await page.waitForTimeout(reduced ? 30 : 60)
-    const mid = await page.evaluate(() => {
-      const f = document.querySelector('[data-testid=photo-frame]')
-      return { h: f.getBoundingClientRect().height, dash: +getComputedStyle(f.querySelector('.border-dashed')).opacity }
-    })
-    if (reduced) assert.ok(Math.round(mid.h) === 56 && mid.dash === 1, 'reduced motion: strip at once ' + JSON.stringify(mid))
-    else {
-      // v1.6.4 (was a 280 ms height fold): the size changes at once, only opacity moves.
-      assert.ok(Math.round(mid.h) === 56, `strip size right away, no fold (${mid.h}, was ${big})`)
-      assert.ok(mid.dash > 0 && mid.dash < 1, 'dashed border fading in: ' + mid.dash)
-    }
-    await page.waitForTimeout(400)
-    assert.equal(await frame.getAttribute('data-state'), 'strip')
-    assert.equal(Math.round(await h(frame)), 56)
-    assert.equal(await frame.evaluate((el) => getComputedStyle(el.querySelector('.border-dashed')).borderTopStyle), 'dashed')
-    assert.equal(await strip.getAttribute('aria-label'), 'Add a photo (optional)')
-    assert.equal(await page.evaluate(() => window.__live()), 0, 'text first stops the camera')
-    assert.equal(await label(), 'What did you eat?')
-    assert.equal(await note.getAttribute('aria-label'), 'What did you eat?')
-    assert.equal(await active(), 'textarea')
+  await step(`${tag}: focus and Estimate survive the keyboard opening (Log re-render)`, async () => {
     await keyboard(true)
     assert.equal(await active(), 'textarea', 'focus stays when the keyboard opens and Log re-renders')
+    assert.equal(await page.getByTestId('qa-bar').count(), 0, 'Log saw the keyboard')
     await page.keyboard.type('Nasi goreng telur')
     assert.equal(await note.inputValue(), 'Nasi goreng telur')
     await estimateVisible(height - kb)
     assert.equal(await est.isDisabled(), false)
     await page.evaluate(() => document.activeElement?.blur())
     await keyboard(false)
-    assert.equal(await frame.getAttribute('data-state'), 'strip', 'stays a strip after the keyboard closes')
-    await shot('strip-text')
   })
 
-  await step(`${tag}: text-only estimate from the strip state (no image part), Edit comes back to the strip with the text`, async () => {
+  await step(`${tag}: text-only estimate (no image part), Edit comes back to the strip with the text`, async () => {
     sent.length = 0
     await est.tap()
     await dlg.getByText('Estimated from your description').waitFor()
@@ -135,27 +104,23 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
     assert.equal(await dlg.getByTestId('photo-scale').count(), 0)
     await dlg.getByRole('button', { name: 'Edit' }).tap()
     assert.equal(await note.inputValue(), 'Nasi goreng telur')
-    assert.equal(await frame.getAttribute('data-state'), 'strip')
+    await strip.waitFor()
   })
 
-  await step(`${tag}: tapping the strip expands the frame and restarts the camera (no picker); gallery photo the label is "Add a note (optional)"; photo estimate`, async () => {
+  await step(`${tag}: strip opens Take photo / Choose from photos; a library photo fills the big frame, label "Add a note (optional)"; photo estimate`, async () => {
     const picks = await page.evaluate(() => window.__picks)
     await strip.tap()
-    assert.equal(await page.evaluate(() => window.__picks), picks, 'no picker from the strip')
-    assert.equal(await frame.getAttribute('data-state'), 'big')
-    await page.waitForTimeout(400)
-    assert.ok(await h(frame) >= 132, "big again")
-    assert.equal(await label(), 'Add a note (optional)')
-    await dlg.locator('[data-cam=live]').waitFor()
-    assert.equal(await page.evaluate(() => window.__live()), 1, 'camera back on')
-    await dlg.getByRole('button', { name: 'Choose from gallery' }).tap()
-    assert.equal(await page.evaluate(() => window.__picks), picks + 1, 'gallery opens the picker')
+    assert.equal(await page.evaluate(() => window.__picks), picks, 'strip itself opens no picker')
+    assert.equal(await strip.getAttribute('aria-expanded'), 'true')
+    await dlg.getByRole('button', { name: 'Choose from photos' }).tap()
+    assert.equal(await page.evaluate(() => window.__picks), picks + 1, 'Choose from photos opens the picker')
     await page.getByTestId('photo-input').setInputFiles(PLATE)
     const added = dlg.getByTestId('photo-added')
     await added.waitFor()
-    assert.ok(await h(added) >= 132, "photo fills the big frame")
+    assert.ok(await h(added) >= 132, 'photo fills the big frame')
     assert.equal(await label(), 'Add a note (optional)')
     assert.equal(await note.getAttribute('aria-label'), 'Add a note (optional)')
+    assert.equal(await note.inputValue(), 'Nasi goreng telur', 'text kept')
     assert.equal(await dlg.getByTestId('photo-tip').count(), 0)
     await shot('photo-added')
     sent.length = 0
@@ -168,8 +133,7 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
 
   await step(`${tag}: photo then text: the frame stays big with the photo when the field is tapped, focus survives the keyboard`, async () => {
     await open()
-    assert.equal(await frame.getAttribute('data-state'), 'big', 'fresh sheet is photo first')
-    await page.getByTestId('photo-input').setInputFiles(PLATE)
+    await page.getByTestId('photo-capture').setInputFiles(PLATE)
     const added = dlg.getByTestId('photo-added')
     await added.waitFor()
     const big = await h(added)
@@ -191,4 +155,4 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
 await step('no console errors or warnings', async () => { assert.deepEqual(errors, []) })
 await browser.close()
 console.log(results.join('\n'))
-console.log(`${results.length} v1.6.2 sheet checks passed, no console errors`)
+console.log(`${results.length} v1.6.2/v1.7 sheet checks passed, no console errors`)

@@ -2,7 +2,6 @@
 // The key is never logged, never exported in backups, and only ever sent to the chosen provider.
 import { useEffect, useRef, useState } from 'react'
 import { AiError, DEFAULT_PROVIDER, KEY_URL, MODELS, PROVIDERS, PROVIDER_LABEL, clearAi, errorText, readAi, saveAi, testKey, type Provider } from '../lib/ai'
-import { readUi, reducedMotion, saveUi, type TextTransition } from '../lib/ui'
 import { Button, Card, Chip } from './ui'
 
 type Status = { tone: 'ok' | 'err' | 'info'; text: string } | null
@@ -16,8 +15,6 @@ export function AiCard({ focus = false }: { focus?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const ref = useRef<HTMLDivElement>(null)
-  const [trans, setTrans] = useState<TextTransition>(() => readUi().textTransition)
-  const pickTrans = (t: TextTransition) => { setTrans(t); saveUi({ textTransition: t }) }
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -101,18 +98,6 @@ export function AiCard({ focus = false }: { focus?: boolean }) {
           </p>
         )}
         {stored && <Button variant="danger" onClick={remove}>Remove key</Button>}
-        {/* v1.6.4: compare the two text-first transitions on the phone. Stored in calorie-app:ui. */}
-        <div className="flex flex-col gap-1.5 border-t border-line pt-3" data-testid="transition-setting">
-          <span className="text-[14px] font-semibold" id="tt-label">Text field transition</span>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="tt-label">
-            {([['fade', 'Smooth fade'], ['snap', 'Instant snap']] as const).map(([v, l]) => (
-              <Chip key={v} role="radio" aria-checked={trans === v} aria-pressed={undefined} on={trans === v} onClick={() => pickTrans(v)}>{l}</Chip>
-            ))}
-          </div>
-          <p className="text-[13px] leading-snug text-mute">
-            {reducedMotion() ? 'Reduce Motion is on, so the AI sheet always snaps.' : 'How the camera gives way when you tap the text field in the AI sheet.'}
-          </p>
-        </div>
         <p className="text-[13px] leading-snug text-mute">
           🔒 Your key stays on this phone. It isn’t in backups and is only sent to {PROVIDER_LABEL[provider]}. Photos are never kept.
           {provider === 'gemini' ? ' On the free tier Google may use your photos to improve its products.' : ''}

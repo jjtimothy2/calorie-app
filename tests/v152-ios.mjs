@@ -7,7 +7,6 @@ import { webkit, devices } from 'playwright'
 import assert from 'node:assert/strict'
 import { STATE } from './v11-fixture.mjs'
 import { EST, PLATE, geminiOk, makePlate } from './v15-fixture.mjs'
-import { CAMERA_MOCK } from './camera-mock.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const SHOTS = process.env.SHOTS === '1'
@@ -30,7 +29,6 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
     if (!localStorage.getItem('calorie-app:ai')) localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: 'gemini', key: 'AIzaTEST-not-a-real-key-000000000000' }))
   }, STATE)
-  await ctx.addInitScript(CAMERA_MOCK, 'ok') // v1.6.3 live camera (mocked)
   await ctx.route('https://generativelanguage.googleapis.com/**', (r) => r.request().method() === 'OPTIONS'
     ? r.fulfill({ status: 204, headers: CORS })
     : r.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: JSON.stringify(geminiOk(EST)) }))
@@ -57,19 +55,24 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     assert.ok(qb.x >= 16, 'Quick add keeps its left margin')
     await shot('log-bar')
     await btn.tap()
+    await page.getByRole('menuitem', { name: 'Type it' }).tap() // v1.7 menu
     await dlg.getByRole('heading', { name: 'AI estimate' }).waitFor()
+    assert.equal(await active(page), 'textarea[What did you eat?]', 'v1.7: Type it focuses the field')
     assert.equal(await dlg.getByRole('button', { name: /Estimate/ }).isDisabled(), true, 'empty sheet: Estimate disabled')
-    // v1.6.1 tip under Add photo: fits the sheet, at most 2 balanced lines, no overflow.
+    // v1.6.1 tip (v1.7: under the strip's photo options): fits the sheet, at most 2 balanced lines, no overflow.
+    await dlg.getByTestId('add-photo').tap()
     const tip = dlg.getByTestId('photo-tip')
     await tip.waitFor()
     const tm = await tip.evaluate((el) => ({ h: el.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(el).lineHeight), over: el.scrollWidth > el.clientWidth, r: el.getBoundingClientRect().right }))
     assert.ok(!tm.over && tm.r <= width - 16, 'tip inside the sheet')
     assert.ok(tm.h <= tm.lh * 2 + 1, `tip at most 2 lines (${tm.h} px)`)
     await shot('ai-empty')
+    await dlg.getByTestId('add-photo').tap()
+    await tip.waitFor({ state: 'detached' })
   })
 
   await step(`${tag}: one tap on the text focuses it, typing works, and focus survives the keyboard opening (Log re-render)`, async () => {
-    const note = dlg.getByRole('textbox') // v1.6.2: 'Add a note (optional)' until tapped with no photo, then 'What did you eat?'
+    const note = dlg.getByRole('textbox') // v1.7: 'What did you eat?' with no photo
     assert.notEqual(await active(page), 'textarea[What did you eat?]')
     await note.tap()
     assert.equal(await active(page), 'textarea[What did you eat?]', 'tap focuses the text field')

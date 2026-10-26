@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FocusEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type FocusEvent, type ReactNode } from 'react'
 
 const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select'
 
@@ -9,12 +9,14 @@ const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), te
  * Also follows the on-screen keyboard (visualViewport) so the focused field and the button under it stay visible.
  * v1.6.4: the keyboard offset is written straight to the sheet (CSS `translate`, rAF-throttled, a short eased transition)
  * instead of React state + `bottom`, so the sheet glides with the keyboard edge with no re-render or layout jump.
+ * v1.7: the first focus is a layout effect, so a sheet opened from a tap focuses its field inside that same tap (iOS only
+ * raises the keyboard for a focus in the user gesture; "Type it" relies on this).
  */
 export function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current
     first?.focus({ preventScroll: true })
