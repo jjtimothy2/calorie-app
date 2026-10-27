@@ -18,6 +18,7 @@ const step = async (name, fn) => {
 const pad = (n) => String(n).padStart(2, '0')
 const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const DAY = 86_400_000
+const addDaysKey = (k, n) => { const [y, m, d] = k.split('-').map(Number); return key(new Date(y, m - 1, d + n)) }
 const now = Date.now()
 const TODAY = key(new Date())
 const D2 = key(new Date(now - 2 * DAY))
@@ -30,7 +31,7 @@ const SEED = {
   closedDays: {},
   favourites: [],
 }
-const lsState = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
+const lsState = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')))
 const seed = (p, extra = {}) => p.evaluate(([s, extra]) => {
   localStorage.clear()
   localStorage.setItem('calorie-app:v1', JSON.stringify(s))
@@ -118,10 +119,10 @@ try {
     file = await dl.path()
     const j = JSON.parse(readFileSync(file, 'utf8'))
     assert.equal(j.app, 'calorie-counter')
-    assert.equal(j.schema, 2)
+    assert.equal(j.schema, 3)
     assert.ok(Math.abs(Date.parse(j.exportedAt) - Date.now()) < 60_000)
-    assert.equal(j.data['calorie-app:v2'].entries.length, 3)
-    assert.equal(j.data['calorie-app:v2'].version, 2)
+    assert.equal(j.data['calorie-app:v3'].entries.length, 3)
+    assert.equal(j.data['calorie-app:v3'].version, 3)
     assert.equal(j.data['calorie-app:v1'], undefined) // the legacy 1.0 copy is not exported
     assert.equal(j.data['calorie-app:backup'], undefined)
     assert.equal(await page.getByTestId('last-backup').innerText(), 'Last backup: today')
@@ -159,15 +160,30 @@ try {
     await dlg.getByRole('button', { name: 'Replace my data' }).click()
     await page.waitForURL(BASE + '/')
     const st = await lsState(page)
-    assert.equal(st.version, 2)
-    assert.deepEqual([st.profile.includeMovement, st.profile.goalWeightKg, st.profile.pace, st.profile.bmr], [true, 70, 'standard', 1500])
+    assert.equal(st.version, 3)
+    // v1.13: Standard 0.5 kg a week for 26 weeks: 70 - 13 = 57 kg by today + 182, keeping the 550 a day.
+    assert.deepEqual([st.profile.includeMovement, st.profile.goalWeightKg, st.profile.goalDate, 'pace' in st.profile, st.profile.dailyGoal, st.profile.bmr], [true, 57, addDaysKey(TODAY, 182), false, 550, 1500])
     assert.deepEqual(st.entries, SEED.entries)
     assert.deepEqual(st.exercises, SEED.exercises)
   })
 
+  await step('v1.13: a v1.12 backup (schema 2, Gentle pace, goal 64 kg) restores with a goal date that keeps its 275 a day', async () => {
+    const old = OUT + '../node_modules/.tmp/backup-v2.json'
+    const v2 = { version: 2, profile: { ...SEED.profile, bmr: 1500, bmrCustom: true, includeMovement: true, pace: 'gentle', goalWeightKg: 64, dailyGoal: 275, target: 2025, macros: { protein: null, carbs: null, fat: null } }, entries: SEED.entries, exercises: SEED.exercises, closedDays: {}, favourites: [] }
+    writeFileSync(old, JSON.stringify({ app: 'calorie-counter', schema: 2, exportedAt: '2026-10-20T00:00:00.000Z', data: { 'calorie-app:v2': v2 } }))
+    await page.goto(BASE + '/settings')
+    await page.getByTestId('import-file').setInputFiles(old)
+    await page.getByRole('dialog', { name: 'Restore backup' }).getByRole('button', { name: 'Replace my data' }).click()
+    await page.waitForURL(BASE + '/')
+    const st = await lsState(page)
+    // 6 kg to go at 0.25 kg a week: ceil(6 / 0.25 x 7) = 168 days.
+    assert.deepEqual([st.version, st.profile.goalWeightKg, st.profile.goalDate, 'pace' in st.profile, st.profile.dailyGoal, st.profile.goalAssumed], [3, 64, addDaysKey(TODAY, 168), false, 275, true])
+    assert.deepEqual(st.entries, SEED.entries)
+  })
+
   await step('import over existing data asks to replace; cancel changes nothing', async () => {
     await page.goto(BASE + '/settings')
-    await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('calorie-app:v2')); return s })
+    await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('calorie-app:v3')); return s })
     await page.getByTestId('import-file').setInputFiles(file)
     const dlg = page.getByRole('dialog', { name: 'Restore backup' })
     await dlg.getByText('This replaces everything currently on this device.').waitFor()

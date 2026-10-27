@@ -102,7 +102,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await shotOf(page)('add-calories-sheet')
     await dialog.getByRole('button', { name: 'Add 140 kcal' }).click()
     await page.getByTestId('toast').waitFor()
-    const st = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), V2)
+    const st = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), 'calorie-app:v3')
     assert.equal(st.entries.find((x) => x.name === 'Kopi susu').meal, 'beverages')
   })
 
@@ -154,7 +154,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   await step(`${tag} old data: a v1.1-era state loads with every meal unchanged, Beverages empty, History and Nutrition fine`, async () => {
     const c = await newCtx([V1, JSON.stringify(V1_STATE)]); const pg = await c.newPage(); watchErrors(pg)
     await pg.goto(BASE + '/'); await pg.getByTestId('eaten').waitFor()
-    const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V2)
+    const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), 'calorie-app:v3')
     const before = Object.fromEntries(V1_STATE.entries.map((x) => [x.id, x.meal]))
     assert.deepEqual(Object.fromEntries(st.entries.map((x) => [x.id, x.meal])), before, 'meals unchanged')
     assert.match(await pg.getByTestId('meal-beverages').innerText(), /^Beverages/)
@@ -166,7 +166,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     const c = await newCtx([V2, JSON.stringify(SEED)]); const pg = await c.newPage(); watchErrors(pg)
     await pg.goto(BASE + '/settings'); await pg.getByTestId('developer').locator('summary').click(); await pg.getByRole('button', { name: 'Load demo week' }).click()
     await pg.getByRole('heading', { name: 'History' }).waitFor()
-    const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V2)
+    const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), 'calorie-app:v3')
     const tea = st.entries.filter((x) => x.foodId === 'es-teh-manis'); assert.ok(tea.length >= 1)
     assert.ok(tea.every((x) => x.meal === 'beverages'), 'every Es teh manis is a beverage')
     await c.close()

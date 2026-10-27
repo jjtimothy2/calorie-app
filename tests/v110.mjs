@@ -13,7 +13,8 @@ import { STATE } from './v11-fixture.mjs'
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const OUT = new URL('../screenshots/', import.meta.url).pathname
 const TMP = '/tmp/v110/'; mkdirSync(TMP, { recursive: true })
-const V2 = 'calorie-app:v2', AIK = 'calorie-app:ai'
+const V2 = 'calorie-app:v2', V3 = 'calorie-app:v3', AIK = 'calorie-app:ai' // v1.13: seeds stay v1/v2 (migrated on load); reads use v3
+const D140 = (() => { const d = new Date(); d.setDate(d.getDate() + 140); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
 const AI = JSON.stringify({ provider: 'gemini', key: 'AIzaTEST-not-a-real-key-000000000000' })
 const results = [], errors = []
 const step = async (name, fn) => {
@@ -47,14 +48,20 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await pg.getByTestId('ob-age').fill('32'); await pg.getByTestId('ob-next').click()
       await pg.getByTestId('ob-height').fill('175'); await pg.getByTestId('ob-weight').fill('92'); await pg.getByTestId('ob-next').click()
       await pg.getByTestId(`ob-goal-${goal}`).click()
+      if (goal !== 'keep') {
+        // v1.13: goal weight and By when replace the pace step. 10 kg by 140 days out: 10 x 7,700 / 140 = 550 a day.
+        await pg.getByTestId('ob-goal-weight').waitFor()
+        await pg.fill('input[name=goalWeightKg]', '82'); await pg.getByTestId('ob-next').click()
+        await pg.getByTestId('by-custom').click(); await pg.getByTestId('by-date').fill(D140); await pg.getByTestId('ob-next').click()
+      }
       await pg.getByTestId('ob-watch').waitFor()
     }
-    const ls = () => pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V2)
+    const ls = () => pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V3)
 
-    await step(`${tag} watch question comes after goal and before Activity, two big answers`, async () => {
+    await step(`${tag} watch question comes after goal weight and By when, before Activity, two big answers`, async () => {
       await toGoal()
       assert.equal(await pg.locator('main h1').first().innerText(), 'Do you wear a watch that tracks your burn?')
-      assert.equal(await label(), 'Question 5 of 7')
+      assert.equal(await label(), 'Question 7 of 8')
       for (const id of ['ob-watch-yes', 'ob-watch-no']) { await tall(pg.getByTestId(id), id); assert.equal(await pg.getByTestId(id).getAttribute('aria-pressed'), 'false') }
       assert.match(await pg.getByTestId('ob-watch-yes').innerText(), /Yes, I use a watch/)
       assert.match(await pg.getByTestId('ob-watch-no').innerText(), /^No/)
@@ -63,52 +70,42 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await shot('watch-question')
     })
 
-    await step(`${tag} Yes skips Activity, shows the Quick add burn note, and works the pace from resting burn (Faster held at 1,500)`, async () => {
+    await step(`${tag} Yes skips Activity and works the plan from resting burn: 1,859 - 550 = 1,309, a soft (never blocking) warning, the Quick add burn note`, async () => {
       await pg.getByTestId('ob-watch-yes').click()
-      await pg.getByTestId('ob-pace').waitFor()
+      await pg.getByTestId('ob-target').waitFor()
       assert.equal(await pg.getByTestId('ob-act-light').count(), 0)
-      assert.equal(await label(), 'Question 6 of 6')
+      assert.equal(await pg.getByTestId('ob-pace').count(), 0)
+      assert.equal(await num(pg.getByTestId('target')), 1309)
+      // v1.13: no 1,500 floor on a new plan; under 1,500 for a man shows the soft warning instead.
+      assert.match(await pg.getByTestId('pace-warning').innerText(), /1,500/)
+      assert.equal(await pg.getByTestId('ob-next').isDisabled(), false)
       const note = pg.getByTestId('ob-watch-note')
       assert.match(await note.innerText(), /active calories each day with Quick add burn/)
-      // BMR 1859, no movement. Gentle 1584, Standard 1309 -> 1,500 floor, Faster 1034 -> 1,500 floor.
-      assert.match(await pg.getByTestId('ob-pace-gentle').innerText(), /1,584 kcal/)
-      assert.match(await pg.getByTestId('ob-pace-standard').innerText(), /1,500 kcal/)
-      assert.match(await pg.getByTestId('ob-pace-faster').innerText(), /1,500 kcal/)
-      await pg.getByTestId('ob-pace-gentle').click()
-      assert.match(await pg.getByTestId('ob-pace-hint').innerText(), /About 275 kcal a day under your 1,859 kcal resting burn/)
-      await pg.getByTestId('ob-pace-faster').click()
-      assert.match(await pg.getByTestId('ob-pace-hint').innerText(), /Faster is held at the 1,500 kcal minimum/)
-      assert.equal(await pg.getByTestId('ob-pace-faster').getAttribute('aria-pressed'), 'true')
-      await noSideways(pg, 'pace with watch note')
+      await noSideways(pg, 'target with watch note')
       await note.scrollIntoViewIfNeeded()
       await shot('watch-yes-note')
     })
 
-    await step(`${tag} Yes target: Faster stays Faster on the floor, note repeated, How sheet says movement comes from the watch`, async () => {
-      await pg.getByTestId('ob-next').click()
-      await pg.getByTestId('ob-target').waitFor()
-      assert.equal(await num(pg.getByTestId('target')), 1500)
-      assert.match(await pg.getByTestId('floor-line').innerText(), /1,500 kcal minimum/)
-      await pg.getByTestId('ob-watch-note').waitFor()
+    await step(`${tag} Yes target: How sheet says movement comes from the watch; Back keeps the answers; saved with movement off`, async () => {
       await pg.getByTestId('ob-how').click()
       const sheet = pg.getByRole('dialog', { name: 'How we worked this out' })
       const t = await sheet.innerText()
       assert.match(t, /Daily movement\s*From your watch/)
       assert.match(t, /Quick add burn/)
       await pg.getByTestId('ob-how-close').click(); await sheet.waitFor({ state: 'detached' })
-      // Back: pace (Faster kept), then the watch question (Yes kept), skipping Activity.
-      await pg.getByTestId('ob-back').click()
-      assert.equal(await pg.getByTestId('ob-pace-faster').getAttribute('aria-pressed'), 'true')
+      // Back: the watch question (Yes kept, Activity skipped), then By when (the custom date kept).
       await pg.getByTestId('ob-back').click()
       assert.equal(await pg.getByTestId('ob-watch-yes').getAttribute('aria-pressed'), 'true')
-      await pg.getByTestId('ob-watch-yes').click()
-      await pg.getByTestId('ob-pace').waitFor()
+      await pg.getByTestId('ob-back').click()
+      assert.equal(await pg.getByTestId('by-date').inputValue(), D140)
       await pg.getByTestId('ob-next').click()
+      await pg.getByTestId('ob-watch-yes').click()
+      await pg.getByTestId('ob-target').waitFor()
       await pg.getByTestId('ob-next').click(); await pg.getByTestId('ob-skip').click()
       await pg.waitForURL(BASE + '/')
       await pg.getByTestId('balance').waitFor()
       const p = (await ls()).profile
-      assert.deepEqual([p.includeMovement, p.pace, p.target, p.bmr, p.bmrCustom], [false, 'faster', 1500, 1859, false])
+      assert.deepEqual([p.includeMovement, p.goalDate, 'pace' in p, p.target, p.bmr, p.bmrCustom], [false, D140, false, 1309, 1859, false])
       assert.equal(await pg.getByTestId('eq-movement').count(), 0)
     })
 
@@ -116,10 +113,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await toGoal()
       await pg.getByTestId('ob-watch-no').click()
       await pg.getByTestId('ob-act-light').click()
-      await pg.getByTestId('ob-pace').waitFor()
+      await pg.getByTestId('ob-target').waitFor()
       assert.equal(await pg.getByTestId('ob-watch-note').count(), 0)
-      await pg.getByTestId('ob-next').click()
-      assert.equal(await num(pg.getByTestId('target')), 2006)
+      assert.equal(await num(pg.getByTestId('target')), 2006) // 1,859 + light 697 - 550
       assert.equal(await pg.getByTestId('ob-watch-note').count(), 0)
       await pg.getByTestId('ob-next').click(); await pg.getByTestId('ob-skip').click()
       await pg.waitForURL(BASE + '/')
@@ -182,9 +178,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
         s.entries.push(ai('g1', 'Nasi putih', 267, 4.9, 58.7, 0.5, G, 1), ai('g2', 'Ayam goreng', 330, 25, 8, 21, G, 1), ai('g3', 'Sambal', 40, 0.5, 4, 2.5, G, 1),
           ai('s1', 'Es teh manis', 90, 0, 22, 0, {}, 2), ai('lone', 'Kerupuk', 60, 1, 7, 3, { groupId: 'g-lone', groupName: 'Snack' }, 3))
         localStorage.setItem(k, JSON.stringify(s))
-      }, [V2])
+      }, [V3])
       await toHome()
-      oldKeys = (await ls(V2)).entries.filter((e) => !e.groupId).map((e) => Object.keys(e).sort().join())
+      oldKeys = (await ls(V3)).entries.filter((e) => !e.groupId).map((e) => Object.keys(e).sort().join())
       const rows = page.getByTestId('ai-group-row')
       assert.equal(await rows.count(), 1)
       const row = rows.first()
@@ -227,7 +223,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       const sheet = page.getByTestId('ai-group-sheet')
       await sheet.waitFor()
       assert.equal(await num(sheet.getByTestId('ai-group-total')), 670)
-      const e = (await ls(V2)).entries.find((x) => x.id === 'g1')
+      const e = (await ls(V3)).entries.find((x) => x.id === 'g1')
       assert.deepEqual([e.kcal, e.protein, e.groupId, e.groupName, e.source, e.foodId], [300, 5.5, 'g-test', 'Nasi ayam goreng', 'photo', null])
       assert.ok(!((await ls('calorie-app:foods'))?.foods ?? []).some((f) => f.name === 'Nasi putih'))
     })
@@ -237,7 +233,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await sheet.getByRole('button', { name: 'Remove Sambal' }).click()
       await page.waitForFunction(() => document.querySelectorAll('[data-testid=ai-group-item]').length === 2)
       assert.equal(await num(sheet.getByTestId('ai-group-total')), 630)
-      assert.equal((await ls(V2)).entries.some((e) => e.id === 'g3'), false)
+      assert.equal((await ls(V3)).entries.some((e) => e.id === 'g3'), false)
       await page.keyboard.press('Escape'); await sheet.waitFor({ state: 'detached' })
       assert.equal(await num(page.getByTestId('eaten')), total - 40 + 33)
       assert.match(await page.getByTestId('ai-group-row').innerText(), /2 items[\s\S]*630/)
@@ -245,13 +241,13 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
 
     let backupText
     await step(`${tag} backup export keeps groupId; old entries and calorie-app:ai keep their shape`, async () => {
-      assert.deepEqual((await ls(V2)).entries.filter((e) => !e.groupId).map((e) => Object.keys(e).sort().join()), oldKeys)
+      assert.deepEqual((await ls(V3)).entries.filter((e) => !e.groupId).map((e) => Object.keys(e).sort().join()), oldKeys)
       assert.equal(await page.evaluate((k) => localStorage.getItem(k), AIK), AI)
       await page.goto(BASE + '/settings')
       const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()])
       backupText = readFileSync(await dl.path(), 'utf8')
       const j = JSON.parse(backupText)
-      const g = j.data[V2].entries.filter((e) => e.groupId === 'g-test')
+      const g = j.data[V3].entries.filter((e) => e.groupId === 'g-test')
       assert.equal(g.length, 2); assert.ok(g.every((e) => e.groupName === 'Nasi ayam goreng'))
       assert.equal(j.data[AIK], undefined)
     })
@@ -268,7 +264,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await sheet.getByTestId('ai-group-delete-confirm').click()
       await sheet.waitFor({ state: 'detached' })
       assert.equal(await page.getByTestId('ai-group-row').count(), 0)
-      assert.equal((await ls(V2)).entries.filter((e) => e.groupId === 'g-test').length, 0)
+      assert.equal((await ls(V3)).entries.filter((e) => e.groupId === 'g-test').length, 0)
       await page.getByRole('button', { name: /^Edit Es teh manis/ }).waitFor()
       await page.goto(BASE + '/settings')
       const p = `${TMP}backup-${tag}.json`; writeFileSync(p, backupText)

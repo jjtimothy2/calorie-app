@@ -12,7 +12,7 @@ import { STATE } from './v11-fixture.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const OUT = new URL('../screenshots/', import.meta.url).pathname
-const V2 = 'calorie-app:v2', FOODS = 'calorie-app:foods'
+const V2 = 'calorie-app:v2', V3 = 'calorie-app:v3', FOODS = 'calorie-app:foods'
 const AI = JSON.stringify({ provider: 'gemini', key: 'AIzaTEST-not-a-real-key-000000000000' })
 const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36'
 const results = [], errors = []
@@ -134,7 +134,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await noSideways(page, 'Log My foods')
   })
   await step(`${tag} New food: name first, Save, nothing logged, food listed with edit and delete`, async () => {
-    const before = (await ls(V2)).entries.length
+    const before = (await ls(V3)).entries.length
     await page.getByTestId('myfoods-new').click()
     const form = page.getByTestId('newfood-form'); await form.waitFor()
     assert.match(await dialog.innerText(), /New food/)
@@ -149,7 +149,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await page.locator('input[name=name]').blur()
     await shot('newfood-form')
     await save.click(); await dialog.waitFor({ state: 'detached' })
-    assert.equal((await ls(V2)).entries.length, before, 'nothing logged')
+    assert.equal((await ls(V3)).entries.length, before, 'nothing logged')
     const f = (await ls(FOODS)).foods ?? (await ls(FOODS))
     const arr = Array.isArray(f) ? f : f.foods
     assert.ok(arr.some((x) => x.name === 'Bubur ayam' && x.kcal === 320 && x.protein === 12), 'saved to calorie-app:foods')
@@ -192,7 +192,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await star.click(); assert.equal(await star.getAttribute('aria-pressed'), 'true')
     assert.equal(await star.getAttribute('aria-label'), 'Remove from favourites')
     await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' })
-    const favs = (await ls(V2)).favourites
+    const favs = (await ls(V3)).favourites
     const id = (await page.evaluate((k) => { const v = JSON.parse(localStorage.getItem(k)); return (Array.isArray(v) ? v : v.foods).find((f) => f.name === 'Bubur ayam').id }, FOODS))
     assert.ok(favs.includes(id) && favs.includes(tempe.id), `favourites ${favs}`)
     await page.getByRole('group', { name: 'Food list' }).getByRole('button', { name: 'Favourites' }).click()
@@ -207,7 +207,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await page.getByTestId('tab-mine').click()
     await list.getByRole('button', { name: 'Delete Bubur ayam' }).click()
     await dialog.getByTestId('myfood-delete-confirm').click(); await dialog.waitFor({ state: 'detached' })
-    const favs = (await ls(V2)).favourites
+    const favs = (await ls(V3)).favourites
     assert.ok(!favs.some((f) => f.startsWith('u_') && f !== 'u_gone') && favs.includes(tempe.id), `favourites ${favs}`)
     await page.getByRole('group', { name: 'Food list' }).getByRole('button', { name: 'Favourites' }).click()
     assert.doesNotMatch(await list.innerText(), /Bubur ayam/)
@@ -244,7 +244,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await edit.click(); await inp.fill('0,75'); await inp.press('Enter')
     await dialog.getByRole('button', { name: `Add ${Math.round(tempe.kcal * 0.75)} kcal` }).click()
     await dialog.waitFor({ state: 'detached' })
-    const e = (await ls(V2)).entries.at(-1)
+    const e = (await ls(V3)).entries.at(-1)
     assert.deepEqual([e.foodId, e.qty], [tempe.id, 0.75])
     await page.getByLabel('Search foods').fill('')
   })
@@ -261,7 +261,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       const G = { groupId: 'g-test', groupName: 'Nasi ayam goreng' }
       s.entries.push(ai('g1', 'Nasi putih', 267, G), ai('g2', 'Ayam goreng', 330, G), ai('s1', 'Es teh manis', 90))
       localStorage.setItem(k, JSON.stringify(s))
-    }, [V2])
+    }, [V3])
     await toHome()
     total = await num(page.getByTestId('eaten'))
     await page.getByTestId('ai-group-row').click()
@@ -292,7 +292,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await dialog.getByRole('button', { name: 'Add 410 kcal' }).click()
     await sheet.waitFor(); assert.equal(await sheet.getByTestId('ai-group-item').count(), 5)
     assert.equal(await num(sheet.getByTestId('ai-group-total')), 267 + 330 + tempe.kcal + 50 + 410)
-    const g = (await ls(V2)).entries.filter((e) => e.groupId === 'g-test')
+    const g = (await ls(V3)).entries.filter((e) => e.groupId === 'g-test')
     assert.equal(g.length, 5); assert.ok(g.every((e) => e.groupName === 'Nasi ayam goreng' && e.meal === 'lunch'), 'group fields kept')
     assert.ok(g.some((e) => e.foodId === tempe.id) && g.some((e) => e.foodId?.startsWith('u_')))
     await page.keyboard.press('Escape'); await sheet.waitFor({ state: 'detached' })
@@ -304,7 +304,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await dialog.getByRole('button', { name: 'Increase amount' }).click()
     await dialog.getByRole('button', { name: /^Save/ }).click()
     await page.getByTestId('ai-group-sheet').waitFor()
-    const e = (await ls(V2)).entries.find((x) => x.foodId === tempe.id && x.groupId)
+    const e = (await ls(V3)).entries.find((x) => x.foodId === tempe.id && x.groupId)
     assert.deepEqual([e.groupId, e.qty], ['g-test', 2])
     await page.keyboard.press('Escape')
   })
@@ -319,8 +319,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     const sheet = page.getByTestId('ai-group-sheet'); await sheet.waitFor()
     assert.equal(await sheet.getByTestId('ai-group-item').count(), 2)
     assert.equal(await num(sheet.getByTestId('ai-group-total')), 120)
-    const es = (await ls(V2)).entries.find((e) => e.id === 's1')
-    assert.ok(es.groupId && (await ls(V2)).entries.filter((e) => e.groupId === es.groupId).length === 2)
+    const es = (await ls(V3)).entries.find((e) => e.id === 's1')
+    assert.ok(es.groupId && (await ls(V3)).entries.filter((e) => e.groupId === es.groupId).length === 2)
     await page.keyboard.press('Escape'); await sheet.waitFor({ state: 'detached' })
     assert.equal(await page.getByTestId('ai-group-row').count(), 2)
     await noSideways(page, 'Home with two groups')

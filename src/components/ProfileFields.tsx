@@ -1,18 +1,18 @@
-import { ACTIVITY, fmt, KCAL_PER_KG, PACE, PACES, type Body } from '../lib/calc'
-import type { Activity, Goal, Pace, Sex } from '../lib/types'
+import { ACTIVITY, fmt, kgWeek, longDay, type Body } from '../lib/calc'
+import type { Activity, Goal, Sex } from '../lib/types'
 import { Chip } from './ui'
 import { Info } from './Info'
 
-/** v1.3.3: goal weight is no longer asked for; a stored value is kept in the profile untouched. */
-export type Draft = Body & { pace: Pace }
-export const PACE_LABEL = (p: Pace) => `${PACE[p].label} ${PACE[p].kg} kg/wk`
+/** Goal-date plan: the goal (weight and date) is set in the goal sheet; this draft holds body and activity only. */
+export type Draft = Body
 export const GOAL_LABEL: Record<Goal, string> = { lose: 'Lose weight', keep: 'Keep weight', gain: 'Gain weight' }
 export const ACTIVITY_SHORT: Record<Activity, string> = {
   sedentary: 'Sedentary', light: 'Lightly active', moderate: 'Moderately active', active: 'Active', very: 'Very active',
 }
 const input = 'w-24 rounded-xl border border-line bg-bg px-3 py-2 text-right text-[17px]'
 
-export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
+/** hideWeight (Me): weight comes from Log weight, so it isn't typed here. */
+export function BodyFields({ d, set, hideWeight }: { d: Draft; set: (d: Draft) => void; hideWeight?: boolean }) {
   const num = (k: 'age' | 'heightCm' | 'weightKg', label: string, unit: string, min: number, max: number) => (
     <label className="flex items-center justify-between border-b border-line py-3 text-base last:border-0">
       <span>{label}</span>
@@ -45,7 +45,7 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
       <div className="rounded-[22px] border border-line bg-card px-4">
         {num('age', 'Age', 'yrs', 14, 100)}
         {num('heightCm', 'Height', 'cm', 120, 230)}
-        {num('weightKg', 'Weight', 'kg', 30, 300)}
+        {!hideWeight && num('weightKg', 'Weight', 'kg', 30, 300)}
       </div>
     </>
   )
@@ -53,35 +53,10 @@ export function BodyFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
 
 const pct = (f: number) => `${Math.round((f - 1) * 1000) / 10}%`
 
-/** paceHint: one short grey line under the pace chips (the plan's real daily deficit or surplus). */
-export function GoalFields({ d, set, paceHint }: { d: Draft; set: (d: Draft) => void; paceHint?: string }) {
+/** Goal-date plan: the goal chips and pace moved to the goal sheet (Weight card); this is the activity level. */
+export function GoalFields({ d, set }: { d: Draft; set: (d: Draft) => void }) {
   return (
     <>
-      <fieldset>
-        <legend className="mb-2 text-[15px] font-semibold">Goal</legend>
-        <div className="flex flex-wrap gap-2">
-          {(['lose', 'keep', 'gain'] as Goal[]).map((g) => (
-            <Chip key={g} on={d.goal === g} onClick={() => set({ ...d, goal: g })}>{GOAL_LABEL[g]}</Chip>
-          ))}
-        </div>
-      </fieldset>
-      {d.goal !== 'keep' && (
-        <fieldset>
-          <legend className="mb-2 flex items-center text-[15px] font-semibold">
-            Pace
-            <Info title="Pace" id="pace">
-              <p>How fast to aim for, per week. About {fmt(KCAL_PER_KG)} kcal is one kg of body weight, so 0.25 kg a week is roughly 275 kcal a day, 0.5 kg about 550 and 0.75 kg about 825.</p>
-              <p>The target never goes under 1,500 kcal for men or 1,200 kcal for women (or under your BMR when movement is on), so near that floor the real deficit is smaller.</p>
-            </Info>
-          </legend>
-          <div className="flex flex-wrap gap-2" data-testid="pace">
-            {PACES.map((p) => (
-              <Chip key={p} on={d.pace === p} onClick={() => set({ ...d, pace: p })}>{PACE_LABEL(p)}</Chip>
-            ))}
-          </div>
-          {paceHint && <p className="mt-2 text-[13px] text-mute" data-testid="pace-hint">{paceHint}</p>}
-        </fieldset>
-      )}
       <fieldset>
         <legend className="mb-2 flex items-center text-[15px] font-semibold">
           Activity level
@@ -112,35 +87,29 @@ export function validBody(d: Body) {
   return d.age >= 14 && d.age <= 100 && d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
 }
 
-/** v1.3.3: the short line under the pace chips: the plan's actual daily deficit or surplus after the floor. */
-export function paceHint(goal: Goal, plan: { planDeficit: number; atMinimum: boolean }) {
-  if (goal === 'keep') return undefined
-  if (plan.atMinimum) return "You're at the minimum intake"
-  return `About ${fmt(Math.abs(plan.planDeficit))} kcal a day`
-}
+type PlanSum = { bmr: number; movement: number; planDeficit: number; weeklyKg: number; kgToGo: number; days: number }
 
 /**
- * v1.3.3: the visible sum under the Daily target, e.g. "BMR 1,900 + 713 movement − 523 deficit". Keep has no
- * deficit term, Gain shows "+ N surplus", and a target the floor holds up says so briefly. Never shows a surplus
- * for Keep or Lose.
+ * The visible sum under the Daily target, e.g. "BMR 1,900 + 713 movement − 523 deficit". Keep has no deficit term and
+ * Gain shows "+ N surplus". Goal-date plan: no floor, so nothing is "held".
  */
-export function targetSum(goal: Goal, plan: { bmr: number; movement: number; planDeficit: number; floored: boolean; floor: number }, includeMovement: boolean) {
+export function targetSum(goal: Goal, plan: PlanSum, includeMovement: boolean) {
   let s = `BMR ${fmt(plan.bmr)}`
   if (includeMovement) s += ` + ${fmt(plan.movement)} movement`
   if (goal === 'lose' && plan.planDeficit > 0) s += ` − ${fmt(plan.planDeficit)} deficit`
   if (goal === 'gain' && plan.planDeficit < 0) s += ` + ${fmt(-plan.planDeficit)} surplus`
-  if (plan.floored) s += ` · at the ${fmt(plan.floor)} minimum`
   return s
 }
 
-/** Goal line from what the plan takes off (or adds to) its base, after the v1.2 floor (v1.8: no cap). */
-export function goalBlurb(goal: Goal, plan: { planDeficit: number; floored: boolean; floor: number }) {
-  if (goal === 'keep') return plan.planDeficit < 0 ? `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit` : 'to keep your current weight'
-  const kcal = Math.abs(plan.planDeficit)
-  const min = `the ${fmt(plan.floor)} kcal minimum`
-  if (goal === 'lose' && plan.planDeficit <= 0) return `You're at the minimum intake (${fmt(plan.floor)} kcal). Your watch or exercise burn creates your deficit`
-  const kg = Math.round(((kcal * 7) / KCAL_PER_KG) * 20) / 20
-  const verb = goal === 'lose' ? 'lose' : 'gain'
-  const note = plan.floored ? ` (held at ${min})` : ''
-  return `${fmt(kcal)} kcal a day ${goal === 'lose' ? 'deficit' : 'surplus'}, to ${verb} about ${kg} kg a week${note}`
+/** "12 kg × 7,700 kcal ÷ 182 days = 508 kcal a day, about 0.5 kg a week." */
+export function gapLine(plan: PlanSum) {
+  const kg = Math.round(plan.kgToGo * 10) / 10
+  return `${kg} kg × 7,700 kcal ÷ ${fmt(plan.days)} days = ${fmt(Math.abs(plan.planDeficit))} kcal a day, about ${kgWeek(plan.weeklyKg)} kg a week.`
+}
+
+/** Goal line for Me: "Lose 12 kg by 27 Apr 2027" (Keep: "Keep your current weight"). */
+export function goalBlurb(goal: Goal, plan: PlanSum, goalDate: string | null) {
+  if (goal === 'keep' || !goalDate) return 'to keep your current weight'
+  if (plan.kgToGo === 0) return 'Goal weight reached'
+  return `to ${goal} ${Math.round(plan.kgToGo * 10) / 10} kg by ${longDay(goalDate)}`
 }

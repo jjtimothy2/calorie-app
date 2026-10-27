@@ -93,6 +93,7 @@ export const FAT_SHARE = 0.25 // of maintenance calories (v1.3.2; of the daily t
 export const FAT_FLOOR_PER_KG = 0.6 // of current weight; fat never defaults below this
 export const CARB_FLOOR = 100 // g
 
+/** v1.1 to v1.12 paces, kg a week. Only used to migrate older data to a goal date (see migrate.ts). */
 export const PACE: Record<Pace, { label: string; kg: number }> = {
   gentle: { label: 'Gentle', kg: 0.25 },
   standard: { label: 'Standard', kg: 0.5 },
@@ -141,54 +142,140 @@ export function splitMacros(maintenance: number, weightKg: number, o: MacroOverr
   return { protein, carbs, fat }
 }
 
-export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'pace' | 'weightKg' | 'macros'>
+export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'weightKg' | 'macros' | 'goalWeightKg' | 'goalDate' | 'planFrom'>
+export type GoalInput = Pick<Profile, 'goal' | 'weightKg' | 'goalWeightKg' | 'goalDate' | 'planFrom'>
 
-/** Pace in kcal a day (7,700 kcal per kg). v1.8: no cap, only the floor below limits it. */
-export const paceKcal = (pace: Pace) => (PACE[pace].kg * KCAL_PER_KG) / 7
+/** Shortest plan the maths uses: a goal date under a week away (or already gone) is planned as 7 days. */
+export const MIN_PLAN_DAYS = 7
+/** Soft warning: more than 1% of body weight a week. */
+export const FAST_WEEKLY_SHARE = 0.01
 
 /**
- * v1.2 lowest daily target: 1,500 kcal for men, 1,200 for women. Any other or missing value gets the lower
- * 1,200 (the app only offers male and female today; this keeps older or hand-edited data safe).
+ * Soft warning line (goal-date plan): 1,500 kcal a day for men, 1,200 for women; any other or missing value gets the
+ * lower 1,200. v1.2 to v1.12 this was a hard floor the target could never go under. Now it only shows a warning.
  */
 export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 1500 : 1200)
 
+/** Whole days from a to b (YYYY-MM-DD local dates), b minus a. */
+export const daysBetween = (a: string, b: string) => Math.round((keyDate(b).getTime() - keyDate(a).getTime()) / 86_400_000)
+
+/** Calendar months later, clamped to the month's last day (31 Jan + 1 month = 28 or 29 Feb). */
+export function addMonths(key: string, n: number): string {
+  const [y, m, d] = key.split('-').map(Number)
+  const last = new Date(y, m - 1 + n + 1, 0).getDate()
+  return dateKey(new Date(y, m - 1 + n, Math.min(d, last)))
+}
+
+/** kg still to go from the plan start, in the goal's direction. 0 for Keep or once the goal weight is reached. */
+export function kgToGo(p: GoalInput): number {
+  if (p.goal === 'keep' || !p.goalDate) return 0
+  const left = p.goal === 'lose' ? p.planFrom.kg - p.goalWeightKg : p.goalWeightKg - p.planFrom.kg
+  return Math.max(0, Math.round(left * 100) / 100)
+}
+
+/** Days the plan has left: plan start to goal date, never under MIN_PLAN_DAYS. 0 for Keep. */
+export const planDays = (p: GoalInput) => (p.goalDate ? Math.max(MIN_PLAN_DAYS, daysBetween(p.planFrom.date, p.goalDate)) : 0)
+
+/** Daily gap (kcal) = kg to go x 7,700 / days to the goal date. Unrounded. */
+export function dailyGap(p: GoalInput): number {
+  const kg = kgToGo(p)
+  return kg > 0 ? (kg * KCAL_PER_KG) / planDays(p) : 0
+}
+
+/** True once a Lose or Gain goal weight is reached (the current weight is at or past it). */
+export const goalReached = (p: GoalInput) =>
+  p.goal !== 'keep' && !!p.goalDate && (p.goal === 'lose' ? p.weightKg <= p.goalWeightKg : p.weightKg >= p.goalWeightKg)
+
 /**
- * Daily target.
- * Plan base: BMR + movement when Movement is on, plain BMR when it is off (v1.3.1; v1.2 to v1.3 used BMR x 1.2).
- * Lose: base - pace kcal. Gain: base + pace kcal. v1.8 dropped the 20% cap (v1.1 to v1.7), so the floor is the only limit.
- * Keep: the plan base.
- * Floor (v1.2): never under 1,500 kcal (men) / 1,200 (women). With Movement on the v1.1 BMR floor is kept as well,
- * so nothing changes there.
- * planDeficit is what the plan takes off its base (base - target, negative for a surplus).
- * dailyGoal is the balance goal against what Home counts as the burn (homeBase), which is the plan base
- * (BMR with Movement off), so dailyGoal = planDeficit. Keep = 0, Lose = the deficit, Gain = minus the surplus.
- * v1.3.2: when the floor holds a Lose target, the goal is base - floor; if that is <= 0 the goal is 0 and the plan
- * is atMinimum (the user's exercise burn creates the deficit). A Lose goal is never a surplus.
- * v1.3.3: Keep gets the same treatment: when the floor lifts a Keep target above its base, the goal is 0 (not a
- * surplus) and the plan is atMinimum. Only Gain has a negative (surplus) goal.
- * Macros (v1.3.2) come from maintenance = the plan base, at the current weight, and are fixed for the day:
- * they don't follow the target, the floor or logged exercise.
+ * Daily target (goal-date plan).
+ * Plan base: BMR + movement when Movement is on, plain BMR when it is off (v1.3.1).
+ * Gap: |plan start weight - goal weight| x 7,700 / days from the plan start to the goal date (see dailyGap).
+ * Lose: base - gap. Gain: base + gap. Keep (or a reached goal): the base. No floor: a low target only warns (paceCheck).
+ * planDeficit is what the plan takes off its base (negative for a surplus); dailyGoal = planDeficit, the balance goal
+ * against what Home counts as the burn (homeBase).
+ * Macros (v1.3.2) come from maintenance = the plan base, at the current weight, and don't follow the target.
  */
 export function dailyPlan(p: PlanInput) {
   const movement = movementKcal(p)
   const base = p.bmr + movement
   const planBase = Math.round(p.includeMovement ? base : p.bmr)
-  const want = paceKcal(p.pace)
-  const floor = p.includeMovement ? Math.max(p.bmr, targetFloor(p.sex)) : targetFloor(p.sex)
+  const gap = dailyGap(p)
   let target = planBase
-  if (p.goal === 'lose') target = Math.round(planBase - want)
-  if (p.goal === 'gain') target = Math.round(planBase + want)
-  const floored = target < floor
-  target = Math.max(floor, target)
+  // Never under 0 (a goal date days away can ask for more than the whole burn); the warning says why.
+  if (p.goal === 'lose') target = Math.max(0, Math.round(planBase - gap))
+  if (p.goal === 'gain') target = Math.round(planBase + gap)
   const planDeficit = planBase - target
-  const dailyGoal = p.goal === 'gain' ? planDeficit : Math.max(0, planDeficit)
   const m = macroPlan(planBase, p.weightKg, p.macros)
   return {
-    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, floor, floored, target, dailyGoal,
-    atMinimum: p.goal !== 'gain' && floored && dailyGoal === 0,
+    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, target, dailyGoal: planDeficit,
+    gap, days: planDays(p), kgToGo: kgToGo(p), weeklyKg: (gap * 7) / KCAL_PER_KG,
     protein: m.protein, carbs: m.carbs, fat: m.fat, macroKcal: m.kcal, adjusted: m.adjusted,
   }
 }
+
+export type PaceCheck = {
+  /** More than 1% of body weight a week. */
+  fast: boolean
+  /** Lose only: the target is under 1,500 (men) / 1,200 (women). */
+  low: boolean
+  warn: boolean
+  /** Earliest goal date that clears both checks, or null when no date can (the base is already at or under the line). */
+  suggest: string | null
+}
+
+/**
+ * Soft warning for an aggressive plan. Never blocks. Checks use the plan start weight.
+ * Earliest date: days >= kg x 7 / (1% of weight) clears "fast"; for Lose, days >= kg x 7,700 / (base - line) clears "low".
+ */
+export function paceCheck(p: PlanInput, plan = dailyPlan(p)): PaceCheck {
+  const none = { fast: false, low: false, warn: false, suggest: null }
+  if (p.goal === 'keep' || plan.gap === 0) return none
+  const line = targetFloor(p.sex)
+  const fast = plan.weeklyKg > FAST_WEEKLY_SHARE * p.planFrom.kg + 1e-9
+  const low = p.goal === 'lose' && plan.target < line
+  if (!fast && !low) return none
+  const kg = plan.kgToGo
+  const dFast = (kg * 7) / (FAST_WEEKLY_SHARE * p.planFrom.kg)
+  const room = plan.planBase - line
+  const dLow = p.goal === 'lose' ? (room > 0 ? (kg * KCAL_PER_KG) / room : Infinity) : 0
+  const need = Math.max(dFast, dLow)
+  if (!Number.isFinite(need)) return { fast, low, warn: true, suggest: null }
+  let days = Math.max(MIN_PLAN_DAYS, Math.ceil(need - 1e-9))
+  // Rounding: step on until the date really clears both checks (at most a day or two).
+  for (let i = 0; i < 5; i++) {
+    const c = dailyPlan({ ...p, goalDate: addDays(p.planFrom.date, days) })
+    if (c.weeklyKg <= FAST_WEEKLY_SHARE * p.planFrom.kg + 1e-9 && !(p.goal === 'lose' && c.target < line)) break
+    days++
+  }
+  return { fast, low, warn: true, suggest: addDays(p.planFrom.date, days) }
+}
+
+/** Where the plan line says the weight should be on a day (straight line from the plan start to the goal). */
+export function expectedKg(p: GoalInput, date: string): number {
+  if (p.goal === 'keep' || !p.goalDate) return p.planFrom.kg
+  const total = daysBetween(p.planFrom.date, p.goalDate)
+  if (total <= 0) return p.goalWeightKg
+  const t = Math.min(1, Math.max(0, daysBetween(p.planFrom.date, date) / total))
+  return p.planFrom.kg + (p.goalWeightKg - p.planFrom.kg) * t
+}
+
+/** Ahead or behind counts past 0.2 kg either side of the plan line (scale noise). */
+export const ON_TRACK_KG = 0.2
+export type WeighIn = 'reached' | 'ahead' | 'onTrack' | 'behind'
+/** How a new weigh-in compares with the plan it was made under (before re-planning). */
+export function weighInStatus(p: GoalInput, kg: number, date: string): WeighIn | null {
+  if (p.goal === 'keep' || !p.goalDate) return null
+  if (p.goal === 'lose' ? kg <= p.goalWeightKg : kg >= p.goalWeightKg) return 'reached'
+  const toward = (expectedKg(p, date) - kg) * (p.goal === 'lose' ? 1 : -1)
+  return toward > ON_TRACK_KG ? 'ahead' : toward < -ON_TRACK_KG ? 'behind' : 'onTrack'
+}
+
+/** "27 Apr 2027" */
+export const longDay = (key: string) => keyDate(key).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+/** "1 Oct" */
+export const shortDay = (key: string) => keyDate(key).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+/** Weekly change for display, to 0.1 kg ("0.4"). Under 0.05 shows as "under 0.1". */
+export const kgWeek = (weekly: number) => (weekly < 0.05 ? 'under 0.1' : (Math.round(weekly * 10) / 10).toFixed(1))
 
 export function macroTargets(p: PlanInput) {
   const { protein, carbs, fat } = dailyPlan(p)
@@ -209,7 +296,7 @@ export function movementKcal(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovem
   return p.includeMovement ? Math.round(p.bmr * (ACTIVITY[p.activity].factor - 1)) : 0
 }
 
-/** Food target on a rest day (v1.1: from the pace, see dailyPlan). */
+/** Food target on a rest day (from the goal-date plan, see dailyPlan). */
 export const foodBudget = (p: PlanInput): number => dailyPlan(p).target
 
 /**

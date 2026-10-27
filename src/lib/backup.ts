@@ -3,16 +3,25 @@ import type { State } from './types'
 import { FOODS_KEY, parseFoods } from './myFoods'
 
 export const APP_ID = 'calorie-counter'
-/** File format. 2 since app v1.1 (state v2); schema 1 files (state v1) still restore and are migrated. */
-export const BACKUP_SCHEMA = 2
+/** File format. 3 since the goal-date plan (state v3); schema 1 and 2 files (state v1, v2) still restore and are migrated. */
+export const BACKUP_SCHEMA = 3
 export const PREFIX = 'calorie-app:'
-/** v1.1 stores state v2 under a new key so a cached 1.0 app never reads data it can't parse; the 1.0 copy is left as is. */
-export const STATE_KEY = 'calorie-app:v2'
+/**
+ * Each state version that an older app can't read gets a new key, so a cached older app (offline, or an old tab) never
+ * reads data it can't parse and saves an empty state over it. The older copy is left as is. v1.1: v2. Goal-date plan: v3.
+ */
+export const STATE_KEY = 'calorie-app:v3'
+export const V2_STATE_KEY = 'calorie-app:v2'
 export const LEGACY_STATE_KEY = 'calorie-app:v1'
+/** Older state keys, newest first. Read when STATE_KEY is missing; left out of backups once STATE_KEY exists. */
+export const OLD_STATE_KEYS = [V2_STATE_KEY, LEGACY_STATE_KEY]
+export const isStateKey = (k: string) => k === STATE_KEY || OLD_STATE_KEYS.includes(k)
 export const META_KEY = 'calorie-app:backup' // { lastExportAt, dismissedAt }; device-local, never exported
 /** v1.5: the user's AI provider key. Same value as AI_KEY in ai.ts. Device-only: never exported, never restored. */
 export const AI_SECRET_KEY = 'calorie-app:ai'
-const DEVICE_ONLY = new Set([META_KEY, AI_SECRET_KEY])
+/** Goal-date plan: when the Home "Weighed in lately?" note was last dismissed ({ dismissedAt: 'YYYY-MM-DD' }). Device-only. */
+export const WEIGH_KEY = 'calorie-app:weigh'
+const DEVICE_ONLY = new Set([META_KEY, AI_SECRET_KEY, WEIGH_KEY])
 export const REMIND_DAYS = 7
 const DAY = 86_400_000
 
@@ -37,7 +46,7 @@ export function makeBackup(now = new Date()): BackupFile {
   const data: Record<string, unknown> = {}
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i)!
-    if (!k.startsWith(PREFIX) || DEVICE_ONLY.has(k) || (k === LEGACY_STATE_KEY && localStorage.getItem(STATE_KEY))) continue
+    if (!k.startsWith(PREFIX) || DEVICE_ONLY.has(k) || (OLD_STATE_KEYS.includes(k) && localStorage.getItem(STATE_KEY))) continue
     const raw = localStorage.getItem(k)!
     try { data[k] = JSON.parse(raw) } catch { data[k] = raw }
   }
@@ -71,13 +80,14 @@ export function parseBackup(text: string): Parsed {
   if (!isObj(j) || j.app !== APP_ID || !isObj(j.data)) return { ok: false, error: BAD }
   if (typeof j.schema !== 'number') return { ok: false, error: BAD }
   if (j.schema > BACKUP_SCHEMA) return { ok: false, error: 'This backup was made by a newer version of the app. Update the app, then try again.' }
-  // Schema 1 files (app 1.0) hold state v1 under the old key; it is migrated by the restore action.
-  const s = j.data[STATE_KEY] ?? j.data[LEGACY_STATE_KEY]
+  // Schema 1 and 2 files hold state v1 / v2 under the older keys; the restore action migrates them.
+  const s = j.data[STATE_KEY] ?? j.data[V2_STATE_KEY] ?? j.data[LEGACY_STATE_KEY]
   const broken = { ok: false as const, error: 'This backup looks damaged, so nothing was changed. Try another backup file.' }
-  if (!isObj(s) || (s.version !== 1 && s.version !== 2)) return broken
+  if (!isObj(s) || ![1, 2, 3].includes(s.version as number)) return broken
   if (!Array.isArray(s.entries) || !Array.isArray(s.exercises) || !isObj(s.closedDays)) return broken
   if (s.profile !== null && !isObj(s.profile)) return broken
   if (s.favourites !== undefined && !Array.isArray(s.favourites)) return broken
+  if (s.weights !== undefined && !Array.isArray(s.weights)) return broken
   const entryOk = (e: unknown) => isObj(e) && typeof e.id === 'string' && typeof e.date === 'string' && typeof e.kcal === 'number'
   const exOk = (e: unknown) => isObj(e) && typeof e.id === 'string' && typeof e.date === 'string' && typeof e.kcal === 'number'
   if (!s.entries.every(entryOk) || !s.exercises.every(exOk)) return broken
@@ -86,7 +96,7 @@ export function parseBackup(text: string): Parsed {
     if (!['age', 'heightCm', 'weightKg'].every((k) => typeof p[k] === 'number')) return broken
   }
   const exportedAt = new Date(typeof j.exportedAt === 'string' ? j.exportedAt : NaN)
-  const state = { favourites: [], ...s } as unknown as State
+  const state = { favourites: [], weights: [], ...s } as unknown as State
   const days = new Set([...state.entries.map((e) => e.date), ...state.exercises.map((e) => e.date)]).size
   return { ok: true, file: j as BackupFile, state, summary: { days, entries: state.entries.length, exercises: state.exercises.length, foods: parseFoods(j.data[FOODS_KEY]).length, exportedAt } }
 }
@@ -96,7 +106,7 @@ export function restoreExtraKeys(file: BackupFile) {
   // v1.9: "replaces everything" includes the user's own foods, so a backup made before v1.9 (no foods key) clears them.
   if (!(FOODS_KEY in file.data)) localStorage.removeItem(FOODS_KEY)
   for (const [k, v] of Object.entries(file.data)) {
-    if (!k.startsWith(PREFIX) || k === STATE_KEY || k === LEGACY_STATE_KEY || DEVICE_ONLY.has(k)) continue
+    if (!k.startsWith(PREFIX) || isStateKey(k) || DEVICE_ONLY.has(k)) continue
     localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v))
   }
 }

@@ -24,7 +24,7 @@ for (const [width, height, kb, reduced] of [[390, 844, 336, false], [375, 667, 2
   const tag = `${width}x${height}${reduced ? ' reduced motion' : ''}`
   const ctx = await browser.newContext({ ...devices['iPhone 14'], viewport: { width, height }, deviceScaleFactor: 3, reducedMotion: reduced ? 'reduce' : 'no-preference', serviceWorkers: 'block' })
   await ctx.addInitScript((s) => {
-    if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
+    if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v3')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
     if (!localStorage.getItem('calorie-app:ai')) localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: 'gemini', key: 'AIzaTEST-not-a-real-key-000000000000' }))
     // Count picker opens (a real file chooser can't be driven by tap in headless WebKit).
     window.__picks = 0

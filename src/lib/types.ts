@@ -2,8 +2,10 @@ export type Sex = 'male' | 'female'
 export type Goal = 'lose' | 'keep' | 'gain'
 export type Activity = 'sedentary' | 'light' | 'moderate' | 'active' | 'very'
 export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snacks' | 'beverages'
-/** Weight-change pace in kg a week. */
+/** v1.1 to v1.12: weight-change pace in kg a week. Only read when migrating older data (goal date replaced it). */
 export type Pace = 'gentle' | 'standard' | 'faster'
+/** A weigh-in. date is YYYY-MM-DD local. */
+export type WeightEntry = { date: string; kg: number }
 export type Intensity = 'light' | 'moderate' | 'vigorous'
 
 // v1.11: Beverages after Snacks. Never a time-of-day default (defaultMeal), only picked by hand.
@@ -27,7 +29,7 @@ export type Profile = {
   weightKg: number
   activity: Activity
   goal: Goal
-  /** Daily food target on a rest day (kcal), derived by dailyPlan(): plan base (BMR + movement, or plain BMR with movement off) minus the pace deficit (or plus surplus), never under the sex floor. */
+  /** Daily food target on a rest day (kcal), derived by dailyPlan(): plan base (BMR + movement, or plain BMR with movement off) minus the daily gap to the goal weight (plus for gain). No floor since the goal-date plan. */
   target: number
   /** Daily starting budget. Mifflin-St Jeor unless the user typed their own. */
   bmr: number
@@ -36,10 +38,18 @@ export type Profile = {
   includeMovement: boolean
   /** Daily balance goal in kcal, derived: home base (BMR + movement, or BMR with movement off) - target. Positive = deficit (lose), 0 = keep, negative = surplus (gain). */
   dailyGoal: number
-  /** v1.1: goal weight (kg). Defaults to the current weight. Since v1.3.2 macros use the current weight; since v1.3.3 it is no longer shown or asked for, and a stored value is kept untouched. */
+  /** Goal weight (kg). Asked in onboarding for Lose and Gain; equals the current weight for Keep. Macros use the current weight. */
   goalWeightKg: number
-  /** v1.1: how fast to lose (or gain). Ignored for "keep". */
-  pace: Pace
+  /** Goal-date plan: the day to reach goalWeightKg (YYYY-MM-DD local). null for Keep. */
+  goalDate: string | null
+  /**
+   * Where the current plan starts: the weight and day it was last worked out (onboarding, a goal edit or the latest
+   * weigh-in). The daily gap is |kg - goal| x 7,700 / days from date to goalDate, so the target only moves when the
+   * plan is re-planned, not every day.
+   */
+  planFrom: WeightEntry
+  /** Set when the goal weight and date were derived from an old pace on migration (state v2 to v3). Cleared on any goal edit. */
+  goalAssumed?: boolean
   macros: MacroOverrides
 }
 
@@ -90,8 +100,11 @@ export type DaySummary = {
   auto: boolean
 }
 
-/** v2 (app v1.1) added Profile.goalWeightKg and Profile.pace. v1 data is migrated on load and on restore. */
-export const STATE_VERSION = 2
+/**
+ * v2 (app v1.1) added Profile.goalWeightKg and Profile.pace. v3 (goal-date plan) replaced pace with goalDate + planFrom
+ * and added the weight log. v1 and v2 data are migrated on load and on restore.
+ */
+export const STATE_VERSION = 3
 export type State = {
   version: typeof STATE_VERSION
   profile: Profile | null
@@ -99,4 +112,6 @@ export type State = {
   exercises: ExerciseEntry[]
   closedDays: Record<string, DaySummary>
   favourites: string[]
+  /** v3: dated weigh-ins, oldest first, one per day. */
+  weights: WeightEntry[]
 }

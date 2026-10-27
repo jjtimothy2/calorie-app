@@ -2,7 +2,7 @@
 // Yesterday" note with Back to today on Home and "Adding to Yesterday" on Log. Food (Add Calories, edit, delete) and
 // exercise (Quick add burn) go to that day. A closed past day stays closed and recalculates: its frozen baseline (BMR,
 // movement, goal) is kept and eaten, burned, protein and balance follow the logs, so History and the verdict update.
-// A past day's verdict has Edit day. Reloading always opens on today. v1.11-shaped data loads unchanged (version 2).
+// A past day's verdict has Edit day. Reloading always opens on today. v1.11-shaped data migrates to v3 (v1.13) with the same target and closed days; the v2 key is kept.
 // WebKit with touch at 390x844 (motion on) and 375x667 (reduced motion). Screenshots: screenshots/v112-*.png.
 // Usage: npm run build && npx vite preview --port 4174 & node tests/v112.mjs
 import { webkit, devices } from 'playwright'
@@ -46,13 +46,13 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/service worker/i.test(m.text())) errors.push(`${tag}: ${m.type()}: ${m.text()}`) })
   page.on('pageerror', (er) => errors.push(`${tag}: pageerror: ${er.message}`))
   const shot = async (name) => { await page.waitForTimeout(motion === 'reduce' ? 300 : 900); await page.screenshot({ path: `${OUT}v112-${name}-${tag}.png` }) }
-  const st = () => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
+  const st = () => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')))
   const title = page.locator('#day-title')
   const dialog = page.getByRole('dialog')
   // the ring number ticks (motion on), so wait for it to settle
   const bal = (v) => page.waitForFunction((v) => document.querySelector('[data-testid=balance]')?.textContent === v, v, { timeout: 5000 })
 
-  await step(`${tag} v1.11-shaped data loads: version 2, entries, yesterday's summary, AI and foods keys untouched; opens on Today`, async () => {
+  await step(`${tag} v1.11-shaped data loads: migrated to v3 (same target, v2 key kept), entries, yesterday's summary, AI and foods keys untouched; opens on Today`, async () => {
     await page.goto(`${BASE}/`)
     await title.waitFor()
     assert.equal(await title.innerText(), 'Today')
@@ -60,7 +60,11 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
     await page.getByText('Nasi uduk').waitFor()
     assert.ok(await page.getByTestId('day-next').isDisabled(), 'Next is disabled on today')
     const s = await st()
-    assert.equal(s.version, 2)
+    // v1.13: migrated to v3 under calorie-app:v3 with the same daily target; the v2 key is left exactly as it was (a backup).
+    assert.equal(s.version, 3)
+    assert.deepEqual([s.profile.target, s.profile.dailyGoal, 'pace' in s.profile], [2006, 550, false])
+    assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v2')), JSON.stringify(SEED))
+    assert.deepEqual(s.entries, SEED.entries)
     assert.equal(s.entries.length, 4)
     assert.deepEqual(s.closedDays[YDAY], YSUM)
     assert.ok(s.closedDays[TWO], 'two days ago (logged, never closed) is auto-closed on load, as before')
@@ -204,7 +208,8 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
     assert.equal(await title.innerText(), 'Today')
     assert.equal(await page.getByTestId('past-day-note').count(), 0)
     const s = await st()
-    assert.equal(s.version, 2)
+    assert.equal(s.version, 3)
+    assert.deepEqual([s.closedDays[YDAY].bmr, s.closedDays[YDAY].movement, s.closedDays[YDAY].goal], [1800, 300, 500], 'the closed baseline is kept')
     assert.equal(s.closedDays[YDAY].balance, 1250, 'the recalculated day survives a reload')
   })
 

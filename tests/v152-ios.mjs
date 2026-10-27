@@ -26,7 +26,7 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
   const tag = `${width}x${height}`
   const ctx = await browser.newContext({ ...devices['iPhone 14'], viewport: { width, height }, deviceScaleFactor: 3, reducedMotion: 'reduce', serviceWorkers: 'block' })
   await ctx.addInitScript((s) => {
-    if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
+    if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v3')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
     if (!localStorage.getItem('calorie-app:ai')) localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: 'gemini', key: 'AIzaTEST-not-a-real-key-000000000000' }))
   }, STATE)
   await ctx.route('https://generativelanguage.googleapis.com/**', (r) => r.request().method() === 'OPTIONS'

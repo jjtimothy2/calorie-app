@@ -32,9 +32,10 @@ try {
     await page.fill('input[name=weightKg]', '68')
     await page.getByTestId('ob-next').click()
     await page.getByTestId('ob-goal-lose').click()
+    await page.getByTestId('ob-step-skip').click() // v1.13 goal weight (skip: 5% less)
+    await page.getByTestId('ob-step-skip').click() // v1.13 By when (skip: 6 months)
     await page.getByTestId('ob-watch-no').click() // v1.10 watch question
-    await page.getByTestId('ob-act-light').click()
-    await page.getByTestId('ob-next').click()
+    await page.getByTestId('ob-act-light').click() // v1.13: no pace step after Activity
     await page.getByTestId('ob-target').waitFor()
     await page.getByTestId('ob-next').click()
     await page.getByTestId('ob-skip').click()
@@ -73,7 +74,7 @@ try {
     assert.ok((await page.locator('[data-bar]').count()) >= 7)
     await page.getByRole('button', { name: 'Protein' }).click()
     assert.match(await page.getByTestId('protein-hit').innerText(), /^\d \/ 7$/)
-    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')))
     assert.equal(stored.profile.macros.protein, 110)
   })
   await step('no console errors, warnings or failed requests', async () => { assert.deepEqual(errors, []) })

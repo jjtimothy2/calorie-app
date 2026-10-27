@@ -37,7 +37,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const tag = `${width}x${height}`
   const ctx = await browser.newContext({ ...devices['iPhone 14'], viewport: { width, height }, deviceScaleFactor: 3, serviceWorkers: 'block' })
   await ctx.addInitScript(([s, ai]) => {
-    if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
+    if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v3')) localStorage.setItem('calorie-app:v1', JSON.stringify(s))
     if (!localStorage.getItem('calorie-app:ai')) localStorage.setItem('calorie-app:ai', JSON.stringify(ai))
     // An old v1.6.4 preference must not break anything (it is simply no longer read).
     if (!localStorage.getItem('calorie-app:ui')) localStorage.setItem('calorie-app:ui', JSON.stringify({ textTransition: 'snap' }))
@@ -89,7 +89,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const dlg = page.getByRole('dialog')
   const active = () => page.evaluate(() => { const a = document.activeElement; return a ? (a.getAttribute('role') === 'menuitem' ? `menuitem:${a.textContent}` : a.tagName.toLowerCase() + (a.dataset.testid ? `#${a.dataset.testid}` : '')) : '' })
   const clicks = () => page.evaluate(() => window.__clicks)
-  const store = () => page.evaluate(() => ({ v2: localStorage.getItem('calorie-app:v2'), ai: localStorage.getItem('calorie-app:ai') }))
+  const store = () => page.evaluate(() => ({ v2: localStorage.getItem('calorie-app:v3'), ai: localStorage.getItem('calorie-app:ai') }))
   const openMenu = async () => { await btn.tap(); await menu.waitFor(); await page.waitForTimeout(250) }
   let before
 

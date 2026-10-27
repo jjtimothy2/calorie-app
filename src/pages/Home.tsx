@@ -14,11 +14,12 @@ import { DaySwitcher, PastDayNote } from '../components/PastDay'
 import { useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
-import { dailyPlan, dayName, dayView, keyDate, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
+import { dayName, dayView, keyDate, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
 import { newId, useStore } from '../lib/store'
 import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
+import { WeighInNudge } from '../components/Weight'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry } from '../lib/types'
 
 export default function Home() {
@@ -33,8 +34,6 @@ export default function Home() {
   const day = dayView(state, date)
   const closed = !!day.closed
   const locked = closed && !past
-  // v1.3.2/v1.3.3: a Lose or Keep plan held at the 1,500/1,200 floor with nothing left to cut has a goal of 0; say so instead of "even".
-  const atMinimum = !closed && !past && day.goal === 0 && dailyPlan(state.profile!).atMinimum
   const profile = state.profile!
   const s = streak(state.entries, today)
   const [editing, setEditing] = useState<Entry | null>(null)
@@ -91,6 +90,7 @@ export default function Home() {
             <button type="button" onClick={dismiss} aria-label="Dismiss backup reminder" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl font-bold">×</button>
           </div>
         )}
+        {!past && <WeighInNudge />}
         <section aria-label="Balance" className="flex flex-col gap-2.5">
           {closed && (
             <div className="mb-1 flex items-center justify-between">
@@ -98,10 +98,10 @@ export default function Home() {
               <Link to={`/day/${date}`} className="px-1 py-1 text-[15px] font-bold text-g-ink">View verdict ›</Link>
             </div>
           )}
-          <BalanceRing balance={day.balance} goal={day.goal} closed={closed} minimum={atMinimum} />
+          <BalanceRing balance={day.balance} goal={day.goal} closed={closed} />
           <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} />
-          <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{atMinimum ? <>You're at the minimum intake.<span className="mt-0.5 block text-[13px]" data-testid="minimum-hint">Your watch or exercise burn creates your deficit.</span></> : goalMessage(day.balance, day.goal, closed)}</p>
+          <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
           </Card>
         </section>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />

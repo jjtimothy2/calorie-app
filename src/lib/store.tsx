@@ -1,15 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
-import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Macros, type Meal, type Profile, type State } from './types'
+import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Macros, type Meal, type Profile, type State, type WeightEntry } from './types'
 import { editFood, FOODS_KEY, foodsFile, readFoods, upsertFood, USER_SERVING, type UserFood } from './myFoods'
 import { FOOD_BY_ID, FOODS } from '../data/foods'
 import { exerciseKcal, ACTIVITY_BY_ID } from '../data/activities'
 import { addDays, dateKey, dayBase, liveDay, summarise } from './calc'
 import { migrateState, normaliseProfile } from './migrate'
 
-import { LEGACY_STATE_KEY, STATE_KEY } from './backup'
+import { OLD_STATE_KEYS, STATE_KEY } from './backup'
+import { deleteWeight, logWeight } from './weigh'
 export const STORAGE_KEY = STATE_KEY
-const empty: State = { version: STATE_VERSION, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [] }
+const empty: State = { version: STATE_VERSION, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [], weights: [] }
 
+export { deleteWeight, logWeight }
 export { normaliseProfile }
 
 /** Close every past day that has logs but no summary yet (the midnight auto-close, computed on load). */
@@ -26,21 +28,37 @@ export function autoClose(s: State, today = dateKey()): State {
   return closed ? { ...s, closedDays: closed } : s
 }
 
+/**
+ * v1.13: true when saved data existed but could not be read or migrated. The app then starts empty but never saves
+ * that empty state over the unreadable copy, so nothing on the device is lost by a failed load or migration.
+ */
+let unreadable = false
+
 function load(): State {
-  try {
-    // v2 key first; otherwise migrate the app 1.0 data (left in place under its old key).
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STATE_KEY)
-    if (!raw) return empty
-    // v1 data (app 1.0) is migrated in place; the next save writes it back as v2.
-    const merged = migrateState(JSON.parse(raw))
-    return merged ? autoClose(merged) : empty
-  } catch {
-    return empty
+  unreadable = false
+  // v3 key first; otherwise migrate the v2 (app 1.1 to 1.12) or v1 (app 1.0) data, left in place under its old key.
+  // A key that can't be parsed or migrated falls through to the next (older) one.
+  let found = false
+  for (const k of [STORAGE_KEY, ...OLD_STATE_KEYS]) {
+    try {
+      const raw = localStorage.getItem(k)
+      if (raw == null) continue
+      found = true
+      // Older data is migrated in memory; the save effect writes it as v3 under the v3 key (the old key stays as is).
+      const merged = migrateState(JSON.parse(raw))
+      if (merged) return autoClose(merged)
+    } catch { /* try the next key */ }
   }
+  unreadable = found
+  return empty
 }
 
 type Action =
   | { type: 'setProfile'; profile: Profile }
+  | { type: 'logWeight'; date: string; kg: number }
+  | { type: 'deleteWeight'; date: string }
+  /** Undo for deleteWeight: puts the weight log and profile back exactly as they were. */
+  | { type: 'restoreWeights'; weights: WeightEntry[]; profile: Profile }
   | { type: 'addEntry'; entry: Entry }
   | { type: 'updateEntry'; entry: Entry }
   | { type: 'deleteEntry'; id: string }
@@ -193,8 +211,17 @@ function reducer(state: State, a: Action): State {
 
 function apply(state: State, a: Action): State {
   switch (a.type) {
-    case 'setProfile':
-      return { ...state, profile: normaliseProfile(a.profile) }
+    case 'setProfile': {
+      const profile = normaliseProfile(a.profile)
+      // Onboarding (or a reset) starts the weight log with the weight just entered. A log emptied by Delete stays empty.
+      return { ...state, profile, weights: state.profile || state.weights.length ? state.weights : [{ date: profile.planFrom.date, kg: profile.weightKg }] }
+    }
+    case 'logWeight':
+      return logWeight(state, a.date, a.kg)
+    case 'deleteWeight':
+      return deleteWeight(state, a.date)
+    case 'restoreWeights':
+      return { ...state, weights: a.weights, profile: a.profile }
     case 'addExercise':
       return { ...state, exercises: [...state.exercises, a.entry] }
     case 'updateExercise':
@@ -243,7 +270,7 @@ function apply(state: State, a: Action): State {
     case 'reset':
       return empty
     case 'restore': {
-      // Already validated by parseBackup (v1 or v2); migrate the same way load() does.
+      // Already validated by parseBackup (v1, v2 or v3); migrate the same way load() does.
       const s = migrateState(a.state)
       return s ? autoClose(s) : state
     }
@@ -276,6 +303,8 @@ const StoreCtx = createContext<Ctx | null>(null)
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, undefined, load)
   useEffect(() => {
+    // Never write the empty fallback over data that failed to load (see load); any real change saves as usual.
+    if (unreadable && state === empty) return
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
   // v1.9: user foods live next to the state, under their own key. Nothing is written until there is a food, so a

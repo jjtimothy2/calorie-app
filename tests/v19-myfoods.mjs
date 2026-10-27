@@ -11,7 +11,7 @@ import { STATE } from './v11-fixture.mjs'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const OUT = new URL('../screenshots/', import.meta.url).pathname
-const FOODS = 'calorie-app:foods', V2 = 'calorie-app:v2'
+const FOODS = 'calorie-app:foods', V2 = 'calorie-app:v2', V3 = 'calorie-app:v3'
 const results = [], errors = []
 const step = async (name, fn) => {
   const t = Date.now()
@@ -31,7 +31,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const shot = async (name) => { await page.waitForTimeout(350); await page.screenshot({ path: `${OUT}v19-${name}-${tag}.png` }) }
   const ls = (k) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), k)
   const foods = async () => (await ls(FOODS))?.foods ?? []
-  const mineEntries = async () => (await ls(V2)).entries.filter((e) => e.foodId?.startsWith('u_'))
+  const mineEntries = async () => (await ls(V3)).entries.filter((e) => e.foodId?.startsWith('u_'))
   const dialog = page.getByRole('dialog')
   const quickAdd = async (kcal, name, protein) => {
     await page.getByTestId('qa-bar').getByRole('button', { name: 'Add Calories' }).click()
@@ -50,7 +50,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await toHome()
     for (const n of ['Greek yoghurt with berries', 'Chicken rice', 'Banana']) await page.getByRole('button', { name: new RegExp(`^Edit ${n}`) }).waitFor()
     assert.equal(await page.evaluate((k) => localStorage.getItem(k), FOODS), null)
-    v2Keys = Object.keys(await ls(V2)).sort()
+    v2Keys = Object.keys(await ls(V3)).sort()
     await toMine()
     await page.getByTestId('myfoods-empty').waitFor()
   })
@@ -62,7 +62,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await dialog.getByRole('button', { name: 'Add 120 kcal' }).click()
     await page.getByTestId('toast').waitFor()
     assert.equal(await page.evaluate((k) => localStorage.getItem(k), FOODS), null)
-    const last = (await ls(V2)).entries.at(-1)
+    const last = (await ls(V3)).entries.at(-1)
     assert.equal(last.foodId, null); assert.equal(last.name, 'Quick add')
   })
 
@@ -78,9 +78,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal(f[0].name, "Mum's nasi goreng"); assert.equal(f[0].kcal, 450); assert.equal(f[0].protein, 14)
     assert.equal((await ls(FOODS)).version, 1)
     foodId = f[0].id
-    const s = await ls(V2)
+    const s = await ls(V3)
     assert.deepEqual(Object.keys(s).sort(), v2Keys)
-    assert.equal(s.version, 2)
+    assert.equal(s.version, 3) // v1.13: state lives in calorie-app:v3 (migrated from the v2 seed)
     const e = s.entries.at(-1)
     assert.deepEqual(Object.keys(e).sort(), ['carbs', 'createdAt', 'date', 'fat', 'foodId', 'id', 'kcal', 'meal', 'name', 'protein', 'qty', 'servingLabel', 'servingMult'])
     assert.equal(e.foodId, foodId); assert.equal(e.kcal, 450); assert.equal(e.qty, 1)
@@ -93,7 +93,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await page.getByTestId('toast').waitFor()
     const f = await foods()
     assert.equal(f.length, 1); assert.equal(f[0].id, foodId); assert.equal(f[0].kcal, 500); assert.equal(f[0].name, "Mum's nasi goreng")
-    assert.equal((await ls(V2)).entries.at(-1).name, "Mum's nasi goreng")
+    assert.equal((await ls(V3)).entries.at(-1).name, "Mum's nasi goreng")
     // A second food for the duplicate-name check later.
     await quickAdd(90, 'Es teh manis')
     await dialog.getByRole('button', { name: 'Add 90 kcal' }).click()

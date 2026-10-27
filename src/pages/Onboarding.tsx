@@ -6,7 +6,8 @@ import { Sheet } from '../components/Sheet'
 import { useCountUp } from '../components/motion'
 import { WelcomeArt } from '../components/WelcomeArt'
 import { useInstall } from '../lib/install'
-import { ACTIVITY, calcBmr, dailyPlan, fmt, KCAL_PER_KG, PACE, PACES, paceKcal } from '../lib/calc'
+import { ACTIVITY, calcBmr, dailyPlan, fmt, kgWeek, longDay, paceCheck, shortDay } from '../lib/calc'
+import { byWhenDate, ByWhenPicker, goalWeightError, goalWeightOk, PaceWarning, skipGoalKg, SKIP_BY_WHEN, type ByWhen } from '../components/GoalPlan'
 import { normaliseProfile, useStore } from '../lib/store'
 import type { Activity, Goal, Sex } from '../lib/types'
 
@@ -14,12 +15,14 @@ import type { Activity, Goal, Sex } from '../lib/types'
  * v1.8 calmer onboarding (Reed's mock for Jordy): a welcome, then one question per screen with a thin progress bar,
  * a target reveal and an optional extras screen. UX only: the Draft, calcBmr, dailyPlan and the stored profile are
  * what v1.7 saved (bmrCustom false, goal weight defaults to the current weight), except daily movement now starts
- * on (Jordy, v1.8) and the 20% cap is gone. Activity is asked before pace so the pace chips can show real numbers.
+ * on (Jordy, v1.8) and the 20% cap is gone.
+ * Goal-date plan: the pace step is gone. Lose and Gain ask for a goal weight and a date right after the goal; the
+ * target is |weight - goal| x 7,700 / days, with a soft warning (never a block) when it looks fast.
  */
-type Step = 'welcome' | 'sex' | 'age' | 'body' | 'goal' | 'watch' | 'pace' | 'activity' | 'target' | 'extras'
+type Step = 'welcome' | 'sex' | 'age' | 'body' | 'goal' | 'goalWeight' | 'byWhen' | 'watch' | 'activity' | 'target' | 'extras'
 
-/** v1.10: the question order. Watch users skip Activity (their watch counts movement), Keep skips Pace. */
-const orderFor = (goal: Goal, watch: boolean | null): Step[] => ['welcome', 'sex', 'age', 'body', 'goal', 'watch', ...(watch === true ? [] : ['activity' as Step]), ...(goal === 'keep' ? [] : ['pace' as Step]), 'target', 'extras']
+/** The question order. Keep skips Goal weight and By when; watch users skip Activity (their watch counts movement). */
+const orderFor = (goal: Goal, watch: boolean | null): Step[] => ['welcome', 'sex', 'age', 'body', 'goal', ...(goal === 'keep' ? [] : ['goalWeight', 'byWhen'] as Step[]), 'watch', ...(watch === true ? [] : ['activity' as Step]), 'target', 'extras']
 
 /** Real wording of the burn button in Log (exercise mode). */
 const WATCH_LINE = 'Add your watch’s active calories each day with Quick add burn.'
@@ -37,26 +40,31 @@ const ACT_HINT: Record<Activity, string> = {
   very: 'Physical job or training twice a day',
 }
 
-/** kg a week from the plan's daily deficit or surplus (7,700 kcal per kg), to the nearest 0.05. */
-const weekKg = (kcal: number) => Math.round(((Math.abs(kcal) * 7) / KCAL_PER_KG) * 20) / 20
+type OBDraft = Draft & { goalWeightKg: number; goalDate: string | null }
 
 /** Where the /onboarding route sends a person once their profile is saved (Home unless an extra picked Me). */
 export const afterOnboarding = { to: '/' }
 
 export default function Onboarding() {
-  const { dispatch } = useStore()
+  const { dispatch, today } = useStore()
   const [step, setStep] = useState<Step>('welcome')
   useEffect(() => { afterOnboarding.to = '/' }, [])
   const [how, setHow] = useState(false)
   // Cards only show a tick once the person has picked them (the draft keeps v1.7's defaults underneath).
-  const [answered, setAnswered] = useState<Set<keyof Draft>>(new Set())
-  const [d, setD] = useState<Draft>({ age: NaN, sex: 'female', heightCm: NaN, weightKg: NaN, activity: 'light', goal: 'lose', pace: 'standard' })
+  const [answered, setAnswered] = useState<Set<keyof OBDraft>>(new Set())
+  const [d, setD] = useState<OBDraft>({ age: NaN, sex: 'female', heightCm: NaN, weightKg: NaN, activity: 'light', goal: 'lose', goalWeightKg: NaN, goalDate: null })
+  const [byWhen, setByWhen] = useState<ByWhen | null>(null)
+  // Goal weight and By when can both be skipped: a 5% first goal and 6 months, noted on the result screen.
+  const [skipped, setSkipped] = useState<{ kg?: boolean; date?: boolean }>({})
+  const skipKg = () => { setD({ ...d, goalWeightKg: skipGoalKg(d.goal, d.weightKg) }); setSkipped({ ...skipped, kg: true }); next() }
+  const skipDate = () => { setByWhen(SKIP_BY_WHEN); setD({ ...d, goalDate: byWhenDate(SKIP_BY_WHEN, today) }); setSkipped({ ...skipped, date: true }); next() }
   // v1.10: asked before Activity. Yes turns daily movement off (the watch counts it) and skips Activity.
   const [watch, setWatch] = useState<boolean | null>(null)
-  const profile = () => normaliseProfile({ ...d, bmr: calcBmr(d), bmrCustom: false, includeMovement: watch !== true })
+  // The plan starts today at today's weight. Keep has no goal date (normaliseProfile sets goal weight = weight).
+  const profile = () => normaliseProfile({ ...d, goalWeightKg: d.goal === 'keep' ? d.weightKg : d.goalWeightKg, goalDate: d.goal === 'keep' ? null : d.goalDate, planFrom: { date: today, kg: d.weightKg }, bmr: calcBmr(d), bmrCustom: false, includeMovement: watch !== true }, today)
   const plan = validBody(d) ? dailyPlan(profile()) : null
 
-  // Question order. Activity comes before pace (pace results depend on it). Pace is skipped for Keep.
+  // Question order (see orderFor).
   const order = orderFor(d.goal, watch)
   const flow: Step[] = order.filter((s) => s !== 'welcome' && s !== 'target' && s !== 'extras')
   const go = (s: Step) => setStep(s)
@@ -70,10 +78,10 @@ export default function Onboarding() {
   }
   const back = () => go(order[Math.max(0, order.indexOf(step) - 1)])
   // Auto-advance: show the picked card for a beat, then move on.
-  const pick = (patch: Partial<Draft>) => {
+  const pick = (patch: Partial<OBDraft>) => {
     const nd = { ...d, ...patch }
     setD(nd)
-    setAnswered(new Set([...answered, ...(Object.keys(patch) as (keyof Draft)[])]))
+    setAnswered(new Set([...answered, ...(Object.keys(patch) as (keyof OBDraft)[])]))
     const from = step
     setTimeout(() => next(from, nd.goal), 220)
   }
@@ -90,6 +98,9 @@ export default function Onboarding() {
 
   const ageOk = d.age >= 14 && d.age <= 100
   const bodyOk = d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
+  const gwOk = goalWeightOk(d.goal, d.weightKg, d.goalWeightKg)
+  const gwError = goalWeightError(d.goal, d.weightKg, d.goalWeightKg)
+  const dateOk = !!d.goalDate && d.goalDate > today
 
   return (
     <main className="flex flex-1 flex-col overflow-y-auto px-5 pb-5" data-testid="onboarding">
@@ -157,29 +168,21 @@ export default function Onboarding() {
           </Question>
         )}
 
-        {step === 'pace' && (
-          <Question title={d.goal === 'gain' ? 'How fast should you gain?' : 'How fast should you lose?'} hint={watch === true ? 'Worked out from your resting burn. Your watch adds the rest.' : 'Slower is easier to stick with.'} footer={<Button onClick={() => next()} data-testid="ob-next">Continue</Button>}>
-            <div className="flex flex-col gap-3" data-testid="ob-pace">
-              {PACES.map((p) => {
-                // Each chip shows this person's real result for that pace (after the floor), not the nominal kg.
-                const r = dailyPlan({ ...profile(), pace: p })
-                const on = d.pace === p
-                return (
-                  <button key={p} type="button" aria-pressed={on} onClick={() => setD({ ...d, pace: p })} data-testid={`ob-pace-${p}`}
-                    className={`opt flex h-[68px] items-center justify-between rounded-full border-2 px-6 text-[17px] font-bold ${on ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink'}`}>
-                    <span>{PACE[p].label}</span>
-                    <span className="flex flex-col items-end leading-tight">
-                      <span className="num text-[17px] font-semibold">{fmt(r.target)} kcal</span>
-                      <span className={`text-[14px] font-semibold ${on ? 'text-bg/75' : 'text-mute'}`}>{r.atMinimum ? 'at the minimum' : `about ${weekKg(r.planDeficit)} kg a week`}</span>
-                    </span>
-                  </button>
-                )
-              })}
-              <p className="px-2 pt-1 text-center text-[15px] text-mute" data-testid="ob-pace-hint">
-                {plan ? paceLine(d.goal, d.pace, plan, watch === true) : ''}
+        {step === 'goalWeight' && (
+          <Question title="What's your goal weight?" hint={`You're ${d.weightKg} kg now. Pick a weight to ${d.goal === 'gain' ? 'gain' : 'lose'} to.`} footer={<StepFooter ok={gwOk} onNext={() => { setSkipped({ ...skipped, kg: false }); next() }} onSkip={skipKg} />}>
+            <form className="flex flex-1 flex-col items-center justify-center pb-16" onSubmit={(e) => { e.preventDefault(); if (gwOk) { setSkipped({ ...skipped, kg: false }); next() } }} data-testid="ob-goal-weight">
+              <BigNumber value={d.goalWeightKg} onChange={(n) => setD({ ...d, goalWeightKg: n })} unit="kg" label="Goal weight in kilograms" name="goalWeightKg" autoFocus testid="ob-goal-kg" />
+              <p className={`mt-5 min-h-[22px] text-center text-[15px] ${gwError ? 'font-semibold text-carbs-ink' : 'text-mute'}`} data-testid="ob-goal-kg-hint">
+                {gwError ?? (gwOk ? `That's ${Math.round(Math.abs(d.weightKg - d.goalWeightKg) * 10) / 10} kg to ${d.goal === 'gain' ? 'gain' : 'lose'}.` : '')}
               </p>
-              {watch === true && <WatchNote />}
-            </div>
+            </form>
+          </Question>
+        )}
+
+        {step === 'byWhen' && (
+          <Question title="By when?" hint="Pick a date. You can change it later in Me." footer={<StepFooter ok={dateOk} onNext={() => { setSkipped({ ...skipped, date: false }); next() }} onSkip={skipDate} />}>
+            <ByWhenPicker value={byWhen} date={d.goalDate} today={today} fromKg={d.weightKg} goalKg={d.goalWeightKg}
+              onPick={(by, date) => { setByWhen(by); setD({ ...d, goalDate: date }) }} />
           </Question>
         )}
 
@@ -202,7 +205,7 @@ export default function Onboarding() {
           </Question>
         )}
 
-        {step === 'target' && plan && <Target d={d} plan={plan} watch={watch === true} onHow={() => setHow(true)} onNext={() => next()} />}
+        {step === 'target' && plan && <Target d={d} plan={plan} watch={watch === true} today={today} skipped={skipped} onTry={(date) => { setByWhen('custom'); setD({ ...d, goalDate: date }) }} onHow={() => setHow(true)} onNext={() => next()} />}
 
         {step === 'extras' && (
           <div className="flex flex-1 flex-col pt-6" data-testid="ob-extras">
@@ -239,13 +242,23 @@ export default function Onboarding() {
   )
 }
 
+/** Continue, with a quiet Skip under it (Goal weight and By when). */
+function StepFooter({ ok, onNext, onSkip }: { ok: boolean; onNext: () => void; onSkip: () => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Button disabled={!ok} onClick={onNext} data-testid="ob-next">Continue</Button>
+      <button type="button" onClick={onSkip} className="min-h-11 self-center px-3 text-[16px] font-bold text-mute" data-testid="ob-step-skip">Skip for now</button>
+    </div>
+  )
+}
+
 function Question({ title, hint, children, footer }: { title: string; hint?: string; children: ReactNode; footer?: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col">
-      <h1 className="title mt-8 text-[34px] leading-[1.1]">{title}</h1>
+      <h1 className="title mt-8 text-[34px] leading-[1.1] [@media(max-height:700px)]:mt-4">{title}</h1>
       {hint && <p className="mt-2 text-[16px] text-mute">{hint}</p>}
-      <div className="mt-8 flex flex-1 flex-col">{children}</div>
-      {footer && <div className="pt-4">{footer}</div>}
+      <div className="mt-8 flex flex-1 flex-col [@media(max-height:700px)]:mt-4">{children}</div>
+      {footer && <div className="sticky bottom-0 bg-bg pt-4">{footer}</div>}
     </div>
   )
 }
@@ -334,34 +347,32 @@ function BigNumber({ value, onChange, unit, label, name, autoFocus, testid, smal
 
 type Plan = ReturnType<typeof dailyPlan>
 
-/** The floor in words: your BMR when that is what holds the target, else the 1,500 / 1,200 kcal minimum. */
-const floorName = (plan: Plan) => (plan.floor === plan.bmr ? `your resting burn (${fmt(plan.floor)} kcal)` : `the ${fmt(plan.floor)} kcal minimum`)
-
-/** One line under the pace chips, from the real plan for the picked pace (after the floor). */
-function paceLine(goal: Goal, pace: Draft['pace'], plan: Plan, watch = false) {
-  if (plan.atMinimum) return `You're already at ${floorName(plan)}. Exercise creates your deficit.`
-  if (plan.floored) return `${PACE[pace].label} is held at ${floorName(plan)}, so it works out to about ${weekKg(plan.planDeficit)} kg a week, not ${PACE[pace].kg}.`
-  return `About ${fmt(Math.abs(plan.planDeficit))} kcal a day ${goal === 'gain' ? 'over' : 'under'} your ${fmt(plan.planBase)} kcal ${watch ? 'resting' : 'daily'} burn.`
-}
-
+/** "Lose about 0.4 kg a week" (Keep: "Keeps your current weight"). */
 function goalLine(goal: Goal, plan: Plan) {
-  if (goal === 'keep' || plan.atMinimum) return goal === 'keep' && !plan.atMinimum ? 'Keeps your current weight' : 'Your exercise creates the deficit'
-  const kg = weekKg(plan.planDeficit)
-  return `${goal === 'lose' ? 'Lose' : 'Gain'} about ${kg} kg a week`
+  if (goal === 'keep' || plan.gap === 0) return 'Keeps your current weight'
+  return `${goal === 'lose' ? 'Lose' : 'Gain'} about ${kgWeek(plan.weeklyKg)} kg a week`
 }
 
-function Target({ d, plan, watch, onHow, onNext }: { d: Draft; plan: Plan; watch: boolean; onHow: () => void; onNext: () => void }) {
+function Target({ d, plan, watch, today, skipped, onTry, onHow, onNext }: { d: OBDraft; plan: Plan; watch: boolean; today: string; skipped: { kg?: boolean; date?: boolean }; onTry: (date: string) => void; onHow: () => void; onNext: () => void }) {
   const shown = useCountUp(plan.target, undefined, 800, 150)
+  const p = normaliseProfile({ ...d, goalWeightKg: d.goal === 'keep' ? d.weightKg : d.goalWeightKg, goalDate: d.goal === 'keep' ? null : d.goalDate, planFrom: { date: today, kg: d.weightKg }, bmr: plan.bmr, includeMovement: !watch }, today)
+  const check = paceCheck(p, plan)
   return (
     <div className="flex flex-1 flex-col" data-testid="ob-target">
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <div className="eyebrow">Your daily target</div>
         <div className="num mt-3 text-[96px] leading-none text-g-ink" data-testid="target">{fmt(shown)}</div>
         <div className="mt-2 text-[17px] text-mute">kcal a day</div>
-        <p className="mt-8 text-[20px] font-bold" data-testid="goal-line">{goalLine(d.goal, plan)}</p>
-        {plan.floored && <p className="mt-1.5 max-w-[280px] text-[15px] text-mute" data-testid="floor-line">Held at {floorName(plan)}, the lowest we go.</p>}
-        {watch && <div className="mt-6 w-full max-w-[320px]"><WatchNote /></div>}
-        <button type="button" onClick={onHow} className="mt-6 px-2 py-1 text-[16px] font-bold text-g-ink underline decoration-g/40 underline-offset-4" data-testid="ob-how">How we worked this out</button>
+        <p className="mt-7 text-[20px] font-bold" data-testid="goal-line">{goalLine(d.goal, plan)}</p>
+        {d.goal !== 'keep' && d.goalDate && <p className="mt-1 text-[16px] text-mute" data-testid="goal-date-line">{d.goalWeightKg} kg by {longDay(d.goalDate)}</p>}
+        {d.goal !== 'keep' && (skipped.kg || skipped.date) && (
+          <p className="mt-3 max-w-[320px] text-[15px] leading-snug text-mute" data-testid="ob-skipped-note">
+            {skipped.kg && skipped.date ? 'We picked a first goal of 5% of your weight in 6 months.' : skipped.kg ? 'We picked a first goal of 5% of your weight.' : 'We picked 6 months.'}
+          </p>
+        )}
+        <PaceWarning check={check} weeklyKg={plan.weeklyKg} sex={d.sex} onTry={onTry} className="mt-5 w-full max-w-[340px]" />
+        {watch && <div className="mt-4 w-full max-w-[340px]"><WatchNote /></div>}
+        <button type="button" onClick={onHow} className="mt-5 px-2 py-1 text-[16px] font-bold text-g-ink underline decoration-g/40 underline-offset-4" data-testid="ob-how">How we worked this out</button>
       </div>
       <p className="pb-3 text-center text-[14px] text-mute">You can change any of this in Me.</p>
       <Button onClick={onNext} data-testid="ob-next">Continue</Button>
@@ -369,27 +380,21 @@ function Target({ d, plan, watch, onHow, onNext }: { d: Draft; plan: Plan; watch
   )
 }
 
-function HowSheet({ d, plan, watch, onClose }: { d: Draft; plan: Plan; watch: boolean; onClose: () => void }) {
-  const want = paceKcal(d.pace)
-  const pace = PACE[d.pace].label
-  // BMR + movement = daily burn, then the pace takes off (or adds) to give the target.
+function HowSheet({ d, plan, watch, onClose }: { d: OBDraft; plan: Plan; watch: boolean; onClose: () => void }) {
+  // BMR + movement = daily burn, then the goal takes off (or adds) the daily gap to give the target.
   const rows: [string, string, boolean?][] = [
     ['Resting burn (BMR)', `${fmt(plan.bmr)} kcal`],
     watch ? ['Daily movement', 'From your watch'] : [`Daily movement (${ACTIVITY_SHORT[d.activity].toLowerCase()})`, `+${fmt(plan.movement)} kcal`],
     [watch ? 'Plan base' : 'Your daily burn', `${fmt(plan.planBase)} kcal`, true],
   ]
-  if (d.goal === 'lose' && plan.planDeficit > 0) rows.push([plan.floored ? `${pace} pace, held at the floor` : `${pace} pace`, `−${fmt(plan.planDeficit)} kcal`])
-  if (d.goal === 'gain' && plan.planDeficit < 0) rows.push([`${pace} pace`, `+${fmt(-plan.planDeficit)} kcal`])
-  if (d.goal === 'keep' && plan.target > plan.planBase) rows.push(['Raised to the minimum', `+${fmt(plan.target - plan.planBase)} kcal`])
-  const kg = weekKg(plan.planDeficit)
+  const kg = Math.round(plan.kgToGo * 10) / 10
+  const by = d.goalDate ? shortDay(d.goalDate) : ''
+  if (d.goal === 'lose' && plan.planDeficit > 0) rows.push([`Lose ${kg} kg by ${by}`, `−${fmt(plan.planDeficit)} kcal`])
+  if (d.goal === 'gain' && plan.planDeficit < 0) rows.push([`Gain ${kg} kg by ${by}`, `+${fmt(-plan.planDeficit)} kcal`])
   const why =
-    d.goal === 'keep'
-      ? `Keep matches your ${watch ? 'resting' : 'daily'} burn${plan.target > plan.planBase ? `, raised to ${floorName(plan)}` : ''}.`
-      : plan.atMinimum
-        ? `You're already at ${floorName(plan)}, so exercise creates your deficit.`
-        : plan.floored
-          ? `${pace} pace asks for ${fmt(want)} kcal a day, but the target never goes under ${floorName(plan)}. So it lands at ${fmt(plan.planDeficit)}, about ${kg} kg a week.`
-          : `${pace} pace ${d.goal === 'gain' ? 'adds' : 'takes off'} ${fmt(want)} kcal a day, about ${kg} kg a week.${d.goal === 'lose' ? ` The target never goes under ${floorName(plan)}.` : ''}`
+    d.goal === 'keep' || plan.gap === 0
+      ? `Keep matches your ${watch ? 'resting' : 'daily'} burn.`
+      : `About 7,700 kcal is one kg, so ${kg} kg × 7,700 kcal ÷ ${fmt(plan.days)} days is about ${fmt(Math.abs(plan.planDeficit))} kcal a day, about ${kgWeek(plan.weeklyKg)} kg a week.`
   return (
     <Sheet label="How we worked this out" onClose={onClose}>
       <div data-testid="ob-how-sheet" className="flex flex-col gap-4">
@@ -413,6 +418,7 @@ function HowSheet({ d, plan, watch, onClose }: { d: Draft; plan: Plan; watch: bo
           </div>
           <p className="mt-2 text-[15px] leading-snug text-mute">Set from your {watch ? 'resting' : 'daily'} burn ({fmt(plan.maintenance)} kcal) and current weight. They stay the same on exercise days.</p>
         </div>
+        <p className="text-[15px] leading-snug text-mute">Each time you log your weight in Me, the plan is worked out again from what's left over the days left.</p>
         <p className="text-[15px] leading-snug text-mute">{watch ? 'Daily movement is off because your watch counts it. Each day, add its active calories with Quick add burn and your budget grows to match.' : 'Got a watch later? Turn daily movement off in Me.'}</p>
         <Button variant="ghost" onClick={onClose} data-testid="ob-how-close">Got it</Button>
       </div>

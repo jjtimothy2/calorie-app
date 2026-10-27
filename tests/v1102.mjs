@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 
 const BASE = (process.env.BASE_URL ?? 'http://localhost:4174/calorie-app').replace(/\/$/, '')
 const OUT = new URL('../screenshots/', import.meta.url).pathname
-const V2 = 'calorie-app:v2'
+const V2 = 'calorie-app:v2', V3 = 'calorie-app:v3' // v1.13: seeds stay v2 (migrated on load); reads use v3
 const pad = (n) => String(n).padStart(2, '0')
 const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const TODAY = key(new Date())
@@ -83,10 +83,11 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await pg.getByTestId('ob-start').click(); await pg.getByTestId('ob-sex-male').click()
       await pg.getByTestId('ob-age').fill('32'); await pg.getByTestId('ob-next').click()
       await pg.getByTestId('ob-height').fill('175'); await pg.getByTestId('ob-weight').fill('92'); await pg.getByTestId('ob-next').click()
-      await pg.getByTestId('ob-goal-lose').click(); await pg.getByTestId('ob-watch-no').click(); await pg.getByTestId('ob-act-light').click()
-      await pg.getByTestId('ob-next').click(); await pg.getByTestId('ob-next').click(); await pg.getByTestId('ob-skip').click()
+      await pg.getByTestId('ob-goal-lose').click(); await pg.getByTestId('ob-step-skip').click(); await pg.getByTestId('ob-step-skip').click() // v1.13 goal weight, By when
+      await pg.getByTestId('ob-watch-no').click(); await pg.getByTestId('ob-act-light').click()
+      await pg.getByTestId('ob-next').click(); await pg.getByTestId('ob-skip').click()
       await pg.getByTestId('eaten').waitFor()
-      const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V2)
+      const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V3)
       assert.equal(st.entries.length, 0); assert.deepEqual(st.closedDays, {})
       await link(pg, 'History').click(); await pg.getByTestId('history-empty').waitFor({ timeout: 5000 })
       await pg.waitForTimeout(1100)
@@ -117,8 +118,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await pg.getByRole('button', { name: 'Close day' }).click()
     await pg.waitForURL(new RegExp(`/day/${TODAY}$`))
     await pg.goto(BASE + '/'); await pg.getByTestId('eaten').waitFor()
-    const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V2)
-    assert.ok(st.closedDays[TODAY], 'today is closed in storage'); assert.equal(st.version, 2); assert.equal(st.entries.length, 2)
+    const st = await pg.evaluate((k) => JSON.parse(localStorage.getItem(k)), V3)
+    assert.ok(st.closedDays[TODAY], 'today is closed in storage'); assert.equal(st.version, 3); assert.equal(st.entries.length, 2)
     await checkPages(pg, { empty: false, todayNote: 'Closed' })
     await link(pg, 'History').click(); await pg.getByTestId('week-total').waitFor()
     assert.match(await pg.locator('main').innerText(), /1 closed day\b/)

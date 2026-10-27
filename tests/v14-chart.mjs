@@ -77,9 +77,9 @@ export async function chartChecks(p, ctx, BASE) {
   assert.equal(await p.locator('[data-bar][data-visible=yes]').count(), 7)
   const scale = await p.getByTestId('chart').getAttribute('data-scale')
   const refs = await p.locator('[data-ref]').evaluateAll((els) => els.map((e) => e.getAttribute('data-ref')))
-  assert.deepEqual(refs, ['0', '400'], 'v1.4.2: 0 and the goal line, no mirrored -goal line') // v1.8: 1900 - 550 = 1350, held at 1,500 -> goal 400 (v1.7: 380 with the cap)
-  const stored = await p.evaluate(() => localStorage.getItem('calorie-app:v2'))
-  assert.equal(JSON.parse(stored).version, 2)
+  assert.deepEqual(refs, ['0', '400'], 'v1.4.2: 0 and the goal line, no mirrored -goal line') // v1.13: the upgrade keeps the v1.12 target (1,500 floor, 400 goal; v1.7: 380)
+  const stored = await p.evaluate(() => localStorage.getItem('calorie-app:v3'))
+  assert.equal(JSON.parse(stored).version, 3)
   assert.deepEqual((await visibleDays())[0], daysAgo(0))
 
   // A quick tap (< 150 ms) does not scrub.
@@ -150,7 +150,7 @@ export async function chartChecks(p, ctx, BASE) {
   out.monthBack = await p.getByTestId('period-range').innerText()
   await p.getByRole('button', { name: /7d/ }).click(); await wait(300)
   assert.equal(await pageNo(), 0)
-  assert.equal(await p.evaluate(() => localStorage.getItem('calorie-app:v2')), stored, 'chart never writes storage')
+  assert.equal(await p.evaluate(() => localStorage.getItem('calorie-app:v3')), stored, 'chart never writes storage')
   assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no sideways scroll')
   return out
 }

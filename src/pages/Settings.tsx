@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { BodyFields, GoalFields, goalBlurb, PACE_LABEL, paceHint, targetSum, validBody, type Draft } from '../components/ProfileFields'
+import { BodyFields, gapLine, GoalFields, goalBlurb, targetSum, validBody, type Draft } from '../components/ProfileFields'
+import { WeightCard } from '../components/Weight'
 import { Screen, TabBar } from '../components/Layout'
 import { Button, Card } from '../components/ui'
 import { BackupCard } from '../components/Backup'
@@ -17,16 +18,22 @@ export default function Settings() {
   const nav = useNavigate()
   const [params] = useSearchParams()
   const p = state.profile!
-  // v1.3.3: no goal weight field; a stored goalWeightKg rides along untouched in ...p.
-  const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal, pace: p.pace })
+  // Goal-date plan: weight comes from Log weight and the goal from the Weight card's goal sheet, both saved straight to
+  // the store. The draft follows them, so a weigh-in or goal change shows here without losing other unsaved edits.
+  const [d, setDraft] = useState<Draft>({ age: p.age, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, activity: p.activity, goal: p.goal })
   const [bmr, setBmr] = useState(p.bmr)
   const [bmrCustom, setBmrCustom] = useState(p.bmrCustom)
+  useEffect(() => {
+    setDraft((x) => ({ ...x, weightKg: p.weightKg, goal: p.goal }))
+    setBmr(p.bmr)
+    setBmrCustom(p.bmrCustom)
+  }, [p.weightKg, p.goal, p.bmr, p.bmrCustom])
   const [includeMovement, setIncludeMovement] = useState(p.includeMovement)
   const [msg, setMsg] = useState('')
   const [mac, setMac] = useState({ protein: p.macros.protein?.toString() ?? '', carbs: p.macros.carbs?.toString() ?? '', fat: p.macros.fat?.toString() ?? '' })
   const calculated = validBody(d) ? calcBmr(d) : 0
 
-  // Body changes (weight, height, age, sex) recalculate BMR. The target follows from BMR, movement and pace.
+  // Body changes (height, age, sex) recalculate BMR. The target follows from BMR, movement and the goal date.
   const setD = (n: Draft) => {
     const body = n.weightKg !== d.weightKg || n.heightCm !== d.heightCm || n.age !== d.age || n.sex !== d.sex
     if (body && validBody(n)) { setBmr(calcBmr(n)); setBmrCustom(false) }
@@ -73,8 +80,9 @@ export default function Settings() {
         <p className="text-[15px] text-mute">Your body, goal and daily targets</p>
       </header>
       <form className="flex flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); save() }}>
-        <BodyFields d={d} set={setD} />
-        <GoalFields d={d} set={setD} paceHint={paceHint(d.goal, plan)} />
+        <WeightCard />
+        <BodyFields d={d} set={setD} hideWeight />
+        <GoalFields d={d} set={setD} />
         <Card className="flex flex-col gap-3">
           <h2 className="title text-[21px]">Daily balance</h2>
           <div className="flex items-center justify-between gap-3 text-base font-semibold">
@@ -106,10 +114,10 @@ export default function Settings() {
                 <Info title="Daily target" id="target">
                   <p data-testid="budget-line">
                     BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
-                    {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? (d.goal === 'gain' && !plan.floored ? ` + ${fmt(-plan.planDeficit)} surplus` : `, held at the ${fmt(plan.floor)} kcal minimum`) : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
+                    {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} surplus` : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
                   </p>
-                  <p data-testid="pace-line">{d.goal === 'keep' ? (plan.atMinimum ? `Keep weight: ${goalBlurb(d.goal, plan)}.` : 'Keep weight: no deficit.') : `${PACE_LABEL(d.pace)}: ${goalBlurb(d.goal, plan)}.`} {includeMovement ? '' : 'With movement off the plan starts from your BMR. '}The target never goes under {fmt(plan.floor)} kcal{includeMovement && plan.floor === bmr ? ' (your BMR)' : ''}.</p>
-                  <p>The minimum is 1,500 kcal for men and 1,200 kcal for women (and never under your BMR when daily movement is on). When your goal would take the target below it, the target stays at the minimum: you're at the minimum intake, the daily goal is 0, and your watch or exercise burn creates your deficit. Keep and Lose never show a surplus goal.</p>
+                  <p data-testid="plan-line">{d.goal === 'keep' || !p.goalDate ? 'Keep weight: no deficit.' : `Goal: ${goalBlurb(d.goal, plan, p.goalDate)}. ${plan.kgToGo > 0 ? gapLine(plan) : ''}`} {includeMovement ? '' : 'With movement off the plan starts from your BMR.'}</p>
+                  <p>Each time you log your weight, the plan is worked out again from the kg left over the days left. There's no minimum: if the plan gets fast (over 1% of your weight a week, or under 1,500 kcal for men or 1,200 for women), you'll see a note suggesting a later date.</p>
                 </Info>
               </span>
               <span className="num text-[20px]" data-testid="settings-target">{fmt(plan.target)} kcal</span>

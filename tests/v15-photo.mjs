@@ -56,7 +56,7 @@ const mock = async (ctx) => {
 
 const setup = async (opts = {}) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, reducedMotion: 'reduce', serviceWorkers: 'block', ...opts })
-  await ctx.addInitScript((s) => { if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v2')) localStorage.setItem('calorie-app:v1', JSON.stringify(s)) }, V1_STATE)
+  await ctx.addInitScript((s) => { if (!localStorage.getItem('calorie-app:v1') && !localStorage.getItem('calorie-app:v3')) localStorage.setItem('calorie-app:v1', JSON.stringify(s)) }, V1_STATE)
   await mock(ctx)
   const page = await ctx.newPage()
   page.on('console', (m) => {
@@ -70,7 +70,7 @@ const setup = async (opts = {}) => {
   return { ctx, page }
 }
 const saveKey = (page, provider, key) => page.evaluate(([p, k]) => localStorage.setItem('calorie-app:ai', JSON.stringify({ provider: p, key: k })), [provider, key])
-const state = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2') ?? '{}'))
+const state = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3') ?? '{}'))
 const dialog = (page) => page.getByRole('dialog')
 const AI_BTN = { name: 'Estimate with AI', exact: true } // v1.6.1
 /** v1.7: AI button > Type it opens the AI sheet from the Log bar. */
