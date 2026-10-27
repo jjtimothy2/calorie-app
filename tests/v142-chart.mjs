@@ -78,7 +78,9 @@ export async function v142Checks(p, ctx, BASE) {
   const seen = new Set()
   for (let s = 0; s <= 16; s++) { await touch('touchMove', r.x + r.width * (0.3 + (0.47 * s) / 16), y); await wait(30); seen.add(await p.getByTestId('scrub-header').locator('.eyebrow').first().innerText()) }
   out.scrubHeader = (await p.getByTestId('scrub-header').innerText()).replace(/\n/g, ' | ')
-  assert.match(out.scrubHeader, /^Sun \d+ \w{3} \| 182 g \| target hit · closed \| 7-day avg \| \d+ g \| a day$/)
+  // the scrub ends on yesterday; the weekday used to be hard-coded as Sun, so this failed on any other day
+  const yWd = new Date(Date.now() - 86400_000).toLocaleDateString('en-GB', { weekday: 'short' })
+  assert.match(out.scrubHeader, new RegExp(`^${yWd} \\d+ \\w{3} \\| 182 g \\| target hit · closed \\| 7-day avg \\| \\d+ g \\| a day$`))
   const ticks = await p.evaluate(() => window.__haptics.filter((h) => h.kind === 'select').length)
   assert.ok(seen.size >= 3 && ticks === seen.size, `one haptic per day: ${ticks} vs ${seen.size}`)
   assert.equal(await p.locator('[data-testid=protein-chart] [data-bar] text[font-size="13"][font-weight="700"]').count(), 1)
