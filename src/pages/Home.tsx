@@ -10,10 +10,11 @@ import { AiGroupSheet, groupRows, groupTitle } from '../components/AiGroupSheet'
 import { AddItemSheet } from '../components/AddItemSheet'
 import type { EntryGroup } from '../components/FoodSheet'
 import { Screen, TabBar, Title } from '../components/Layout'
+import { DaySwitcher, PastDayNote } from '../components/PastDay'
 import { useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
-import { dailyPlan, dayView, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
+import { dailyPlan, dayName, dayView, keyDate, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { formatAmount } from '../lib/amount'
 import { newId, useStore } from '../lib/store'
@@ -21,15 +22,19 @@ import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry } from '../lib/types'
 
 export default function Home() {
-  const { state, dispatch, today } = useStore()
+  const { state, dispatch, today, logDate: date, setLogDate } = useStore()
   const nav = useNavigate()
-  const entries = state.entries.filter((e) => e.date === today).sort((a, b) => a.createdAt - b.createdAt)
-  const exercises = state.exercises.filter((e) => e.date === today).sort((a, b) => a.createdAt - b.createdAt)
+  // v1.12: Home shows the picked day (today unless a past day was chosen). A past day is never locked: closed or not,
+  // its food and exercise can be changed, and a closed one recalculates (store refreshPastDay).
+  const past = date < today
+  const entries = state.entries.filter((e) => e.date === date).sort((a, b) => a.createdAt - b.createdAt)
+  const exercises = state.exercises.filter((e) => e.date === date).sort((a, b) => a.createdAt - b.createdAt)
   const totals = sumEntries(entries)
-  const day = dayView(state, today)
+  const day = dayView(state, date)
   const closed = !!day.closed
+  const locked = closed && !past
   // v1.3.2/v1.3.3: a Lose or Keep plan held at the 1,500/1,200 floor with nothing left to cut has a goal of 0; say so instead of "even".
-  const atMinimum = !closed && day.goal === 0 && dailyPlan(state.profile!).atMinimum
+  const atMinimum = !closed && !past && day.goal === 0 && dailyPlan(state.profile!).atMinimum
   const profile = state.profile!
   const s = streak(state.entries, today)
   const [editing, setEditing] = useState<Entry | null>(null)
@@ -55,12 +60,13 @@ export default function Home() {
     setAdding(null)
     setGroup(adding.group.id)
   }
-  const dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+  const dateLabel = keyDate(date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
   // Food you can still eat today while hitting the daily goal.
   const left = day.balance - day.goal
   const remainingExcl = (e: Entry) => left + entryTotals(e).kcal
   const burned = day.burned
   const [remind, setRemind] = useState(() => shouldRemind(state, readMeta()))
+  const title = dayName(date, today)
   const fresh = useNewRows([...entries.map((e) => e.id), ...exercises.map((e) => e.id)])
   const dismiss = () => { writeMeta({ dismissedAt: Date.now() }); setRemind(false) }
 
@@ -68,14 +74,18 @@ export default function Home() {
     <>
       <Screen className="gap-3">
         <header className="flex items-end justify-between">
-          <Title eyebrow={dateLabel}>Today</Title>
+          <Title eyebrow={dateLabel} id="day-title">{title}</Title>
           <div className="mb-1 flex items-center gap-2">
-            <span className="rounded-full border border-line bg-card px-3 py-2 text-[15px] font-semibold" data-testid="streak">
-              <span aria-hidden="true">🔥 </span>{s} {s === 1 ? 'day' : 'days'}<span className="sr-only"> streak</span>
-            </span>
+            {!past && (
+              <span className="rounded-full border border-line bg-card px-3 py-2 text-[15px] font-semibold" data-testid="streak">
+                <span aria-hidden="true">🔥 </span>{s} {s === 1 ? 'day' : 'days'}<span className="sr-only"> streak</span>
+              </span>
+            )}
+            <DaySwitcher />
           </div>
         </header>
-        {remind && (
+        <PastDayNote />
+        {remind && !past && (
           <div role="note" className="flex items-center gap-3 rounded-2xl bg-g-soft px-4 py-3 text-[15px] text-g-soft-ink" data-testid="backup-reminder">
             <span className="flex-1">No backup for a week. Your data lives only on this device. <Link to="/settings" className="font-bold underline">Back up now</Link></span>
             <button type="button" onClick={dismiss} aria-label="Dismiss backup reminder" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl font-bold">×</button>
@@ -84,8 +94,8 @@ export default function Home() {
         <section aria-label="Balance" className="flex flex-col gap-2.5">
           {closed && (
             <div className="mb-1 flex items-center justify-between">
-              <span className="rounded-full bg-g-soft px-3 py-1.5 text-[13px] font-bold text-g-soft-ink" data-testid="closed-pill">Day closed</span>
-              <Link to={`/day/${today}`} className="px-1 py-1 text-[15px] font-bold text-g-ink">View verdict ›</Link>
+              <span className="rounded-full bg-g-soft px-3 py-1.5 text-[13px] font-bold text-g-soft-ink" data-testid="closed-pill">{past ? 'Closed · updates as you edit' : 'Day closed'}</span>
+              <Link to={`/day/${date}`} className="px-1 py-1 text-[15px] font-bold text-g-ink">View verdict ›</Link>
             </div>
           )}
           <BalanceRing balance={day.balance} goal={day.goal} closed={closed} minimum={atMinimum} />
@@ -99,13 +109,13 @@ export default function Home() {
           <section aria-label="Exercise" data-testid="exercise-card">
             <div className="flex items-center justify-between">
               <h2 className="eyebrow text-[15px] font-semibold text-ink">Exercise{exercises.length > 0 && <span className="text-mute"> · {fmt(burned)} kcal</span>}</h2>
-              {!closed && <Link to="/log?mode=exercise" className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label="Add exercise">+ Add</Link>}
+              {!locked && <Link to="/log?mode=exercise" className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label="Add exercise">+ Add</Link>}
             </div>
             {exercises.length > 0 && (
               <ul className="mt-2">
                 {exercises.map((e) => (
                   <li key={e.id} className={fresh.has(e.id) ? 'row-in' : ''}>
-                    <button type="button" disabled={closed} onClick={() => setEditingEx(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(e.kcal)} kcal burned`}>
+                    <button type="button" disabled={locked} onClick={() => setEditingEx(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left text-[15px] disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(e.kcal)} kcal burned`}>
                       <span className="tile" aria-hidden="true">🏃</span>
                       <span className="flex-1">{exerciseLine(e)}</span>
                       <span className="num text-[18px] text-ex-ink">+{fmt(e.kcal)}</span>
@@ -117,7 +127,7 @@ export default function Home() {
           </section>
         </Card>
         {entries.length === 0 && (
-          <p className="text-center text-[15px] text-mute" data-testid="empty">Nothing logged yet today. Tap + to add your first meal.</p>
+          <p className="text-center text-[15px] text-mute" data-testid="empty">{past ? 'Nothing logged on this day. Tap + Add to fill it in.' : 'Nothing logged yet today. Tap + to add your first meal.'}</p>
         )}
         {MEALS.map((m) => {
           const list = entries.filter((e) => e.meal === m)
@@ -127,14 +137,14 @@ export default function Home() {
               <section aria-label={MEAL_LABEL[m]} data-testid={`meal-${m}`}>
                 <div className="flex items-center justify-between">
                   <h2 className="eyebrow text-[15px] font-semibold text-ink">{MEAL_LABEL[m]}{list.length > 0 && <span className="text-mute"> · {fmt(sum)} kcal</span>}</h2>
-                  {!closed && <Link to={`/log?meal=${m}`} className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>}
+                  {!locked && <Link to={`/log?meal=${m}`} className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>}
                 </div>
                 {list.length > 0 && (
                   <ul className="mt-2">
                     {groupRows(list).map((row) => row.kind === 'group' ? (
                       <li key={row.id} className={row.items.some((e) => fresh.has(e.id)) ? 'row-in' : ''}>
                         {/* v1.10: items from one AI estimate show as one row. Tap for the breakdown. */}
-                        <button type="button" disabled={closed} onClick={() => setGroup(row.id)} data-testid="ai-group-row" className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`${groupTitle(row.items)}, ${row.items.length} items from AI, ${fmt(row.kcal)} kcal. Open breakdown`}>
+                        <button type="button" disabled={locked} onClick={() => setGroup(row.id)} data-testid="ai-group-row" className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`${groupTitle(row.items)}, ${row.items.length} items from AI, ${fmt(row.kcal)} kcal. Open breakdown`}>
                           <span className="tile relative" aria-hidden="true">
                             {foodEmoji(row.lead.name)}
                             <span className="absolute -bottom-1 -right-1 grid h-[18px] w-[18px] place-items-center rounded-full border border-line bg-card text-g"><SparkleIcon className="h-2.5 w-2.5" /></span>
@@ -149,7 +159,7 @@ export default function Home() {
                       </li>
                     ) : (() => { const e = row.entry; return (
                       <li key={e.id} className={fresh.has(e.id) ? 'row-in' : ''}>
-                        <button type="button" disabled={closed} onClick={() => setEditing(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
+                        <button type="button" disabled={locked} onClick={() => setEditing(e)} className="flex w-full items-center gap-3 border-t border-line py-2.5 text-left disabled:cursor-default" aria-label={`Edit ${e.name}, ${fmt(entryTotals(e).kcal)} kcal`}>
                           <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
                           <span className="min-w-0 flex-1">
                             <span className="block text-[16px] font-semibold leading-snug">{e.name}</span>
@@ -165,7 +175,9 @@ export default function Home() {
             </Card>
           )
         })}
-        {closed ? (
+        {past ? (
+          <Button variant="ghost" onClick={() => setLogDate(today)} data-testid="back-to-today-bottom">Back to today</Button>
+        ) : closed ? (
           <Button variant="ghost" onClick={() => dispatch({ type: 'reopenDay', date: today })}>Reopen day</Button>
         ) : (
           <>
@@ -189,7 +201,7 @@ export default function Home() {
       {editingEx && editingEx.activityId ? (
         <ExerciseEditSheet key={editingEx.id} entry={editingEx} onClose={() => setEditingEx(null)} />
       ) : editingEx ? (
-        <ExerciseQuickSheet key={editingEx.id} date={today} initial={editingEx} onDone={() => setEditingEx(null)} onClose={() => setEditingEx(null)} />
+        <ExerciseQuickSheet key={editingEx.id} date={date} initial={editingEx} onDone={() => setEditingEx(null)} onClose={() => setEditingEx(null)} />
       ) : null}
     </>
   )

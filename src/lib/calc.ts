@@ -335,3 +335,12 @@ export function balanceScale(values: number[], goal: number): number {
 
 /** Protein chart scale: max(1.25 x target, biggest value). */
 export const proteinScale = (values: number[], target: number) => Math.max(target * 1.25, ...values, 1)
+
+/** v1.12: a YYYY-MM-DD key as a local Date. */
+export const keyDate = (k: string) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
+/** v1.12: "Today", "Yesterday", or a short date such as "Mon 26 Oct". */
+export function dayName(date: string, today = dateKey()): string {
+  if (date === today) return 'Today'
+  if (date === addDays(today, -1)) return 'Yesterday'
+  return keyDate(date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+}

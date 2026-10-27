@@ -3,7 +3,7 @@ import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Mac
 import { editFood, FOODS_KEY, foodsFile, readFoods, upsertFood, USER_SERVING, type UserFood } from './myFoods'
 import { FOOD_BY_ID, FOODS } from '../data/foods'
 import { exerciseKcal, ACTIVITY_BY_ID } from '../data/activities'
-import { addDays, dateKey, liveDay, summarise } from './calc'
+import { addDays, dateKey, dayBase, liveDay, summarise } from './calc'
 import { migrateState, normaliseProfile } from './migrate'
 
 import { LEGACY_STATE_KEY, STATE_KEY } from './backup'
@@ -159,9 +159,39 @@ function demoExercises(state: State, weightKg: number): ExerciseEntry[] {
 
 const isClosed = (s: State, date: string) => !!s.closedDays[date]
 
+/**
+ * v1.12: a past day was changed (food or exercise added, edited or deleted). A closed past day keeps the baseline it
+ * was closed with (BMR, movement, base burn, goal) and only its eaten, burned, protein and balance follow the logs, so
+ * History and the verdict stay right without re-planning the day from today's profile. A past day with no summary yet
+ * is closed the same way the midnight auto-close does it.
+ */
+export function refreshPastDay(s: State, date: string, today = dateKey()): State {
+  if (!s.profile || date >= today) return s
+  const old = s.closedDays[date]
+  if (!old) return autoClose(s, today)
+  const live = liveDay(s, s.profile, date)
+  const next = { ...old, burned: live.burned, eaten: live.eaten, protein: live.protein, balance: dayBase(old) + live.burned - live.eaten }
+  return { ...s, closedDays: { ...s.closedDays, [date]: next } }
+}
+
+const ENTRY_EDITS = new Set(['addEntry', 'updateEntry', 'deleteEntry', 'addExercise', 'updateExercise', 'deleteExercise'])
+
 function reducer(state: State, a: Action): State {
-  // A closed day is locked: ignore edits to it until it is reopened.
-  if ((a.type === 'addEntry' || a.type === 'updateEntry' || a.type === 'addExercise' || a.type === 'updateExercise') && isClosed(state, a.entry.date)) return state
+  if (!ENTRY_EDITS.has(a.type)) return apply(state, a)
+  // The days this edit touches: the entry's own day, plus its old day for an update or delete.
+  const before = 'id' in a ? (a.type === 'deleteEntry' ? state.entries : state.exercises).find((e) => e.id === a.id)?.date
+    : 'entry' in a ? (a.type === 'updateEntry' ? state.entries : state.exercises).find((e) => e.id === a.entry.id)?.date : undefined
+  const dates = new Set([before, 'entry' in a ? a.entry.date : undefined].filter((d): d is string => !!d))
+  const today = dateKey()
+  // Today, once closed, is locked until it is reopened. v1.12: past days are not; they recalculate instead.
+  if ('entry' in a && [...dates].some((d) => d >= today && isClosed(state, d))) return state
+  let next = apply(state, a)
+  if (next === state) return state
+  for (const d of dates) next = refreshPastDay(next, d, today)
+  return next
+}
+
+function apply(state: State, a: Action): State {
   switch (a.type) {
     case 'setProfile':
       return { ...state, profile: normaliseProfile(a.profile) }
@@ -236,6 +266,10 @@ type Ctx = {
   updateMyFood: (id: string, f: FoodInput) => boolean
   /** Past entries are kept; they stay in the log as they were. */
   deleteMyFood: (id: string) => void
+  /** v1.12: the day Home and Log show and write to. Today unless a past day was picked; never saved, so the app opens on today. */
+  logDate: string
+  /** Pick a day to view and edit (clamped to today). */
+  setLogDate: (date: string) => void
 }
 const StoreCtx = createContext<Ctx | null>(null)
 
@@ -284,6 +318,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick) }
   }, [])
   useEffect(() => { dispatch({ type: 'autoClose', today }) }, [today])
+  // v1.12: the picked day lives in memory only. It goes back to today at midnight, on a reload, and after the app
+  // has been in the background for 5 minutes, so today's food never lands on yesterday by accident.
+  const [picked, setPicked] = useState<string | null>(null)
+  const logDate = picked && picked < today ? picked : today
+  const setLogDate = useCallback((d: string) => setPicked(d < dateKey() ? d : null), [])
+  useEffect(() => { setPicked(null) }, [today])
+  useEffect(() => {
+    let hiddenAt = 0
+    const vis = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+      else if (hiddenAt && Date.now() - hiddenAt > 5 * 60_000) setPicked(null)
+    }
+    document.addEventListener('visibilitychange', vis)
+    return () => document.removeEventListener('visibilitychange', vis)
+  }, [])
   const recentFoodIds = useMemo(() => {
     const seen = new Set<string>()
     const out: string[] = []
@@ -297,8 +346,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return out
   }, [state.entries, myFoodById])
   const value = useMemo(
-    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood }),
-    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood],
+    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate }),
+    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate],
   )
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }

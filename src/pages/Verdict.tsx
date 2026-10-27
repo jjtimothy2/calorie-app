@@ -27,7 +27,7 @@ function headline(balance: number, goal: number, closed: boolean) {
 /** End of day verdict for a closed day (or a live preview for an open one). */
 export default function Verdict() {
   const { date = '' } = useParams()
-  const { state, dispatch, today } = useStore()
+  const { state, dispatch, today, setLogDate } = useStore()
   const nav = useNavigate()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return <Screen><p>Unknown day.</p><Link to="/" className="font-bold text-g-ink">Back to Today</Link></Screen>
   const d = dayView(state, date)
@@ -62,7 +62,11 @@ export default function Verdict() {
         {stat(`${fmt(d.protein || 0)} g`, 'protein')}
       </Card>
       <div className="rise-late mt-5 flex w-full flex-col gap-1">
-        <Button onClick={() => nav(-1)} data-autofocus aria-label={closed ? 'Done, see you tomorrow' : 'Done'} className="h-14 py-0">{closed ? 'See you tomorrow' : 'Done'}</Button>
+        <Button onClick={() => nav(-1)} data-autofocus aria-label={closed && date === today ? 'Done, see you tomorrow' : 'Done'} className="h-14 py-0">{closed && date === today ? 'See you tomorrow' : 'Done'}</Button>
+        {/* v1.12: a past day opens on Today so its food and exercise can be added or changed. A closed day recalculates. */}
+        {date < today && (
+          <button type="button" className="tap px-2 py-2.5 text-[15px] font-bold text-g-ink" data-testid="edit-day" onClick={() => { setLogDate(date); nav('/') }}>Edit day</button>
+        )}
         {closed && date === today && (
           <button type="button" className="tap px-2 py-2.5 text-[15px] font-bold text-g-ink" onClick={() => { dispatch({ type: 'reopenDay', date }); nav('/') }}>Reopen day</button>
         )}

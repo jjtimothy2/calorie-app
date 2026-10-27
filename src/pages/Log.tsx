@@ -4,6 +4,7 @@ import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { AiFlow, CameraIcon, GalleryIcon, NoKeySheet, PencilIcon, SparkleIcon, type LogItem } from '../components/PhotoSheets'
 import { Screen } from '../components/Layout'
+import { PastDayNote } from '../components/PastDay'
 import { Button, Chip } from '../components/ui'
 import { ExerciseForm, ExerciseQuickSheet } from '../components/ExerciseForm'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
@@ -24,12 +25,15 @@ type Tab = 'recent' | 'fav' | 'mine' | 'all'
 const QA_BTN = 'bg-g-ink text-card shadow-[0_8px_20px_rgba(23,128,70,.25)]'
 
 export default function Log() {
-  const { state, dispatch, recentFoodIds, today, myFoods, myFoodById } = useStore()
+  const { state, dispatch, recentFoodIds, today: realToday, logDate: today, myFoods, myFoodById } = useStore()
   const [params, setParams] = useSearchParams()
   const nav = useNavigate()
   const meal = (MEALS as string[]).includes(params.get('meal') ?? '') ? (params.get('meal') as Meal) : defaultMeal()
   const mode = params.get('mode') === 'exercise' ? 'exercise' : 'food'
+  // v1.12: everything here writes to the picked day (named today below; it is the real today unless a past day was
+  // picked on Home). Only today locks when closed; a past day recalculates instead.
   const day = dayView(state, today)
+  const locked = !!day.closed && today >= realToday
   const remaining = day.balance - day.goal
   const [quickEx, setQuickEx] = useState(false)
   const [q, setQ] = useState('')
@@ -43,7 +47,7 @@ export default function Log() {
   const [toast, setToast] = useState<{ ids: string[]; text: string } | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const keyboard = useKeyboardOpen()
-  const bar = !day.closed && !keyboard
+  const bar = !locked && !keyboard
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const showToast = (entry: Entry) => {
@@ -203,7 +207,8 @@ export default function Log() {
           <Chip on={mode === 'food'} onClick={() => setMode('food')}><span aria-hidden="true">🍽 </span>Food</Chip>
           <Chip on={mode === 'exercise'} onClick={() => setMode('exercise')}><span aria-hidden="true">🏃 </span>Exercise</Chip>
         </div>
-        {day.closed ? (
+        <PastDayNote compact />
+        {locked ? (
           <div className="flex flex-col gap-3 rounded-[22px] border border-line bg-card p-4 text-center" data-testid="day-locked">
             <p className="text-base font-semibold">Today is closed: {verdict(day.balance)}.</p>
             <p className="text-[15px] text-mute">Reopen it to log more.</p>
@@ -292,7 +297,7 @@ export default function Log() {
       </Screen>
       {/* v1.3.4: Quick add lives in a sticky full-width bar at the bottom of Log (Reed, option 1). Hidden when the
           day is closed, and while the on-screen keyboard is up so it never rides up over the list. */}
-      {!day.closed && !keyboard && (
+      {!locked && !keyboard && (
         // v1.11: 20 px on both sides (plus the safe area), the same gutter as the page, so the button's left edge and the
         // AI button's right edge line up with the search box and list. Was 20 px left, 8 px right. Both buttons are 56 px tall.
         <div className="px-safe-bar flex shrink-0 items-center gap-3 border-t border-line bg-bg pt-3 pb-safe-qa" data-testid="qa-bar">
