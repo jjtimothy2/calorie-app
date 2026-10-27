@@ -629,7 +629,7 @@ try {
     await mp.goto(BASE + '/settings')
     assert.equal(await mp.locator('input[name=goalWeightKg]').count(), 0) // v1.3.3: the stored value stays, the field is gone
     assert.match(await mp.getByTestId('goal-summary').innerText(), /^Goal 55 kg by /)
-    assert.match(await mp.getByTestId('goal-assumed').innerText(), /from your old pace, keeping the same daily target/)
+    assert.equal(await mp.getByTestId('goal-assumed').innerText(), 'We set this from your old pace. Tap Edit to pick your own goal weight and date.') // v1.13.1: no 'same daily target'
     assert.equal(await mp.getByRole('switch', { name: /Include daily movement/ }).isChecked(), true)
   })
   await step('v1.4.1 chart: lopsided fixed scale fits the +2,500 spike, nothing clipped, every bar labelled', async () => {
@@ -846,16 +846,17 @@ try {
     await fp.goto(BASE + '/')
     await fp.getByTestId('balance').waitFor()
   }
-  // A plan picked in v1.13 (13 kg by a date 182 days out: 13 x 7700 / 182 = 550 a day). Upgraded v1.12 plans keep their old target (below).
+  // A plan picked in v1.13 (13 kg by a date 182 days out: 13 x 7700 / 182 = 550 a day). v1.13.1: upgraded v1.12 plans get the same no-floor math (below).
   const PLAN = { weightKg: 68, goalWeightKg: 55, goalDate: addDaysKey(TODAY, 182), planFrom: { date: TODAY, kg: 68 } }
-  await step('v1.13 upgrade keeps a v1.12 target held at the 1,500 floor (man, BMR 1600, movement off -> 1,500, goal 100)', async () => {
+  await step('v1.13.1 upgrade has no floor: a v1.12 target held at 1,500 (man, BMR 1600, movement off) -> 1,050, goal 550, soft warning', async () => {
     await seedProfile({ sex: 'male', bmr: 1600, goalWeightKg: 55 })
-    assert.equal(await fp.getByTestId('ring-goal').innerText(), 'goal 100')
+    assert.equal(await fp.getByTestId('ring-goal').innerText(), 'goal 550')
     const prof = await fp.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')).profile)
-    assert.deepEqual([prof.target, prof.dailyGoal, prof.goalAssumed, prof.goalWeightKg], [1500, 100, true, 55])
+    assert.deepEqual([prof.target, prof.dailyGoal, prof.goalAssumed, prof.goalAssumedV, prof.goalWeightKg, prof.goalDate], [1050, 550, true, 2, 55, addDaysKey(TODAY, 182)])
     assert.ok(await fp.evaluate(() => localStorage.getItem('calorie-app:v1') !== null), 'old key kept as a backup')
     await fp.goto(BASE + '/settings')
-    assert.equal(await fp.getByTestId('settings-target').innerText(), '1,500 kcal')
+    assert.equal(await fp.getByTestId('settings-target').innerText(), '1,050 kcal')
+    assert.match(await fp.getByTestId('push-prompt').innerText(), /Push goal date to/) // the same soft warning as a new plan
   })
   await step('v1.13 no floor, Lose: man, BMR 1600, movement off -> target 1,050, goal 550, soft warning with a later date', async () => {
     await seedProfile({ sex: 'male', bmr: 1600, ...PLAN })

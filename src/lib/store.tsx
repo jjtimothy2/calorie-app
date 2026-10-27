@@ -34,6 +34,17 @@ export function autoClose(s: State, today = dateKey()): State {
  */
 let unreadable = false
 
+/** The newest old (v2, else v1) state still kept as a backup, parsed; null when there is none or it can't be read. */
+function oldState(): unknown {
+  for (const k of OLD_STATE_KEYS) {
+    try {
+      const raw = localStorage.getItem(k)
+      if (raw != null) return JSON.parse(raw)
+    } catch { /* try the next key */ }
+  }
+  return null
+}
+
 function load(): State {
   unreadable = false
   // v3 key first; otherwise migrate the v2 (app 1.1 to 1.12) or v1 (app 1.0) data, left in place under its old key.
@@ -45,7 +56,8 @@ function load(): State {
       if (raw == null) continue
       found = true
       // Older data is migrated in memory; the save effect writes it as v3 under the v3 key (the old key stays as is).
-      const merged = migrateState(JSON.parse(raw))
+      // v1.13.1: a v3 profile v1.13 migrated is re-derived once from the old pace, so the old state is passed along.
+      const merged = migrateState(JSON.parse(raw), undefined, k === STORAGE_KEY ? oldState() : undefined)
       if (merged) return autoClose(merged)
     } catch { /* try the next key */ }
   }

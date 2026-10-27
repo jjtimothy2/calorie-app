@@ -20,7 +20,7 @@ export function jordySeed(today = 1559, bmr = 1837) {
   entries.push({ id: 'j' + ++n, date: daysAgo(0), meal: 'breakfast', foodId: null, name: 'Kopi susu', servingLabel: '1 cup', servingMult: 1, qty: 1, kcal: bmr - today, protein: 8, carbs: 30, fat: 6, createdAt: now - 1e6 })
   return {
     version: 1,
-    // male, BMR 1,837, movement off, Standard pace: target floors at 1,500, so the goal is 337.
+    // male, BMR 1,837, movement off, Standard pace: v1.12 floored the target at 1,500 (goal 337); v1.13.1 migrates it with no floor: goal 550 today, closed days keep 337.
     profile: { age: 35, sex: 'male', heightCm: 178, weightKg: 85, activity: 'light', goal: 'lose', pace: 'standard', goalWeightKg: 78, bmr, bmrCustom: true, includeMovement: false, macros: { protein: null, carbs: null, fat: null } },
     entries, exercises: [], closedDays, favourites: [],
   }
@@ -82,9 +82,9 @@ export async function v141Checks(p, ctx, BASE) {
   await wait(1100)
   let g = await geometry(p)
   // Lopsided scale: top fits the biggest closed deficit (3,232 + 10% -> 3,600), bottom (v1.4.2) the biggest
-  // closed surplus (820) + 10% -> 950. Only one dashed line now: the goal at +337.
+  // closed surplus (820) + 10% -> 950. Only one dashed line now: the goal at +550 (v1.13.1, was +337 held by the 1,500 floor).
   assert.deepEqual([g.top, g.bottom], [3600, 950], 'lopsided fixed scale')
-  assert.deepEqual(g.refs.map((r) => r[0]), [0, 337])
+  assert.deepEqual(g.refs.map((r) => r[0]), [0, 550]) // v1.13.1: today's plan has no floor on upgrade (1837 - 550 = 1287); closed days keep their 337
   const by = (v) => g.bars.find((b) => b.v === v)
   const sun = by(3232), mon = by(1559), sat = by(1001)
   assert.ok(sun && mon && sat, 'Jordy week bars')

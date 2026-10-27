@@ -77,7 +77,7 @@ export async function chartChecks(p, ctx, BASE) {
   assert.equal(await p.locator('[data-bar][data-visible=yes]').count(), 7)
   const scale = await p.getByTestId('chart').getAttribute('data-scale')
   const refs = await p.locator('[data-ref]').evaluateAll((els) => els.map((e) => e.getAttribute('data-ref')))
-  assert.deepEqual(refs, ['0', '400'], 'v1.4.2: 0 and the goal line, no mirrored -goal line') // v1.13: the upgrade keeps the v1.12 target (1,500 floor, 400 goal; v1.7: 380)
+  assert.deepEqual(refs, ['0', '550'], 'v1.4.2: 0 and the goal line, no mirrored -goal line') // v1.13.1: 1900 - 550 = 1350, no floor on upgrade -> goal 550 (v1.13: 400 held at 1,500)
   const stored = await p.evaluate(() => localStorage.getItem('calorie-app:v3'))
   assert.equal(JSON.parse(stored).version, 3)
   assert.deepEqual((await visibleDays())[0], daysAgo(0))

@@ -50,6 +50,8 @@ export type Profile = {
   planFrom: WeightEntry
   /** Set when the goal weight and date were derived from an old pace on migration (state v2 to v3). Cleared on any goal edit. */
   goalAssumed?: boolean
+  /** 2: the assumed goal was derived from the old pace with no floor (v1.13.1). Missing on a v1.13 assumed goal, which gets re-derived once. */
+  goalAssumedV?: 2
   macros: MacroOverrides
 }
 

@@ -206,13 +206,13 @@ t('v1.3.3: BMR stays as stored when a custom BMR profile is normalised (no D cha
   const p = normaliseProfile({ age: 35, sex: 'male', heightCm: 180, weightKg: 100, activity: 'light', goal: 'lose', bmr: 1900, bmrCustom: true, includeMovement: false })
   assert.deepEqual([p.bmr, p.bmrCustom], [1900, true])
   assert.equal(calcBmr(p), 1955) // Mifflin for 100 kg, 180 cm, 35: 1000 + 1125 - 175 + 5; the typed 1900 is kept
-  // v1.13: old data (pace, no goal date) with a goal weight under the current weight keeps it and gets a date that keeps
-  // the v1.12 target. Here v1.12 held 1900 - 550 = 1350 at the 1,500 floor (deficit 400): 20 kg x 7,700 / 400 = 385 days.
+  // v1.13.1: old data (pace, no goal date) with a goal weight under the current weight keeps it and gets a date from the
+  // old pace: 20 kg at 0.5 kg a week = 280 days, deficit 550, so 1900 - 550 = 1350 (v1.12 held 1,500; no floor now).
   const raw = { age: 35, sex: 'male', heightCm: 180, weightKg: 100, activity: 'light', goal: 'lose', bmr: 1900, bmrCustom: true, includeMovement: false, pace: 'standard' }
   const g = normaliseProfile({ ...raw, goalWeightKg: 80 }, T0)
-  assert.deepEqual([g.goalWeightKg, g.goalDate, g.goalAssumed, g.target, g.dailyGoal], [80, addDays(T0, 385), true, 1500, 400])
+  assert.deepEqual([g.goalWeightKg, g.goalDate, g.goalAssumed, g.target, g.dailyGoal], [80, addDays(T0, 280), true, 1350, 550])
   assert.ok(!('pace' in g))
-  // Not floored (Movement on): 20 kg at 0.5 kg a week = 280 days, the deficit stays 550.
+  // Movement on: the same 280 days, at 0.5 kg a week = 280 days, the deficit stays 550.
   const on = normaliseProfile({ ...raw, includeMovement: true, goalWeightKg: 80 }, T0)
   assert.deepEqual([on.goalDate, on.dailyGoal], [addDays(T0, 280), 550])
 })
@@ -424,10 +424,11 @@ t('migration v1 -> v3: Movement kept, the old Standard pace becomes 13 kg over 1
   assert.equal(JSON.stringify(v1), snapshot) // input not mutated
   const off = migrateState({ ...v1, profile: { ...v1Profile, includeMovement: false } })
   assert.equal(off.profile.includeMovement, false)
-  // Movement off: plain BMR, 1600 - 550 = 1050, which v1.12 held at the 1,200 floor. v1.13 keeps the v1.12 number on
-  // upgrade (deficit 400, goal date later to match); the typed 70 g fat never moves it.
-  assert.equal(off.profile.target, 1200)
-  assert.equal(off.profile.dailyGoal, 400)
+  // Movement off: plain BMR, 1600 - 550 = 1050, which v1.12 held at the 1,200 floor. v1.13.1: no floor, 1050 (the
+  // 1,200 line only warns); the typed 70 g fat never moves it.
+  assert.equal(off.profile.target, 1050)
+  assert.equal(off.profile.dailyGoal, 550)
+  assert.equal(off.profile.goalAssumedV, 2)
   assert.equal(off.profile.goalAssumed, true)
   // v0 profile without the movement field keeps the old behaviour (movement counted).
   const { includeMovement, bmr, bmrCustom, dailyGoal, ...v0 } = v1Profile
@@ -440,19 +441,15 @@ t('migration v2 -> v3: every pace and goal keeps its old daily deficit; a real g
   for (const pace of ['gentle', 'standard', 'faster']) for (const goal of ['lose', 'gain']) {
     const v2 = { version: 2, profile: { ...v1Profile, goal, pace, goalWeightKg: 68 }, entries: [], exercises: [], closedDays: {}, favourites: [] }
     const p = migrateState(v2, T0).profile
-    // Lose Faster: v1.12 held 2200 - 825 = 1375 at the Movement-on BMR floor (1600), so that number is kept instead.
-    if (goal === 'lose' && pace === 'faster') {
-      assert.deepEqual([p.target, p.dailyGoal], [1600, 600])
-      assert.ok(daysBetween(T0, p.goalDate) >= LEGACY_PLAN_DAYS && daysBetween(T0, p.goalDate) <= LEGACY_PLAN_DAYS + 14)
-      continue
-    }
+    // Lose Faster: 2200 - 825 = 1375, under the Movement-on BMR (1600) that v1.12 held it at. v1.13.1: no floor.
+    if (goal === 'lose' && pace === 'faster') assert.equal(p.target, 1375)
     assert.equal(p.goalDate, addDays(T0, LEGACY_PLAN_DAYS))
     assert.equal(p.goalWeightKg, Math.round((68 + (goal === 'lose' ? -1 : 1) * KG[pace] * 26) * 10) / 10)
     assert.equal(p.dailyGoal, goal === 'lose' ? KCAL[pace] : -KCAL[pace], `${goal} ${pace}`)
   }
   // Goal weight on the right side (set by hand before v1.3.3): kept, date = kg to go at the old pace.
-  assert.deepEqual(legacyGoal({ ...v1Profile, pace: 'standard' }, 62, T0), { goalWeightKg: 62, goalDate: addDays(T0, 84), goalAssumed: true }) // 6 kg / 0.5 = 12 weeks
-  assert.deepEqual(legacyGoal({ ...v1Profile, goal: 'gain', pace: 'faster' }, 71, T0), { goalWeightKg: 71, goalDate: addDays(T0, 28), goalAssumed: true }) // 3 kg / 0.75 = 4 weeks
+  assert.deepEqual(legacyGoal({ ...v1Profile, pace: 'standard' }, 62, T0), { goalWeightKg: 62, goalDate: addDays(T0, 84), goalAssumed: true, goalAssumedV: 2 }) // 6 kg / 0.5 = 12 weeks
+  assert.deepEqual(legacyGoal({ ...v1Profile, goal: 'gain', pace: 'faster' }, 71, T0), { goalWeightKg: 71, goalDate: addDays(T0, 28), goalAssumed: true, goalAssumedV: 2 }) // 3 kg / 0.75 = 4 weeks
   const kept = migrateState({ version: 2, profile: { ...v1Profile, pace: 'standard', goalWeightKg: 62 }, entries: [], exercises: [], closedDays: {}, favourites: [] }, T0).profile
   assert.deepEqual([kept.goalWeightKg, kept.dailyGoal], [62, 550])
   // Keep: no date, the stored goal weight is kept (unused), no note.
@@ -461,27 +458,68 @@ t('migration v2 -> v3: every pace and goal keeps its old daily deficit; a real g
   // An unknown pace is read as Standard.
   assert.equal(migrateState({ version: 2, profile: { ...v1Profile, pace: 'zoom' }, entries: [], exercises: [], closedDays: {}, favourites: [] }, T0).profile.dailyGoal, 550)
 })
-t('v1.13 migration keeps the v1.12 daily target: Jordy-like profile (male 92 kg, Movement off, floored) and a sweep', () => {
+const jordy = { age: 32, sex: 'male', heightCm: 175, weightKg: 92, activity: 'light', goal: 'lose', pace: 'standard', bmr: 1859, bmrCustom: false, includeMovement: false, goalWeightKg: 92, target: 1500, dailyGoal: 359, macros: { protein: null, carbs: null, fat: null } }
+const v2of = (profile) => ({ version: 2, profile, entries: [], exercises: [], closedDays: {}, favourites: [] })
+t('v1.13.1 migration: no floor. Jordy-like profile (male 92 kg, Movement off) goes 1,500 / 359 -> 1,309 / 550, and a sweep', () => {
   // Jordy-like v2 profile: Mifflin BMR, Movement off (watch), Standard. v1.12: 1859 - 550 = 1309, held at 1,500.
-  const jordy = { age: 32, sex: 'male', heightCm: 175, weightKg: 92, activity: 'light', goal: 'lose', pace: 'standard', bmr: 1859, bmrCustom: false, includeMovement: false, goalWeightKg: 92, target: 1500, dailyGoal: 359, macros: { protein: null, carbs: null, fat: null } }
-  const j = migrateState({ version: 2, profile: jordy, entries: [], exercises: [], closedDays: {}, favourites: [] }, T0).profile
-  assert.deepEqual([j.target, j.dailyGoal, j.bmr, j.goalAssumed], [1500, 359, 1859, true])
-  // Sweep: every lose/gain profile whose v1.12 plan had something to cut keeps its exact target and goal.
-  let n = 0
+  const j = migrateState(v2of(jordy), T0).profile
+  assert.deepEqual([j.target, j.dailyGoal, j.bmr, j.goalAssumed, j.goalAssumedV, j.goalWeightKg, j.goalDate], [1309, 550, 1859, true, 2, 79, addDays(T0, 182)])
+  assert.equal(checkOf(j).low, true) // under the 1,500 line: the same soft warning as a new plan, no clamp
+  // Sweep: every lose/gain profile gets the goal-date plan from the old pace with no floor and no cap:
+  // target = plan base -/+ |kg to go| x 7,700 / days, only kept at 0 or more (dailyPlan's display clamp).
+  let n = 0, under = 0
   for (const sex of ['male', 'female']) for (const bmr of [1150, 1400, 1600, 1859, 2100, 2600]) for (const includeMovement of [true, false])
     for (const pace of ['gentle', 'standard', 'faster']) for (const goal of ['lose', 'gain']) for (const weightKg of [55, 68, 92, 130]) for (const gwOff of [0, -6.3, 4.1]) {
       const old = { age: 40, sex, heightCm: 170, weightKg, activity: 'moderate', goal, pace, bmr, bmrCustom: true, includeMovement, goalWeightKg: weightKg + gwOff, macros: { protein: null, carbs: null, fat: null } }
       const base = includeMovement ? Math.round(bmr * 1.55) : bmr
-      const want = (goal === 'lose' ? -1 : 1) * { gentle: 275, standard: 550, faster: 825 }[pace]
+      const sign = goal === 'lose' ? -1 : 1, kgWk = { gentle: 0.25, standard: 0.5, faster: 0.75 }[pace]
+      const left = Math.round(sign * gwOff * 10) / 10
+      const [kg, days] = left > 0 ? [left, Math.max(7, Math.ceil((left / kgWk) * 7 - 1e-9))] : [Math.round(kgWk * 26 * 10) / 10, 182]
+      const want = Math.max(0, Math.round(base + (sign * kg * 7700) / days))
+      const p = migrateState(v2of(old), T0).profile
+      assert.equal(p.target, want, JSON.stringify(old))
+      assert.equal(p.goalDate, addDays(T0, days))
+      assert.equal(p.dailyGoal, base - p.target)
       const floor = includeMovement ? Math.max(bmr, sex === 'male' ? 1500 : 1200) : (sex === 'male' ? 1500 : 1200)
-      const v112 = Math.max(floor, Math.round(base + want))
-      if (goal === 'lose' && v112 >= base) continue // nothing left to cut: can't be matched without a floor (caveat)
-      const p = migrateState({ version: 2, profile: old, entries: [], exercises: [], closedDays: {}, favourites: [] }, T0).profile
-      assert.equal(p.target, v112, JSON.stringify(old))
-      assert.equal(p.dailyGoal, base - v112)
+      if (p.target < floor) under++
+      // Macros follow the new target with no floor too.
+      const m = macroPlan(p.target, p.weightKg, auto)
+      assert.ok(m.kcal === p.target || m.adjusted) // adjusted when protein + fat don't fit a very low target (the existing rule)
       n++
     }
-  console.log(`  (${n} migrated profiles keep their v1.12 target)`)
+  assert.ok(under > 0)
+  console.log(`  (${n} migrated profiles on the no-floor plan, ${under} now under the old floor)`)
+})
+t('v1.13.1 fix for a v1.13 state: floor-kept assumed goal re-derived once from the old pace; edited or weighed-in left as is', () => {
+  // What v1.13 wrote for Jordy on upgrade 3 days ago: a goal weight and date picked to keep 1,500 (8.4 kg over 180 days = 359).
+  const U = addDays(T0, -3)
+  const closedDays = { [addDays(T0, -1)]: { bmr: 1859, movement: 0, burned: 0, eaten: 1400, balance: 459, goal: 359, protein: 0, closedAt: 3, auto: true } }
+  const v113 = { version: 3, profile: { ...jordy, pace: undefined, goalWeightKg: 83.6, goalDate: addDays(U, 180), planFrom: { date: U, kg: 92 }, goalAssumed: true }, entries, exercises, closedDays, favourites: [], weights: [{ date: U, kg: 92 }] }
+  delete v113.profile.pace
+  const legacy = v2of(jordy)
+  const snap = JSON.stringify([v113, legacy])
+  assert.equal(migrateState(v113, T0).profile.target, 1500) // the floor-kept goal itself
+  const s = migrateState(v113, T0, legacy)
+  assert.deepEqual([s.profile.goalWeightKg, s.profile.goalDate, s.profile.target, s.profile.dailyGoal, s.profile.goalAssumed, s.profile.goalAssumedV], [79, addDays(U, 182), 1309, 550, true, 2])
+  assert.deepEqual(s.profile.planFrom, { date: U, kg: 92 })
+  assert.deepEqual([s.closedDays, s.entries, s.weights], [closedDays, entries, v113.weights]) // closed days keep their 359
+  assert.equal(JSON.stringify([v113, legacy]), snap) // inputs not mutated
+  // Once only: the fixed state is stable with or without the old data, even if the old data changes.
+  assert.deepEqual(migrateState(JSON.parse(JSON.stringify(s)), T0, legacy), s)
+  assert.deepEqual(migrateState(JSON.parse(JSON.stringify(s)), addDays(T0, 9), v2of({ ...jordy, pace: 'faster' })).profile, s.profile)
+  // No old data (e.g. a v3 backup restored): goal weight and date kept, marked done; target from the same no-floor math.
+  const n = migrateState(v113, T0).profile
+  assert.deepEqual([n.goalWeightKg, n.goalDate, n.goalAssumedV, n.target], [83.6, addDays(U, 180), 2, 1500])
+  // Weighed in since (the plan re-planned from 91.2 kg): goal weight and date kept.
+  const w = migrateState({ ...v113, profile: { ...v113.profile, weightKg: 91.2, planFrom: { date: addDays(T0, -1), kg: 91.2 } } }, T0, legacy).profile
+  assert.deepEqual([w.goalWeightKg, w.goalDate, w.goalAssumedV], [83.6, addDays(U, 180), 2])
+  // Goal edited by the user (goalAssumed cleared): untouched.
+  const { goalAssumed: _g, ...editedP } = v113.profile
+  const e = migrateState({ ...v113, profile: editedP }, T0, legacy).profile
+  assert.deepEqual([e.goalWeightKg, e.goalDate, 'goalAssumed' in e, 'goalAssumedV' in e], [83.6, addDays(U, 180), false, false])
+  // Keep: nothing to re-derive.
+  const k = migrateState({ ...v113, profile: { ...v113.profile, goal: 'keep', goalDate: null } }, T0, legacy).profile
+  assert.deepEqual([k.goalDate, k.goalWeightKg], [null, 92])
 })
 t('migration: v3 is stable, a weight log is kept and cleaned, unknown or newer versions are refused', () => {
   const s = migrateState(v1)

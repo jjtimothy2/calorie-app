@@ -1,5 +1,5 @@
 // v1.4.2 checks, shared by tests/e2e.mjs and tests/live.mjs (test data only, never in the app):
-// Balance: one dashed goal line labelled 'goal 337', no mirrored -goal line, bottom fits the biggest surplus only.
+// Balance: one dashed goal line labelled 'goal 550' (v1.13.1: today's no-floor goal; 337 before), no mirrored -goal line, bottom fits the biggest surplus only.
 // Protein: the Balance chart style (pink bars with numbers, solid = hit, light = missed, 7-day average with soft fill,
 // dashed target line 'N g'), hold to scrub, swipe paging, a fixed scale that never clips, and one period shared with Balance.
 import assert from 'node:assert/strict'
@@ -16,9 +16,9 @@ export async function v142Checks(p, ctx, BASE) {
 
   // ---- Balance: goal line relabelled, -goal line gone, bottom = biggest closed surplus (820) + 10% -> 950.
   let refs = await refsOf(p, 'chart')
-  assert.deepEqual(refs, [{ r: '0', label: '0', dashed: null }, { r: '337', label: 'goal 337', dashed: '4 4' }], 'solid 0 + dashed goal line only')
+  assert.deepEqual(refs, [{ r: '0', label: '0', dashed: null }, { r: '550', label: 'goal 550', dashed: '4 4' }], 'solid 0 + dashed goal line only')
   const svgText = await p.getByTestId('chart').evaluate((s) => [...s.querySelectorAll('[data-ref] text')].map((t) => t.textContent).join('|'))
-  assert.ok(!/[−-]337|\+337/.test(svgText), 'no ±337 labels: ' + svgText)
+  assert.ok(!/[−-]550|\+550/.test(svgText), 'no ±550 labels: ' + svgText)
   let g = await geometry(p)
   assert.deepEqual([g.top, g.bottom], [3600, 950])
   // The two left labels never overlap.

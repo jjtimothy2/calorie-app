@@ -120,7 +120,7 @@ export function WeightCard() {
             </div>
             <button type="button" onClick={() => setSheet('goal')} className="tap min-h-11 shrink-0 rounded-full border border-line px-4 text-[15px] font-bold text-g-ink" data-testid="edit-goal">Edit</button>
           </div>
-          {p.goalAssumed && <p className="rounded-[14px] bg-bg px-3 py-2 text-[14px] leading-snug text-mute" data-testid="goal-assumed">We set this from your old pace, keeping the same daily target. Tap Edit to pick your own goal weight and date.</p>}
+          {p.goalAssumed && <p className="rounded-[14px] bg-bg px-3 py-2 text-[14px] leading-snug text-mute" data-testid="goal-assumed">We set this from your old pace. Tap Edit to pick your own goal weight and date.</p>}
           {!reached && check.warn && check.suggest && (
             <div role="note" className="flex items-center gap-3 rounded-[18px] bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="push-prompt">
               <span className="flex-1"><b>That's a fast pace now.</b> Push goal date to {longDay(check.suggest)}?</span>

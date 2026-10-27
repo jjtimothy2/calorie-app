@@ -1,5 +1,5 @@
 // Storage versions and migrations (pure, no React, so unit tests can import it).
-import { addDays, calcBmr, dailyPlan, dateKey, KCAL_PER_KG, MIN_PLAN_DAYS, PACE, round1, targetFloor } from './calc'
+import { addDays, calcBmr, dailyPlan, dateKey, PACE, round1 } from './calc'
 import { STATE_VERSION, type Pace, type Profile, type State, type WeightEntry } from './types'
 
 const PACES: Pace[] = ['gentle', 'standard', 'faster']
@@ -10,57 +10,41 @@ export const LEGACY_PLAN_DAYS = 182
 const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
 
 /**
- * The v1.1 to v1.12 daily target, kept only so migration can carry it over: plan base -/+ pace kcal, never under the
- * floor (1,500 men / 1,200 women; with Movement on also never under BMR). Returns the target and the plan base.
+ * State v2 to v3 (v1.13.1): turn the old pace into a goal date, then the target comes from the goal-date plan with no
+ * floor (the 1,500 / 1,200 line only warns now, it doesn't hold the target up).
+ * - Lose or Gain with a goal weight on the right side of the current weight: goal date = today + |kg to go| / pace kg a
+ *   week, in days (rounded up). The gap then works out to the old pace kcal.
+ * - Otherwise (the usual case: goal weight was not asked for from v1.3.3 to v1.12, so it equals the current weight):
+ *   goal weight = current weight -/+ pace x 26 weeks, goal date = today + 182 days. Gap = pace x 7,700 / 7, the old deficit.
+ * Either way goalAssumed is set so Me can ask the user to check the goal (goalAssumedV 2 = derived this way). Keep: goal date null.
  */
-export function legacyTarget(p: ProfileIn & { bmr: number }): { target: number; planBase: number } {
-  const planBase = dailyPlan({ ...p, includeMovement: p.includeMovement ?? true, goal: 'keep', goalWeightKg: p.weightKg, goalDate: null, planFrom: { date: '2000-01-01', kg: p.weightKg }, macros: { protein: null, carbs: null, fat: null } }).planBase
-  const want = (PACE[p.pace && PACES.includes(p.pace) ? p.pace : 'standard'].kg * KCAL_PER_KG) / 7
-  const floor = (p.includeMovement ?? true) ? Math.max(p.bmr, targetFloor(p.sex)) : targetFloor(p.sex)
-  let target = planBase
-  if (p.goal === 'lose') target = Math.round(planBase - want)
-  if (p.goal === 'gain') target = Math.round(planBase + want)
-  return { target: Math.max(floor, target), planBase }
+export function legacyGoal(p: ProfileIn, gw: number, today: string): Pick<Profile, 'goalWeightKg' | 'goalDate' | 'goalAssumed' | 'goalAssumedV'> {
+  if (p.goal === 'keep') return { goalWeightKg: gw, goalDate: null }
+  const pace = PACE[p.pace && PACES.includes(p.pace) ? p.pace : 'standard'].kg
+  const left = p.goal === 'lose' ? p.weightKg - gw : gw - p.weightKg
+  if (left > 0) return { goalWeightKg: gw, goalDate: addDays(today, Math.ceil((left / pace) * 7 - 1e-9)), goalAssumed: true, goalAssumedV: 2 }
+  const sign = p.goal === 'lose' ? -1 : 1
+  return { goalWeightKg: round1(p.weightKg + sign * pace * (LEGACY_PLAN_DAYS / 7)), goalDate: addDays(today, LEGACY_PLAN_DAYS), goalAssumed: true, goalAssumedV: 2 }
 }
 
+type OldState = { version?: number; profile?: (ProfileIn & { goalWeightKg?: number }) | null }
+
 /**
- * State v2 to v3: turn the old pace into a goal weight and date that keep the same daily target, so the number the
- * user sees does not move on upgrade (v1.13: this includes targets the old 1,500 / 1,200 floor was holding up).
- * - Lose or Gain with a goal weight on the right side of the current weight: keep that goal weight and pick the goal
- *   date whose daily gap gives the old target.
- * - Otherwise (the usual case: goal weight was not asked for from v1.3.3 to v1.12, so it equals the current weight):
- *   goal date = today + 182 days and the goal weight whose gap gives the old target (pace x 26 weeks when not floored).
- * - A Lose target the floor held at or above the plan base (nothing left to cut) can't be matched without a floor:
- *   a small goal (0.5 kg in a year) keeps the target as close to the old one as the plan allows.
- * Either way goalAssumed is set so Me can ask the user to check the goal. Keep: goal date null.
+ * One-time v1.13.1 fix for a profile v1.13 migrated (goalAssumed without goalAssumedV 2): v1.13 picked a goal weight and
+ * date that kept the old floored target. Re-derive the goal from the old pace and kg left (legacyGoal, as of the day the
+ * plan started) when the old v1/v2 data is still there and the plan hasn't moved since (same goal, same weight, no
+ * weigh-in re-plan); otherwise keep the goal weight and date as they are. Either way goalAssumedV 2 marks it done, and
+ * normaliseProfile then works the target out with no floor. A goal the user edited has no goalAssumed and isn't touched.
  */
-export function legacyGoal(p: ProfileIn & { bmr: number }, gw: number, today: string): Pick<Profile, 'goalWeightKg' | 'goalDate' | 'goalAssumed'> {
-  if (p.goal === 'keep') return { goalWeightKg: gw, goalDate: null }
-  const sign = p.goal === 'lose' ? -1 : 1
-  const { target: want, planBase } = legacyTarget(p)
-  const gap = (want - planBase) * sign // kcal a day the old plan took off (lose) or added (gain)
-  const targetOf = (goalWeightKg: number, days: number) =>
-    dailyPlan({ ...p, includeMovement: p.includeMovement ?? true, goalWeightKg, goalDate: addDays(today, days), planFrom: { date: today, kg: p.weightKg }, macros: { protein: null, carbs: null, fat: null } }).target
-  if (gap <= 0) return { goalWeightKg: round1(p.weightKg + sign * 0.5), goalDate: addDays(today, 365), goalAssumed: true }
-  const left = round1((gw - p.weightKg) * sign)
-  // Find a goal (kg to go, days) whose rounded target equals the old one. Days move the gap in steps of about gap / days
-  // and 0.1 kg in steps of 770 / days, so trying both always lands on it within a few weeks of the ideal date.
-  const find = (kgs: (d: number) => number[], from: number, to: number) => {
-    for (let d = Math.max(MIN_PLAN_DAYS, from); d <= to; d++)
-      for (const kg of kgs(d)) if (kg > 0 && targetOf(round1(p.weightKg + sign * kg), d) === want) return { kg, days: d }
-    return null
+export function repairAssumedGoal(p: ProfileIn, legacy?: OldState | null): ProfileIn {
+  if (!p.goalAssumed || p.goalAssumedV === 2) return p
+  const old = legacy && (legacy.version === 1 || legacy.version === 2) ? legacy.profile : null
+  const from = p.planFrom
+  if (old && p.goal !== 'keep' && old.goal === p.goal && old.weightKg === p.weightKg && from && from.kg === p.weightKg && isDay(from.date)) {
+    const gw = typeof old.goalWeightKg === 'number' && old.goalWeightKg > 0 ? old.goalWeightKg : old.weightKg
+    return { ...p, ...legacyGoal({ ...p, pace: old.pace }, gw, from.date) }
   }
-  const near = (d: number) => [0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3].map((o) => round1((gap * d) / KCAL_PER_KG + o))
-  let best: { kg: number; days: number } | null = null
-  if (left > 0) {
-    // A goal weight on the right side (set by hand before v1.3.3): keep it if a date matches, else the closest goal.
-    const ideal = Math.round((left * KCAL_PER_KG) / gap)
-    best = find(() => [left], ideal - 3, ideal + 5) ?? find(near, ideal - 3, ideal + 30)
-    if (!best) best = { kg: left, days: Math.max(MIN_PLAN_DAYS, ideal) }
-  } else {
-    best = find(near, LEGACY_PLAN_DAYS, LEGACY_PLAN_DAYS + 30) ?? { kg: round1((gap * LEGACY_PLAN_DAYS) / KCAL_PER_KG), days: LEGACY_PLAN_DAYS }
-  }
-  return { goalWeightKg: round1(p.weightKg + sign * best.kg), goalDate: addDays(today, best.days), goalAssumed: true }
+  return { ...p, goalAssumedV: 2 }
 }
 
 /**
@@ -75,9 +59,9 @@ export function normaliseProfile(p: ProfileIn, today = dateKey()): Profile {
   const hasPlan = p.goalDate === null || isDay(p.goalDate)
   const goal = hasPlan
     ? { goalWeightKg: p.goal === 'keep' ? p.weightKg : gw, goalDate: p.goal === 'keep' ? null : (p.goalDate ?? null) }
-    : legacyGoal({ ...p, bmr }, gw, today)
+    : legacyGoal(p, gw, today)
   // A Lose or Gain plan with no date (hand-edited data): plan it like an old profile on the Standard pace.
-  const fixed = goal.goalDate === null && p.goal !== 'keep' ? legacyGoal({ ...p, bmr, pace: 'standard' }, gw, today) : goal
+  const fixed = goal.goalDate === null && p.goal !== 'keep' ? legacyGoal({ ...p, pace: 'standard' }, gw, today) : goal
   const planFrom: WeightEntry = p.planFrom && isDay(p.planFrom.date) && typeof p.planFrom.kg === 'number' ? p.planFrom : { date: today, kg: p.weightKg }
   const { pace: _old, ...rest } = p
   void _old
@@ -90,7 +74,7 @@ export function normaliseProfile(p: ProfileIn, today = dateKey()): Profile {
     planFrom,
     macros: { protein: null, carbs: null, fat: null, ...(p.macros ?? {}) },
   }
-  if (!base.goalAssumed) delete base.goalAssumed
+  if (!base.goalAssumed) { delete base.goalAssumed; delete base.goalAssumedV }
   const plan = dailyPlan(base)
   return { ...base, target: plan.target, dailyGoal: plan.dailyGoal }
 }
@@ -106,15 +90,17 @@ export function normaliseWeights(w: unknown): WeightEntry[] {
 const empty = (): State => ({ version: STATE_VERSION, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [], weights: [] })
 
 /**
- * Bring saved state (v1, v2 or v3) up to the current version. Entries, exercises, closed days and favourites are copied
+ * Bring saved state (v1, v2 or v3) up to the current version. legacy: the old v2 (or v1) state still kept as a backup,
+ * used once to re-derive a v1.13 assumed goal (repairAssumedGoal). Entries, exercises, closed days and favourites are copied
  * through untouched; the profile gains the new fields. v3 adds the weight log: older data starts it with one weigh-in,
  * the current weight today (so the weekly weigh-in nudge counts from the upgrade). Returns null for unknown or newer versions.
  */
-export function migrateState(raw: unknown, today = dateKey()): State | null {
+export function migrateState(raw: unknown, today = dateKey(), legacy?: unknown): State | null {
   if (typeof raw !== 'object' || raw === null) return null
   const s = raw as Omit<Partial<State>, 'version'> & { version?: number }
   if (s.version !== 1 && s.version !== 2 && s.version !== STATE_VERSION) return null
-  const profile = s.profile ? normaliseProfile(s.profile as ProfileIn, today) : null
+  const pin = s.profile && s.version === STATE_VERSION ? repairAssumedGoal(s.profile as ProfileIn, legacy as OldState) : (s.profile as ProfileIn | null | undefined)
+  const profile = pin ? normaliseProfile(pin, today) : null
   let weights = normaliseWeights(s.weights)
   // Only data from before the weight log (v1, v2, or no weights field) is seeded; a v3 log emptied by Delete stays empty.
   if (profile && !weights.length && (s.version !== STATE_VERSION || !Array.isArray(s.weights))) weights = [{ date: profile.planFrom.date, kg: profile.weightKg }]

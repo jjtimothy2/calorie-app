@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:unit": "node tests/amount.mjs && node tests/macros.mjs && node tests/ai.mjs",
-    "test:e2e": "node tests/e2e.mjs && node tests/v15-photo.mjs && node tests/v152-ios.mjs && node tests/v162-sheet.mjs && node tests/v171-pills.mjs && node tests/v1130-goal.mjs",
+    "test:e2e": "node tests/e2e.mjs && node tests/v15-photo.mjs && node tests/v152-ios.mjs && node tests/v162-sheet.mjs && node tests/v171-pills.mjs && node tests/v1130-goal.mjs && node tests/v1131-nofloor.mjs",
     "build:single": "tsc -b && vite build --mode single && node scripts/inline.mjs",
     "test:single": "node tests/single.mjs",
     "test:pwa": "node tests/pwa.mjs",
