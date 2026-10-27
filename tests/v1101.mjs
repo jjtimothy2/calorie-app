@@ -246,7 +246,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await dialog.waitFor({ state: 'detached' })
     const e = (await ls(V3)).entries.at(-1)
     assert.deepEqual([e.foodId, e.qty], [tempe.id, 0.75])
-    await page.getByLabel('Search foods').fill('')
+    await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor() // v1.13.2: logs land on Home
   })
 
   // ---------- 1. Add item ----------

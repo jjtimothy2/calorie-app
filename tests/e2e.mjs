@@ -189,12 +189,12 @@ try {
     await page.fill('input[name=burn]', '300')
     await page.fill('input[name=exname]', 'Watch workout')
     await page.getByRole('button', { name: 'Add 300 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
-    g = await geo()
-    assert.ok(g.toastBottom <= g.barTop - 8, `the Undo toast sits above the bar (${g.toastBottom} vs ${g.barTop})`)
-    await page.screenshot({ path: OUT + 'v134-e2e-exercise-toast.png' })
-    await page.getByRole('button', { name: 'Done' }).click()
+    // v1.13.2: a log goes to Home; the Undo snackbar shows there, over the tab bar and clear of the + button.
     await page.waitForURL(BASE + '/')
+    await page.getByTestId('toast').waitFor()
+    g = await page.evaluate(() => ({ toastBottom: document.querySelector('[data-testid=toast]').getBoundingClientRect().bottom, plusTop: document.querySelector('[data-testid=plus]').getBoundingClientRect().top }))
+    assert.ok(g.toastBottom <= g.plusTop - 8, `the Undo toast sits above the + button (${g.toastBottom} vs ${g.plusTop})`)
+    assert.equal(await page.getByRole('button', { name: 'Done' }).count(), 0)
     assert.equal(await num(page.getByTestId('eq-burned')), 300)
     await page.getByRole('link', { name: 'Add to Lunch' }).click()
     assert.equal(await page.getByRole('button', { name: 'Quick add', exact: true }).count(), 0)
@@ -203,7 +203,6 @@ try {
     await page.fill('input[name=kcal]', '1500')
     await page.fill('input[name=name]', 'Big lunch')
     await page.getByRole('button', { name: 'Add 1,500 kcal' }).click()
-    await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')
     assert.equal(await num(page.getByTestId('eaten')), 1500)
     assert.equal(await num(page.getByTestId('balance')), 400)
@@ -230,9 +229,8 @@ try {
     await page.getByRole('button', { name: 'Moderate' }).click()
     await page.screenshot({ path: OUT + 'v1-mobile-log-exercise.png' })
     await page.getByRole('button', { name: 'Add exercise' }).click()
-    await page.getByTestId('toast').waitFor()
-    await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')
+    await page.getByTestId('toast').waitFor()
     assert.equal(await num(page.getByTestId('eq-burned')), 581)
     assert.match(await page.getByTestId('exercise-card').innerText(), /Badminton, 45 min · moderate/)
     assert.equal(await num(page.getByTestId('balance')), 681) // 1600 + 581 - 1500
@@ -264,7 +262,6 @@ try {
     await page.fill('input[name=kcal]', '600')
     await page.fill('input[name=name]', 'Martabak')
     await page.getByRole('button', { name: 'Add 600 kcal' }).click()
-    await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')
     // 1600 + 0 - 2100 = -500
     assert.equal(await num(page.getByTestId('balance')), 500)
@@ -281,7 +278,6 @@ try {
     await page.getByRole('button', { name: 'Badminton' }).click()
     for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Increase duration' }).click()
     await page.getByRole('button', { name: 'Add exercise' }).click()
-    await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')
     // Daily movement back on (the default) for the rest of the run and the screenshots.
     await page.getByRole('link', { name: 'Me', exact: true }).click()
@@ -384,9 +380,12 @@ try {
   })
   // ---------- v2 macros ----------
   const PINK = 'rgb(194, 51, 106)'
+  // v1.13.2: each one-tap add goes back to Home (snackbar there); the next one reopens Log for Dinner.
   const addOne = async (q, name) => {
+    if (!page.url().includes('/log')) await page.getByRole('link', { name: 'Add to Dinner' }).click()
     await page.getByLabel('Search foods').fill(q)
     await page.getByRole('button', { name: new RegExp('Add one serving of ' + name) }).click()
+    await page.waitForURL(BASE + '/')
     await page.getByTestId('toast').waitFor()
   }
   await step('v1.3.2 macros: fixed, from maintenance at the current weight (1.6 g/kg protein, fat max(25%, 0.6 g/kg), carbs the rest)', async () => {
@@ -484,7 +483,6 @@ try {
     await addOne('tempe', 'Tempe goreng') // 5 g
     await addOne('tempe', 'Tempe goreng') // 5 g
     await addOne('boiled egg', 'Boiled egg') // 6 g
-    await page.getByRole('link', { name: /Close and go back/ }).click()
     await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
     const dlg = page.getByRole('dialog')
     await dlg.locator('input[name=kcal]').fill('1500') // keeps today in a deficit for the screenshot

@@ -40,6 +40,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     if (protein != null) await dialog.getByLabel('Protein').fill(String(protein))
   }
   const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.waitForURL('**/log**') }
+  // v1.13.2: a log goes to Home and the snackbar shows there; back to Log for the next one.
+  const landed = async () => { await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor(); await toLog() }
   const toHome = async () => { await page.goto(BASE + '/'); await page.getByTestId('eaten').waitFor() }
   const toMe = async () => { await page.goto(BASE + '/settings'); await page.getByRole('button', { name: 'Export backup' }).waitFor() }
   // v1.10.1: My foods is a chip on Log (was a card in Me).
@@ -60,7 +62,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await quickAdd(120)
     assert.match(await page.getByTestId('qa-name-hint').innerText(), /Give it a name to save it to My foods/)
     await dialog.getByRole('button', { name: 'Add 120 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await landed()
     assert.equal(await page.evaluate((k) => localStorage.getItem(k), FOODS), null)
     const last = (await ls(V3)).entries.at(-1)
     assert.equal(last.foodId, null); assert.equal(last.name, 'Quick add')
@@ -71,7 +73,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.match(await page.getByTestId('qa-name-hint').innerText(), /Saved to My foods/)
     await shot('quickadd-name')
     await dialog.getByRole('button', { name: 'Add 450 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await landed()
     const f = await foods()
     assert.equal(f.length, 1)
     assert.match(f[0].id, /^u_[\w-]+$/)
@@ -90,14 +92,14 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await quickAdd(500, "  mum's   NASI goreng ")
     assert.match(await page.getByTestId('qa-name-hint').innerText(), /Updates Mum's nasi goreng in My foods/)
     await dialog.getByRole('button', { name: 'Add 500 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await landed()
     const f = await foods()
     assert.equal(f.length, 1); assert.equal(f[0].id, foodId); assert.equal(f[0].kcal, 500); assert.equal(f[0].name, "Mum's nasi goreng")
     assert.equal((await ls(V3)).entries.at(-1).name, "Mum's nasi goreng")
     // A second food for the duplicate-name check later.
     await quickAdd(90, 'Es teh manis')
     await dialog.getByRole('button', { name: 'Add 90 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await landed()
     assert.equal((await foods()).length, 2)
   })
 
@@ -121,7 +123,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await shot('search-mine')
     const before = (await mineEntries()).length
     await first.getByRole('button', { name: /^Add one serving of Mum's nasi goreng/ }).click()
-    await page.getByTestId('toast').waitFor()
+    await landed()
+    await page.getByLabel('Search foods').fill('nasi gor')
     let m = await mineEntries()
     assert.equal(m.length, before + 1)
     assert.equal(m.at(-1).foodId, foodId); assert.equal(m.at(-1).kcal, 500); assert.equal(m.at(-1).servingLabel, '1 serving')
@@ -129,7 +132,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await dialog.getByTestId('saved-mark').waitFor()
     await dialog.getByRole('button', { name: 'Increase amount' }).click()
     await dialog.getByRole('button', { name: 'Add 1,000 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await landed()
     m = await mineEntries()
     assert.equal(m.length, before + 2); assert.equal(m.at(-1).qty, 2); assert.equal(m.at(-1).kcal, 500)
   })

@@ -146,7 +146,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await page.getByTestId('qa-bar').getByRole('button', { name: 'Add Calories' }).click()
       await page.fill('input[name=kcal]', '320'); await page.fill('input[name=name]', 'Bubur ayam')
       await dialog.getByRole('button', { name: 'Add 320 kcal' }).click()
-      await page.getByTestId('toast').waitFor()
+      await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor() // v1.13.2: logs land on Home
+      await toLog()
       await page.getByLabel('Search foods').fill('bubur')
       const first = page.getByTestId('food-list').getByRole('listitem').first()
       await first.getByRole('img', { name: 'Saved food' }).waitFor()
@@ -155,7 +156,6 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       assert.doesNotMatch(await page.getByTestId('food-list').innerText(), /Mine|your food|my food/i)
       assert.equal(await page.getByTestId('mine-tag').count(), 0)
       assert.match(await first.getByRole('button').first().getAttribute('aria-label'), /^Bubur ayam, saved food, 1 serving, 320 kcal/)
-      await page.getByTestId('toast').waitFor({ state: 'detached', timeout: 8000 }) // keep the toast off the list in the shot
       await shot('saved-search')
       await first.getByRole('button', { name: /^Bubur ayam, saved food/ }).click()
       await dialog.getByTestId('saved-mark').waitFor()

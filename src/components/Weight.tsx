@@ -107,8 +107,10 @@ export function WeightCard() {
               <WeightChart weights={state.weights} goalKg={p.goalWeightKg} showGoal={hasGoal} />
             </button>
           )}
+          {/* v1.13.2: the 44px row sits so its text is centred between the chart's date label and the divider below
+              (-mt-px: the chart box ends ~1px under its date label; was -mt-1, 3px tighter above than below; tests/v1132.mjs). */}
           {state.weights.length > 0 && (
-            <button type="button" onClick={() => setSheet('all')} className="tap -mt-1 flex min-h-11 items-center justify-between rounded-[14px] text-[15px]" data-testid="see-weighins">
+            <button type="button" onClick={() => setSheet('all')} className="tap -mt-px flex min-h-11 items-center justify-between rounded-[14px] text-[15px]" data-testid="see-weighins">
               <span className="text-mute">{state.weights.length} {state.weights.length === 1 ? 'weigh-in' : 'weigh-ins'}</span>
               <span className="font-bold text-g-ink">See all ›</span>
             </button>

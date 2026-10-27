@@ -25,7 +25,7 @@ type Tab = 'recent' | 'fav' | 'mine' | 'all'
 const QA_BTN = 'bg-g-ink text-card shadow-[0_8px_20px_rgba(23,128,70,.25)]'
 
 export default function Log() {
-  const { state, dispatch, recentFoodIds, today: realToday, logDate: today, myFoods, myFoodById } = useStore()
+  const { state, dispatch, recentFoodIds, today: realToday, logDate: today, myFoods, myFoodById, land } = useStore()
   const [params, setParams] = useSearchParams()
   const nav = useNavigate()
   const meal = (MEALS as string[]).includes(params.get('meal') ?? '') ? (params.get('meal') as Meal) : defaultMeal()
@@ -44,20 +44,22 @@ export default function Log() {
   // v1.10.1: My foods moved here from Me. New food (optionally named from the search text), edit and delete.
   const [newFood, setNewFood] = useState<string | null>(null)
   const [editMine, setEditMine] = useState<{ food: UserFood; del: boolean } | null>(null)
-  const [toast, setToast] = useState<{ ids: string[]; text: string } | null>(null)
+  // Only "Saved to My foods" shows here now; a logged food or exercise goes to Home (v1.13.2).
+  const [toast, setToast] = useState<{ text: string } | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const keyboard = useKeyboardOpen()
   const bar = !locked && !keyboard
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  // v1.13.2: after a food or exercise is logged, go to Home on the day it was logged to (a picked past day too). Home
+  // scrolls to the new row(s), highlights them and shows the "Added ..." snackbar with Undo (Landing in the store).
   const showToast = (entry: Entry) => {
-    window.clearTimeout(timer.current)
-    setToast({ ids: [entry.id], text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
-    timer.current = window.setTimeout(() => setToast(null), 4000)
+    land({ kind: 'food', date: entry.date, ids: [entry.id], text: `Added ${entry.name} · ${fmt(entryTotals(entry).kcal)} kcal` })
+    nav('/')
   }
   const savedToast = (f: UserFood) => {
     window.clearTimeout(timer.current)
-    setToast({ ids: [], text: `Saved ${f.name} to My foods` })
+    setToast({ text: `Saved ${f.name} to My foods` })
     timer.current = window.setTimeout(() => setToast(null), 3000)
   }
   // v1.5: AI photo estimate. v1.6: AI estimate, photo optional. The photo is a downscaled data URL in memory only,
@@ -114,17 +116,13 @@ export default function Log() {
     })
     for (const entry of added) dispatch({ type: 'addEntry', entry })
     setAiFlow(null)
-    window.clearTimeout(timer.current)
     const kcal = added.reduce((a, e) => a + entryTotals(e).kcal, 0)
-    setToast({ ids: added.map((e) => e.id), text: `Added ${added.length} ${added.length === 1 ? 'item' : 'items'} from AI · ${fmt(kcal)} kcal` })
-    timer.current = window.setTimeout(() => setToast(null), 4000)
+    land({ kind: 'food', date: today, ids: added.map((e) => e.id), text: `Added ${added.length} ${added.length === 1 ? 'item' : 'items'} from AI · ${fmt(kcal)} kcal` })
+    nav('/')
   }
-  const [exToast, setExToast] = useState<ExerciseEntry | null>(null)
   const showExToast = (e: ExerciseEntry) => {
-    window.clearTimeout(timer.current)
-    setToast(null)
-    setExToast(e)
-    timer.current = window.setTimeout(() => setExToast(null), 4000)
+    land({ kind: 'exercise', date: e.date, ids: [e.id], text: `Added ${e.name} · ${fmt(e.kcal)} kcal burned` })
+    nav('/')
   }
   const setMode = (m: 'food' | 'exercise') => {
     const next = new URLSearchParams(params)
@@ -322,19 +320,6 @@ export default function Log() {
       {toast && (
         <div role="status" className={`anim-fade ${bar ? 'bottom-above-qa' : 'bottom-safe'} absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg`} data-testid="toast">
           <span>{toast.text}</span>
-          {toast.ids.length > 0 && <span className="flex gap-3">
-            <button type="button" className="font-bold underline" onClick={() => { for (const id of toast.ids) dispatch({ type: 'deleteEntry', id }); setToast(null) }}>Undo</button>
-            <button type="button" className="font-bold text-g-soft" onClick={() => nav('/')}>Done</button>
-          </span>}
-        </div>
-      )}
-      {exToast && (
-        <div role="status" className={`anim-fade ${bar ? 'bottom-above-qa' : 'bottom-safe'} absolute inset-x-4 z-20 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg`} data-testid="toast">
-          <span>Added {exToast.name} · {fmt(exToast.kcal)} kcal burned</span>
-          <span className="flex gap-3">
-            <button type="button" className="font-bold underline" onClick={() => { dispatch({ type: 'deleteExercise', id: exToast.id }); setExToast(null) }}>Undo</button>
-            <button type="button" className="font-bold text-g-soft" onClick={() => nav('/')}>Done</button>
-          </span>
         </div>
       )}
       {quickEx && (

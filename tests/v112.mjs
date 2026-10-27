@@ -109,12 +109,11 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
     await dialog.locator('input[name=exname]').fill('Evening run (watch)')
     await shot('quick-burn-yesterday')
     await dialog.getByRole('button', { name: 'Add 350 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor() // v1.13.2: logs land on Home, on the day logged to
     const s = await st()
     const ex = s.exercises.find((x) => x.name === 'Evening run (watch)')
     assert.equal(ex.date, YDAY)
     assert.deepEqual(s.closedDays[YDAY], { ...YSUM, burned: 350, balance: 950 }, 'baseline kept, burn and balance updated')
-    await page.getByRole('link', { name: 'Close and go back to Today' }).click()
     await page.waitForFunction(() => document.querySelector('#day-title')?.textContent === 'Yesterday')
     await bal('950')
     await page.getByRole('button', { name: /Edit Evening run \(watch\), 350 kcal burned/ }).waitFor()
@@ -128,12 +127,11 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
     await dialog.locator('input[name=kcal]').fill('250')
     await dialog.locator('input[name=name]').fill('Pisang goreng')
     await dialog.getByRole('button', { name: 'Add 250 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor() // v1.13.2: logs land on Home, on the day logged to
     let s = await st()
     assert.equal(s.entries.find((x) => x.name === 'Pisang goreng').date, YDAY)
     assert.equal(s.closedDays[YDAY].eaten, 1750)
     assert.equal(s.closedDays[YDAY].balance, 700)
-    await page.getByRole('link', { name: 'Close and go back to Today' }).click()
     await title.waitFor()
     // edit
     await page.getByRole('button', { name: /Edit Pisang goreng/ }).click()
@@ -189,13 +187,13 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
     await page.getByTestId('qa-btn').click()
     await dialog.locator('input[name=kcal]').fill('100')
     await dialog.getByRole('button', { name: 'Add 100 kcal' }).click()
-    await page.getByTestId('toast').waitFor()
+    await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor() // v1.13.2: logs land on Home, on the day logged to
     const s = await st()
     const last = [...s.entries].sort((a, b) => b.createdAt - a.createdAt)[0]
     assert.equal(last.date, TODAY)
     assert.equal(s.closedDays[TODAY], undefined)
-    await page.getByRole('link', { name: 'Close and go back to Today' }).click()
     await title.waitFor()
+    await page.getByTestId('toast').waitFor({ state: 'detached', timeout: 8000 })
     await page.evaluate(() => document.querySelector('main').scrollTo(0, 0))
     await shot('home-today')
   })

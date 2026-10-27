@@ -85,6 +85,10 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 .pb-safe-qa { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
 .px-safe-bar { padding-left: calc(env(safe-area-inset-left) + 1.25rem); padding-right: calc(env(safe-area-inset-right) + 1.25rem); }
 .bottom-above-qa { bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 5rem); }
+/* v1.13.2 Home snackbar: over the tab bar (4.5rem + safe area), clear of the + button that rises 24px above it. */
+.bottom-above-tab { bottom: calc(4.5rem + env(safe-area-inset-bottom) + 2.25rem); }
+/* v1.13.2: rows Home scrolls to after a log keep clear of the top edge and of that snackbar. */
+.land-row { scroll-margin-top: 1rem; scroll-margin-bottom: 6.5rem; }
 
 @layer base {
   :focus-visible { outline: 3px solid var(--color-g-ink); outline-offset: 2px; }
@@ -136,6 +140,12 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* v1.13.2: a just-logged row on Home: soft green (#2F8F5B at low opacity) fading out over 1.5 s. Reduced motion: no
+   fade, the fill shows for a moment and goes (Home removes the class). */
+@keyframes row-flash { from { background-color: rgb(47 143 91 / .2); } to { background-color: rgb(47 143 91 / 0); } }
+.row-flash { animation: row-flash 1.5s ease-out both; border-radius: 12px; }
+@media (prefers-reduced-motion: reduce) { .row-flash { background-color: rgb(47 143 91 / .2); } }
 
 /* v1.4: History trend chart entry */
 @keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }

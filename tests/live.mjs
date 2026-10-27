@@ -59,7 +59,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.13\.1-[0-9a-f]{12}'/) // v1.13.1 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.13\.2-[0-9a-f]{12}'/) // v1.13.2 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()

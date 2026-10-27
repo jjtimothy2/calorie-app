@@ -57,7 +57,7 @@ try {
     await dlg.locator('input[name=name]').fill('Chicken rice')
     await dlg.getByLabel('Protein').fill('75')
     await dlg.getByRole('button', { name: 'Add 700 kcal' }).click()
-    await page.getByRole('link', { name: /Close and go back/ }).click()
+    await page.getByTestId('toast').waitFor() // v1.13.2: a log lands on Today with the snackbar
     assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
   })
   await step('data persists across reload, deep hash links work', async () => {

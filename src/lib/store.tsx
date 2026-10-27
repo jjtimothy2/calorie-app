@@ -309,7 +309,16 @@ type Ctx = {
   logDate: string
   /** Pick a day to view and edit (clamped to today). */
   setLogDate: (date: string) => void
+  /** v1.13.2: what was just logged on Log, for Home to scroll to, highlight and offer Undo for. Memory only. */
+  landing: Landing | null
+  land: (l: Omit<Landing, 'key'> | null) => void
 }
+
+/**
+ * v1.13.2: after a food or exercise is logged, Log hands this to Home and goes there: Home shows that day, scrolls to
+ * the new row(s), highlights them for about 1.5 s and shows the "Added ..." snackbar with Undo.
+ */
+export type Landing = { key: number; kind: 'food' | 'exercise'; date: string; ids: string[]; text: string }
 const StoreCtx = createContext<Ctx | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -374,6 +383,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', vis)
     return () => document.removeEventListener('visibilitychange', vis)
   }, [])
+  const [landing, setLanding] = useState<Landing | null>(null)
+  const land = useCallback((l: Omit<Landing, 'key'> | null) => setLanding(l ? { ...l, key: Date.now() + Math.random() } : null), [])
   const recentFoodIds = useMemo(() => {
     const seen = new Set<string>()
     const out: string[] = []
@@ -387,8 +398,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return out
   }, [state.entries, myFoodById])
   const value = useMemo(
-    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate }),
-    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate],
+    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate, landing, land }),
+    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate, landing, land],
   )
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }

@@ -344,6 +344,7 @@ try {
   await step('log: entries are AI (source photo, no foodId), AI numbers scaled, portion in the label, photo never stored, Undo removes all', async () => {
     await dialog(page).getByRole('button', { name: 'Log 3 items' }).click()
     await dialog(page).waitFor({ state: 'detached' })
+    await page.waitForURL(BASE + '/') // v1.13.2: logging goes to Home, where the snackbar shows
     await page.getByTestId('toast').filter({ hasText: 'Added 3 items from AI' }).waitFor()
     const s = await state(page)
     const ph = s.entries.filter((e) => e.source === 'photo')
@@ -361,10 +362,11 @@ try {
     await page.getByTestId('toast').getByRole('button', { name: 'Undo' }).click()
     assert.equal((await state(page)).entries.filter((e) => e.source === 'photo').length, 0)
     // Log again for real and see it on Today.
+    await page.getByRole('button', { name: 'Log food' }).click()
     await snap(page)
     await dialog(page).getByRole('button', { name: /Estimate/ }).click()
     await dialog(page).getByRole('button', { name: 'Log 4 items' }).click()
-    await page.goto(BASE + '/')
+    await page.waitForURL(BASE + '/')
     // v1.10: 2+ items from one estimate share a groupId and show as one meal row on Today.
     const grp = page.getByTestId('ai-group-row')
     await grp.waitFor()
