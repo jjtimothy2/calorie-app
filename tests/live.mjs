@@ -22,22 +22,28 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.fill('input[name=age]', '30'); await page.getByTestId('ob-next').click()
   await page.fill('input[name=heightCm]', '165'); await page.fill('input[name=weightKg]', '68'); await page.getByTestId('ob-next').click()
   await page.getByTestId('ob-goal-lose').click()
+  // v1.13: goal weight, then By when (no pace step). 68 -> 64 kg in 6 months.
+  await page.fill('input[name=goalWeightKg]', '64'); await page.getByTestId('ob-next').click()
+  await page.getByTestId('by-6m').click(); await page.getByTestId('ob-next').click()
   await page.getByTestId('ob-watch-no').click() // v1.10 watch question
   await page.getByTestId('ob-act-light').click()
-  await page.getByTestId('ob-pace').waitFor()
-  assert.equal(await page.getByTestId('ob-pace').getByRole('button').count(), 3) // pace picker (v1.1+)
-  await page.getByTestId('ob-next').click()
-  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), 1400) // v1.8: movement on, 1925 - 550 = 1375, held at BMR 1,400
+  // BMR 1,400 + movement 525 = 1,925; gap = 4 kg x 7,700 / days to the date 6 months out (no floor).
+  const pad = (n) => String(n).padStart(2, '0'), now = new Date()
+  const last = new Date(now.getFullYear(), now.getMonth() + 7, 0).getDate()
+  const due = new Date(now.getFullYear(), now.getMonth() + 6, Math.min(now.getDate(), last))
+  const dueKey = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`
+  const days = Math.round((Date.UTC(due.getFullYear(), due.getMonth(), due.getDate()) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5)
+  const target = Math.round(1925 - (4 * 7700) / days)
+  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), target)
   await page.getByTestId('ob-next').click()
   await page.getByTestId('ob-skip').click()
   await page.waitForURL(BASE + '/')
   await page.getByTestId('balance').waitFor()
   assert.equal(Number((await page.getByTestId('eq-movement').innerText()).replace(/\D/g, '')), 525)
-  // v1.8: new profiles count movement; Lose at the BMR floor: goal = 1925 - 1400 = 525.
   assert.equal(Number((await page.getByTestId('eq-bmr').innerText()).replace(/\D/g, '')), 1400)
-  assert.match(await page.getByTestId('ring-goal').innerText(), /goal 525/)
-  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v2')))
-  assert.deepEqual([st.version, st.profile.includeMovement, st.profile.pace, st.profile.goalWeightKg], [2, true, 'standard', 68])
+  assert.match(await page.getByTestId('ring-goal').innerText(), new RegExp(`goal ${1925 - target}`))
+  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')))
+  assert.deepEqual([st.version, st.profile.includeMovement, 'pace' in st.profile, st.profile.goalWeightKg, st.profile.goalDate], [3, true, false, 64, dueKey])
 })
 await step('load demo week (sample data) via Me > Developer', async () => {
   await page.getByRole('link', { name: 'Me', exact: true }).click()
@@ -63,10 +69,10 @@ await step('manifest and service worker', async () => {
   assert.deepEqual(inst.installabilityErrors, [])
 })
 await step('data persists on reload', async () => {
-  const before = await page.evaluate(() => localStorage.getItem('calorie-app:v2'))
+  const before = await page.evaluate(() => localStorage.getItem('calorie-app:v3'))
   assert.ok(JSON.parse(before).profile && JSON.parse(before).entries.length > 0)
   await page.reload()
-  assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v2')), before)
+  assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v3')), before)
   await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
 })
 const day = await page.evaluate(() => { const d = new Date(Date.now() - 86400000); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` })
@@ -101,12 +107,12 @@ await step('installed/returning (SW controls): every route deep-link + refresh, 
 })
 await step('sample meals and exercise for today', async () => {
   await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('calorie-app:v2'))
+    const s = JSON.parse(localStorage.getItem('calorie-app:v3'))
     const p = (n) => String(n).padStart(2, '0'); const d = new Date(); const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; const t = Date.now()
     const e = (id, meal, name, servingLabel, kcal, protein, carbs, fat) => ({ id, date, meal, foodId: null, name, servingLabel, servingMult: 1, qty: 1, kcal, protein, carbs, fat, createdAt: t })
     s.entries.push(e('live1', 'breakfast', 'Greek yoghurt with berries', '1 bowl', 260, 20, 30, 6), e('live2', 'lunch', 'Chicken rice', '1 plate', 610, 38, 72, 16), e('live3', 'snack', 'Banana', '1 medium', 105, 1, 27, 0))
     s.exercises.push({ id: 'livex', date, activityId: null, name: 'Badminton', minutes: 45, intensity: 'moderate', kcal: 330, createdAt: t })
-    localStorage.setItem('calorie-app:v2', JSON.stringify(s))
+    localStorage.setItem('calorie-app:v3', JSON.stringify(s))
   })
   await page.goto(BASE + '/'); await page.getByTestId('balance').waitFor()
   await page.getByText('Chicken rice').first().waitFor()
