@@ -16,6 +16,8 @@ type Props =
 
 const input = 'w-full rounded-xl border border-line bg-bg px-3 py-3 text-[17px]'
 
+// v1.13.3: opening an existing entry to edit focuses no field (no iOS keyboard); the Sheet focuses its own container
+// (role=dialog, tabIndex -1), so screen readers land inside and Escape still closes it. New items focus a field at once.
 export function QuickAddSheet(props: Props) {
   const { dispatch, myFoods, myFoodById, saveMyFood } = useStore()
   const e = props.mode === 'edit' ? props.entry : null
@@ -75,7 +77,7 @@ export function QuickAddSheet(props: Props) {
   const kcalField = (
     <label className="flex flex-col gap-1 text-[15px] font-semibold">
       {isNew ? 'Calories a serving (kcal)' : 'Calories (kcal)'}
-      <input data-autofocus={!isNew || name ? true : undefined} className={input} type="number" inputMode="numeric" min={1} required value={kcal} onChange={(ev) => setKcal(ev.target.value)} name="kcal" aria-describedby={props.mode !== 'edit' ? 'qa-kcal-hint' : undefined} />
+      <input data-autofocus={props.mode === 'add' || (isNew && name) ? true : undefined} className={input} type="number" inputMode="numeric" min={1} required value={kcal} onChange={(ev) => setKcal(ev.target.value)} name="kcal" aria-describedby={props.mode !== 'edit' ? 'qa-kcal-hint' : undefined} />
       {props.mode !== 'edit' && <span id="qa-kcal-hint" className="text-[13px] font-normal text-mute" data-testid="qa-kcal-hint">From a label, menu or your own count</span>}
     </label>
   )

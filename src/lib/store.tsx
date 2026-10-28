@@ -74,6 +74,8 @@ type Action =
   | { type: 'addEntry'; entry: Entry }
   | { type: 'updateEntry'; entry: Entry }
   | { type: 'deleteEntry'; id: string }
+  /** v1.13.3: move entries to other meals in one update (an AI group's meal change, and its Undo). id -> meal. */
+  | { type: 'setMeals'; meals: Record<string, Meal> }
   | { type: 'toggleFav'; foodId: string }
   | { type: 'removeFav'; foodId: string }
   | { type: 'addExercise'; entry: ExerciseEntry }
@@ -207,6 +209,16 @@ export function refreshPastDay(s: State, date: string, today = dateKey()): State
 const ENTRY_EDITS = new Set(['addEntry', 'updateEntry', 'deleteEntry', 'addExercise', 'updateExercise', 'deleteExercise'])
 
 function reducer(state: State, a: Action): State {
+  if (a.type === 'setMeals') {
+    // v1.13.3: the same rules as an edit: a closed today is locked, a past day recalculates (food totals don't change).
+    const dates = new Set(state.entries.filter((e) => Object.hasOwn(a.meals, e.id)).map((e) => e.date))
+    const today = dateKey()
+    if ([...dates].some((d) => d >= today && isClosed(state, d))) return state
+    let next = apply(state, a)
+    if (next === state) return state
+    for (const d of dates) next = refreshPastDay(next, d, today)
+    return next
+  }
   if (!ENTRY_EDITS.has(a.type)) return apply(state, a)
   // The days this edit touches: the entry's own day, plus its old day for an update or delete.
   const before = 'id' in a ? (a.type === 'deleteEntry' ? state.entries : state.exercises).find((e) => e.id === a.id)?.date
@@ -256,6 +268,10 @@ function apply(state: State, a: Action): State {
       return { ...state, entries: state.entries.map((e) => (e.id === a.entry.id ? a.entry : e)) }
     case 'deleteEntry':
       return { ...state, entries: state.entries.filter((e) => e.id !== a.id) }
+    case 'setMeals': {
+      if (!state.entries.some((e) => Object.hasOwn(a.meals, e.id) && e.meal !== a.meals[e.id])) return state
+      return { ...state, entries: state.entries.map((e) => (Object.hasOwn(a.meals, e.id) && e.meal !== a.meals[e.id] ? { ...e, meal: a.meals[e.id] } : e)) }
+    }
     case 'toggleFav':
       return {
         ...state,

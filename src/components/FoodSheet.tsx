@@ -110,7 +110,7 @@ export function FoodSheet(props: Props) {
         <div><small className="text-[13px] text-mute">Fat</small><b className="block text-[15px]">{round1(totals.f)}g</b></div>
       </div>
       <AfterThis remaining={props.remaining - totals.kcal} />
-      <Button data-autofocus onClick={save}>
+      <Button data-autofocus={props.mode === 'add' ? true : undefined} onClick={save}>
         {props.mode === 'add' ? `Add ${fmt(totals.kcal)} kcal` : `Save · ${fmt(totals.kcal)} kcal`}
       </Button>
       {props.mode === 'edit' && <DeleteButton id={props.entry.id} onDone={props.onDone} />}

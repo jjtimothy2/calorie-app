@@ -127,7 +127,7 @@ export function ExerciseQuickSheet({ date, initial, onDone, onClose }: { date: s
       <form className="flex flex-col gap-3" onSubmit={(ev) => { ev.preventDefault(); save() }}>
         <label className="flex flex-col gap-1 text-[15px] font-semibold">
           Calories burned (kcal)
-          <input data-autofocus className={input} type="number" inputMode="numeric" min={1} required name="burn" value={kcal} onChange={(ev) => setKcal(ev.target.value)} />
+          <input data-autofocus={initial ? undefined : true} className={input} type="number" inputMode="numeric" min={1} required name="burn" value={kcal} onChange={(ev) => setKcal(ev.target.value)} />
         </label>
         <label className="flex flex-col gap-1 text-[15px] font-semibold">
           Name <span className="font-normal text-mute">(optional)</span>

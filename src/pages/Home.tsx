@@ -20,7 +20,7 @@ import { formatAmount } from '../lib/amount'
 import { newId, useStore, type Landing } from '../lib/store'
 import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
 import { WeighInNudge } from '../components/Weight'
-import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry } from '../lib/types'
+import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
 export default function Home() {
   const { state, dispatch, today, logDate: date, setLogDate, landing, land } = useStore()
@@ -71,7 +71,8 @@ export default function Home() {
   // v1.13.2: just logged on Log (store landing): show that day, scroll to the meal (or Exercise) card with the new
   // row(s), highlight them about 1.5 s (reduced motion: jump, no fade, a brief highlight) and show the snackbar.
   const [flash, setFlash] = useState<Set<string>>(() => new Set())
-  const [snack, setSnack] = useState<Landing | null>(null)
+  // v1.13.3: a snackbar can also be a group's meal move (prev = each item's old meal, which Undo puts back).
+  const [snack, setSnack] = useState<(Landing & { prev?: Record<string, Meal> }) | null>(null)
   const timers = useRef<number[]>([])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   useEffect(() => {
@@ -79,6 +80,9 @@ export default function Home() {
     if (landing.date !== date) { setLogDate(landing.date); return } // runs again once Home shows that day
     const l = landing
     land(null)
+    present(l)
+  }, [landing, date, land, setLogDate])
+  function present(l: Landing & { prev?: Record<string, Meal> }) {
     const reduce = reducedMotion()
     timers.current.forEach((t) => window.clearTimeout(t))
     setSnack(l)
@@ -88,10 +92,21 @@ export default function Home() {
       window.setTimeout(() => setSnack(null), 5000),
     ]
     requestAnimationFrame(() => requestAnimationFrame(() => scrollToRows(l.ids, reduce)))
-  }, [landing, date, land, setLogDate])
+  }
+  // v1.13.3: the group sheet's meal pill. Every item of the group moves in one update (setMeals); the sheet closes so
+  // Home shows the group under its new meal, highlighted and scrolled to, with "Moved to X" and Undo for 5 s.
+  const moveGroup = (meal: Meal) => {
+    const items = groupItems
+    if (!items.length || items.every((e) => e.meal === meal)) return
+    const prev = Object.fromEntries(items.map((e) => [e.id, e.meal]))
+    dispatch({ type: 'setMeals', meals: Object.fromEntries(items.map((e) => [e.id, meal])) })
+    setGroup(null)
+    present({ key: Date.now() + Math.random(), kind: 'food', date, ids: items.map((e) => e.id), text: `Moved to ${MEAL_LABEL[meal]}`, prev })
+  }
   const undo = () => {
     if (!snack) return
-    for (const id of snack.ids) dispatch(snack.kind === 'food' ? { type: 'deleteEntry', id } : { type: 'deleteExercise', id })
+    if (snack.prev) dispatch({ type: 'setMeals', meals: snack.prev })
+    else for (const id of snack.ids) dispatch(snack.kind === 'food' ? { type: 'deleteEntry', id } : { type: 'deleteExercise', id })
     timers.current.forEach((t) => window.clearTimeout(t))
     setSnack(null)
     setFlash(new Set())
@@ -228,7 +243,7 @@ export default function Home() {
         <QuickAddSheet key={editing.id} mode="edit" entry={editing} remaining={remainingExcl(editing)} onDone={() => setEditing(null)} onClose={() => setEditing(null)} onAddItem={editing.source === 'photo' && !group ? () => addToSingle(editing) : undefined} />
       ) : null}
       {group && !editing && !adding && groupItems.length > 0 && (
-        <AiGroupSheet key={group} items={groupItems} onEdit={(e) => setEditing(e)} onAdd={addToGroup} onClose={() => setGroup(null)} />
+        <AiGroupSheet key={group} items={groupItems} onEdit={(e) => setEditing(e)} onAdd={addToGroup} onMove={moveGroup} onClose={() => setGroup(null)} />
       )}
       {adding && (
         <AddItemSheet group={adding.group} title={adding.title} meal={adding.meal} date={adding.date} remaining={left} onDone={added} onClose={() => setAdding(null)} />

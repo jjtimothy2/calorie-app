@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { foodEmoji } from '../data/foodEmoji'
 import { entryTotals, fmt, round1, sumEntries } from '../lib/calc'
 import { useStore } from '../lib/store'
-import { MEAL_LABEL, type Entry } from '../lib/types'
+import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
 import { SparkleIcon } from './PhotoSheets'
 import { Sheet } from './Sheet'
 import { Button } from './ui'
@@ -38,7 +38,11 @@ export function groupTitle(items: Entry[]) {
   return items.length === 1 ? items[0].name : `${items[0].name} and ${items.length - 1} more`
 }
 
-export function AiGroupSheet({ items, onEdit, onAdd, onClose }: { items: Entry[]; onEdit: (e: Entry) => void; onAdd?: () => void; onClose: () => void }) {
+/**
+ * v1.13.3: the meal pill (Log's cream pill over a native picker) shows the group's meal. The sheet has no Save, so a
+ * change applies at once: onMove moves every item of the group in one update and Home shows the 5 s Undo snackbar.
+ */
+export function AiGroupSheet({ items, onEdit, onAdd, onMove, onClose }: { items: Entry[]; onEdit: (e: Entry) => void; onAdd?: () => void; onMove?: (meal: Meal) => void; onClose: () => void }) {
   const { dispatch } = useStore()
   const [confirm, setConfirm] = useState(false)
   const t = sumEntries(items)
@@ -52,9 +56,27 @@ export function AiGroupSheet({ items, onEdit, onAdd, onClose }: { items: Entry[]
         <div>
           <div className="flex items-center gap-1.5 text-[13px] font-semibold text-mute">
             <SparkleIcon className="h-3.5 w-3.5 text-g" gradient />
-            <span>AI estimate · {MEAL_LABEL[items[0].meal]} · {count}</span>
+            <span>AI estimate · {count}</span>
           </div>
           <h2 className="title mt-1 text-[26px] leading-tight">{title}</h2>
+          {onMove && (
+            <label className="mt-2.5 flex items-center gap-2 text-[15px] font-semibold text-mute">
+              <span>Meal</span>
+              <span className="relative flex h-11 min-w-0 items-center gap-1.5 rounded-full border border-line bg-card pl-4 pr-3 focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-g-ink" data-testid="group-meal-pill">
+                <span className="truncate font-display text-[18px] font-semibold leading-none text-g-ink" aria-hidden="true">{MEAL_LABEL[items[0].meal]}</span>
+                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0 text-g-ink" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9.5 6 6 6-6" /></svg>
+                <select
+                  aria-label="Meal"
+                  value={items[0].meal}
+                  onChange={(ev) => onMove(ev.target.value as Meal)}
+                  data-testid="group-meal"
+                  className="absolute -inset-px h-[calc(100%+2px)] w-[calc(100%+2px)] cursor-pointer appearance-none rounded-full opacity-0 focus:outline-none"
+                >
+                  {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
+                </select>
+              </span>
+            </label>
+          )}
         </div>
         <div className="flex items-end justify-between rounded-[18px] bg-tile px-4 py-3">
           <div>

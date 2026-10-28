@@ -75,7 +75,7 @@ export function MyFoodSheet(props: Props) {
         <div><small className="text-[13px] text-mute">Fat</small><b className="block text-[15px]">{round1(totals.f)}g</b></div>
       </div>
       <AfterThis remaining={props.remaining - totals.kcal} />
-      <Button data-autofocus onClick={save}>
+      <Button data-autofocus={props.mode === 'add' ? true : undefined} onClick={save}>
         {props.mode === 'add' ? `Add ${fmt(totals.kcal)} kcal` : `Save · ${fmt(totals.kcal)} kcal`}
       </Button>
       {props.mode === 'edit' && <DeleteButton id={props.entry.id} onDone={props.onDone} />}
@@ -111,7 +111,7 @@ export function MyFoodEditSheet({ food, onClose, onDeleted, startDelete = false 
       <form className="flex flex-col gap-3" onSubmit={(ev) => { ev.preventDefault(); save() }} data-testid="myfood-form">
         <label className="flex flex-col gap-1 text-[15px] font-semibold">
           Name
-          <input data-autofocus className={input} value={name} required onChange={(ev) => { setName(ev.target.value); setError('') }} name="food-name" />
+          <input className={input} value={name} required onChange={(ev) => { setName(ev.target.value); setError('') }} name="food-name" />
         </label>
         <label className="flex flex-col gap-1 text-[15px] font-semibold">
           Calories a serving (kcal)

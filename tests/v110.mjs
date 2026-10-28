@@ -202,7 +202,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await sheet.waitFor()
       assert.equal(await sheet.getByTestId('ai-group-item').count(), 3)
       assert.equal(await num(sheet.getByTestId('ai-group-total')), 637)
-      assert.match(await sheet.innerText(), /AI estimate · Lunch · 3 items/)
+      assert.match(await sheet.innerText(), /AI estimate · 3 items/) // v1.13.3: the meal is in the pill below the title
+      assert.equal(await sheet.getByTestId('group-meal').inputValue(), 'lunch')
       assert.match(await sheet.innerText(), /Nasi putih[\s\S]*P 4\.9 · C 58\.7 · F 0\.5 g[\s\S]*267/)
       for (const b of await sheet.getByTestId('ai-group-remove').all()) await tall(b, 'remove')
       await tall(sheet.getByTestId('ai-group-delete'), 'delete whole meal')
