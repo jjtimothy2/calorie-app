@@ -132,12 +132,16 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   }
 
   await step(`${tag} root cause covered: no overscroll on html, body or the sheet; the handle is a drag target`, async () => {
-    await home()
-    await page.getByRole('button', { name: /^Edit Kopi susu/ }).click(); await dialog.waitFor()
-    const cs = await page.evaluate(() => { const d = document.querySelector('[role=dialog]'); const g = (e) => getComputedStyle(e).overscrollBehaviorY; return { html: g(document.documentElement), body: g(document.body), sheet: g(d), fits: d.scrollHeight <= d.clientHeight, handle: !!d.querySelector('[data-sheet-handle]') } })
-    // At 390x844 the sheet fits (nothing to scroll: the bug's trigger); on a short phone it scrolls. Either way no overscroll.
-    assert.deepEqual(cs, { html: 'none', body: 'none', sheet: 'none', fits: tag === '390x844' ? true : cs.fits, handle: true })
-    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' })
+    // v1.14: the quick add edit sheet gained the Servings row and now scrolls a little at 390x844 too, so the
+    // nothing-to-scroll case (the bug's trigger) is checked on the exercise sheet, which still fits there.
+    for (const [name, mustFit] of [['Kopi susu', false], ['Badminton', true]]) {
+      await home()
+      await page.getByRole('button', { name: new RegExp(`^Edit ${name}`) }).click(); await dialog.waitFor()
+      const cs = await page.evaluate(() => { const d = document.querySelector('[role=dialog]'); const g = (e) => getComputedStyle(e).overscrollBehaviorY; return { html: g(document.documentElement), body: g(document.body), sheet: g(d), fits: d.scrollHeight <= d.clientHeight, handle: !!d.querySelector('[data-sheet-handle]') } })
+      // At 390x844 the exercise sheet fits (nothing to scroll); on a short phone it scrolls. Either way no overscroll.
+      assert.deepEqual(cs, { html: 'none', body: 'none', sheet: 'none', fits: mustFit && tag === '390x844' ? true : cs.fits, handle: true }, name)
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' })
+    }
   })
 
   await step(`${tag} every edit sheet: a small drag springs back to the same spot, a large drag closes, nothing behind moves (quick add, catalogue food, My food, AI item, exercise, quick burn, AI group)`, async () => {

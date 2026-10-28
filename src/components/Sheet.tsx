@@ -186,20 +186,28 @@ const qtyText = (n: number) => String(Math.round(n * 100) / 100)
  * Whole steps above 1, half steps below (0.5 minimum for the minus button). v1.10.1: tap the amount to type any
  * amount on the decimal keypad, e.g. 1.5 or 0.75. `unit` is one serving, shown beside the typed number.
  */
-export function Stepper({ value, onChange, label, unit, min = 0.5 }: { value: number; onChange: (n: number) => void; label: string; unit?: string; min?: number }) {
+export function Stepper({ value, onChange, label, unit, min = 0.5, title }: { value: number; onChange: (n: number) => void; label: string; unit?: string; min?: number; title?: string }) {
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
   const inc = () => onChange(Math.min(MAX_QTY, value < 1 ? Math.min(1, Math.floor(value * 2 + 1e-9) / 2 + 0.5) : Math.floor(value + 1e-9) + 1))
   const dec = () => onChange(Math.max(min, value <= 1 ? 0.5 : Math.ceil(value - 1e-9) - 1))
   const typed = parseQty(text)
-  const bad = typing && text.trim() !== '' && typed === null
+  // v1.14: empty counts as invalid too (0, empty, text or over 99); the last valid amount stays until a valid one is typed.
+  const bad = typing && typed === null
   const open = () => { setText(qtyText(value)); setTyping(true) }
   useEffect(() => { if (typing) { input.current?.focus(); input.current?.select() } }, [typing])
   const done = () => { if (typed !== null) onChange(typed); setTyping(false) }
   const btn = 'grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-line bg-card text-2xl font-bold disabled:opacity-40'
   return (
     <div className="flex flex-col gap-1" data-no-drag>
+      {/* Edit sheets: a "Servings" heading, so the amount reads as something you can change. */}
+      {title && (
+        <div className="flex items-baseline justify-between gap-3 px-1">
+          <span className="text-[15px] font-semibold">{title}</span>
+          <span className="text-[13px] text-mute">Tap the number to type</span>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-bg p-2">
         <button type="button" className={btn} aria-label="Decrease amount" disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
         {typing ? (

@@ -96,7 +96,7 @@ export function FoodSheet(props: Props) {
           />
         </label>
       )}
-      <Stepper value={qty} onChange={setQty} label={qtyLabel} unit={servingLabel} />
+      <Stepper value={qty} onChange={setQty} label={qtyLabel} unit={servingLabel} title={props.mode === 'edit' ? 'Servings' : undefined} />
       {props.mode === 'edit' && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Meal" data-no-drag>
           {MEALS.map((m) => (

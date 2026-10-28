@@ -4,6 +4,7 @@
 // every item is still its own entry, so Log, History and closed days add up exactly as before.
 import { useState } from 'react'
 import { foodEmoji } from '../data/foodEmoji'
+import { aiAmount, formatAmount } from '../lib/amount'
 import { entryTotals, fmt, round1, sumEntries } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
@@ -98,7 +99,7 @@ export function AiGroupSheet({ items, onEdit, onAdd, onMove, onClose }: { items:
                   <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[16px] font-semibold leading-snug">{e.name}</span>
-                    <span className="block truncate text-[12px] text-mute">{e.servingLabel}</span>
+                    <span className="block truncate text-[12px] text-mute">{e.foodId ? formatAmount(e.servingLabel, e.qty) : aiAmount(e.servingLabel, e.qty)}</span>
                     <span className="block text-[12px] text-mute">P {round1(x.protein)} · C {round1(x.carbs)} · F {round1(x.fat)} g</span>
                   </span>
                   <span className="num text-[18px]">{fmt(x.kcal)}</span>

@@ -47,3 +47,16 @@ export function formatAmount(servingLabel: string, qty: number): string {
   if (nounAt >= 0 && total > 1) out[nounAt] = pluralise(out[nounAt])
   return `${fmtNum(total)} ${out.join(' ')}`
 }
+
+/**
+ * Amount line for an AI item (or quick add) that keeps its grams: aiAmount('1 plate (300 g)', 2) -> '2 plates (600 g)',
+ * ('250 g', 1.5) -> '375 g'. qty 1 shows the stored label as is.
+ */
+export function aiAmount(servingLabel: string, qty: number): string {
+  if (Math.abs(qty - 1) < 1e-9) return servingLabel
+  // An item that an older edit relabelled 'Quick add' counts servings instead.
+  if (servingLabel === 'Quick add') return formatAmount('1 serving', qty)
+  const m = servingLabel.match(/^(.*\S)\s*\((\d+(?:\.\d+)?) g\)$/)
+  if (m) return `${formatAmount(m[1], qty)} (${Math.round(Number(m[2]) * qty)} g)`
+  return formatAmount(servingLabel, qty)
+}

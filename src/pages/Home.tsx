@@ -17,7 +17,7 @@ import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
 import { dayName, dayView, keyDate, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
-import { formatAmount } from '../lib/amount'
+import { aiAmount, formatAmount } from '../lib/amount'
 import { newId, useStore, type Landing } from '../lib/store'
 import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
 import { WeighInNudge } from '../components/Weight'
@@ -210,7 +210,7 @@ export default function Home() {
                           <span className="tile" aria-hidden="true">{foodEmoji(e.name)}</span>
                           <span className="min-w-0 flex-1">
                             <span className="block text-[16px] font-semibold leading-snug">{e.name}</span>
-                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : e.source === 'photo' ? ` · ${e.servingLabel}` : ' · quick add'}{e.source === 'photo' && <> · <SparkleIcon className="inline-block h-3 w-3 align-[-1px]" /> AI</>}</span>
+                            <span className="block text-[12px] text-mute">{MEAL_LABEL[m]}{e.foodId ? ` · ${formatAmount(e.servingLabel, e.qty)}` : e.source === 'photo' ? ` · ${aiAmount(e.servingLabel, e.qty)}` : ` · quick add${e.qty !== 1 ? `, ${formatAmount('1 serving', e.qty)}` : ''}`}{e.source === 'photo' && <> · <SparkleIcon className="inline-block h-3 w-3 align-[-1px]" /> AI</>}</span>
                           </span>
                           <span className="num text-[18px]">{fmt(entryTotals(e).kcal)}</span>
                         </button>

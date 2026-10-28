@@ -61,7 +61,7 @@ export function MyFoodSheet(props: Props) {
         <button type="button" onClick={() => setEditing(true)} className="tap -mt-1.5 min-h-11 shrink-0 px-1 text-[15px] font-bold text-g-ink" data-testid="myfood-edit">Edit food</button>
         <FavStar id={food.id} />
       </div>
-      <Stepper value={qty} onChange={setQty} label={formatAmount(USER_SERVING, qty)} unit={USER_SERVING} />
+      <Stepper value={qty} onChange={setQty} label={formatAmount(USER_SERVING, qty)} unit={USER_SERVING} title={props.mode === 'edit' ? 'Servings' : undefined} />
       {props.mode === 'edit' && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Meal" data-no-drag>
           {MEALS.map((m) => (
