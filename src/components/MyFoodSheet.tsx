@@ -63,7 +63,7 @@ export function MyFoodSheet(props: Props) {
       </div>
       <Stepper value={qty} onChange={setQty} label={formatAmount(USER_SERVING, qty)} unit={USER_SERVING} />
       {props.mode === 'edit' && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Meal">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Meal" data-no-drag>
           {MEALS.map((m) => (
             <Chip key={m} on={meal === m} onClick={() => setMeal(m)}>{MEAL_LABEL[m]}</Chip>
           ))}
@@ -74,7 +74,7 @@ export function MyFoodSheet(props: Props) {
         <div><small className="text-[13px] text-mute">Carbs</small><b className="block text-[15px]">{round1(totals.c)}g</b></div>
         <div><small className="text-[13px] text-mute">Fat</small><b className="block text-[15px]">{round1(totals.f)}g</b></div>
       </div>
-      <AfterThis remaining={props.remaining - totals.kcal} />
+      <AfterThis remaining={props.remaining - totals.kcal} date={props.mode === 'edit' ? props.entry.date : props.date} />
       <Button data-autofocus={props.mode === 'add' ? true : undefined} onClick={save}>
         {props.mode === 'add' ? `Add ${fmt(totals.kcal)} kcal` : `Save · ${fmt(totals.kcal)} kcal`}
       </Button>

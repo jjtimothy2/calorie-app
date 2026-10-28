@@ -353,7 +353,7 @@ function SwipeRow({ shown, editing = false, onShow, onDelete, label, children, t
   // Edit mode narrows the row instead of sliding it, so the date stays readable next to Delete.
   const x = editing ? 0 : dx ?? base
   return (
-    <li className="relative overflow-hidden rounded-[18px] border border-line bg-card" data-testid={testid} data-open={shown ? 'true' : 'false'}>
+    <li className="relative overflow-hidden rounded-[18px] border border-line bg-card" data-no-drag data-testid={testid} data-open={shown ? 'true' : 'false'}>
       <button type="button" onClick={onDelete} tabIndex={shown ? 0 : -1} aria-hidden={!shown} aria-label={`Delete ${label}`}
         className="absolute inset-y-0 right-0 grid place-items-center bg-danger text-[16px] font-bold text-white" style={{ width: REVEAL, opacity: editing || x < 0 ? 1 : 0 }} data-testid="weighin-delete">Delete</button>
       <div

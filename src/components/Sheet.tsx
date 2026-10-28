@@ -11,9 +11,17 @@ const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), te
  * instead of React state + `bottom`, so the sheet glides with the keyboard edge with no re-render or layout jump.
  * v1.7: the first focus is a layout effect, so a sheet opened from a tap focuses its field inside that same tap (iOS only
  * raises the keyboard for a focus in the user gesture; "Type it" relies on this).
+ * v1.13.4: swipe down to close, like an iOS sheet. Before this the handle was only a picture: a sheet whose content
+ * fits does not scroll, so its overscroll-behavior did nothing and iOS handed the pan to the page, which rubber-banded
+ * the whole app (sheet, backdrop and screen) with the finger. Now a downward drag from the handle, or from the content
+ * when it is scrolled to the top, moves the sheet with the finger and fades the backdrop; letting go past 30% of its
+ * height or with a flick closes it, anything less springs back. Content scrolled down scrolls first and the drag picks
+ * up once it reaches the top. Fields, the meal pills and picker, steppers and swipe rows ([data-no-drag]) never start
+ * a drag. Touch moves the sheet owns are cancelled, so nothing behind it moves. Reduced motion: no slides.
  */
 export function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  const shade = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
   useLayoutEffect(() => {
@@ -66,13 +74,84 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
     vv.addEventListener('scroll', update)
     return () => { clearTimeout(t); cancelAnimationFrame(raf); vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
   }, [])
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // mode: null = undecided, 'drag' = the sheet follows the finger, 'off' = not ours (sideways, a field, a swipe row).
+    let g: { mode: null | 'drag' | 'off'; handle: boolean; scrolled: boolean; x0: number; y0: number; y: number; top: number; off: number; samples: [number, number][] } | null = null
+    let closing = false
+    const set = (off: number) => {
+      el.style.transform = off ? `translateY(${off}px)` : ''
+      if (shade.current) shade.current.style.opacity = off ? String(Math.max(0, 1 - off / el.offsetHeight)) : ''
+    }
+    const start = (e: TouchEvent) => {
+      if (closing || e.touches.length !== 1) { g = null; return }
+      const t = e.touches[0], target = e.target as Element
+      const off = !!target.closest?.('input, textarea, select, [contenteditable], [data-no-drag]')
+      g = { mode: off ? 'off' : null, scrolled: false, handle: !!target.closest?.('[data-sheet-handle]'), x0: t.clientX, y0: t.clientY, y: t.clientY, top: 0, off: 0, samples: [[t.clientY, e.timeStamp]] }
+    }
+    const move = (e: TouchEvent) => {
+      if (!g || g.mode === 'off') return
+      const t = e.touches[0], dy = t.clientY - g.y
+      g.y = t.clientY
+      g.samples.push([t.clientY, e.timeStamp]); if (g.samples.length > 5) g.samples.shift()
+      if (g.mode === null) {
+        const ax = Math.abs(t.clientX - g.x0), ay = Math.abs(t.clientY - g.y0)
+        if (ax > 8 && ax > ay) { g.mode = 'off'; return }
+        // Down at the top (or on the handle) starts the drag, from where the finger went down (or, after the content
+        // scrolled back to the top, from here); otherwise let the content scroll.
+        if (dy > 0 && (g.handle || el.scrollTop <= 0)) {
+          g.mode = 'drag'; g.top = g.scrolled ? t.clientY : g.y0
+          el.dataset.drag = ''
+        } else {
+          // Nothing to scroll that way: cancel it so iOS does not rubber-band the page behind.
+          const max = el.scrollHeight - el.clientHeight
+          if ((dy < 0 && el.scrollTop >= max - 1) || (dy > 0 && el.scrollTop <= 0)) e.preventDefault()
+          else g.scrolled = true
+          return
+        }
+      }
+      e.preventDefault()
+      g.off = Math.max(0, t.clientY - g.top)
+      set(g.off)
+    }
+    const end = (e: TouchEvent) => {
+      if (!g || g.mode !== 'drag') { g = null; return }
+      const s = g.samples, [y1, t1] = s[0], [y2, t2] = s[s.length - 1]
+      // px per ms, + is down; a finger that stopped (over 100 ms still) before lifting is not a flick
+      const v = t2 > t1 && e.timeStamp - t2 < 100 ? (y2 - y1) / (t2 - t1) : 0
+      const h = el.offsetHeight, off = g.off
+      g = null
+      delete el.dataset.drag
+      if (off > h * 0.3 || (v > 0.5 && off > 24)) {
+        closing = true
+        if (reduced()) { close.current(); return }
+        set(h)
+        let done = false
+        const fin = () => { if (!done) { done = true; close.current() } }
+        el.addEventListener('transitionend', fin, { once: true })
+        setTimeout(fin, 260)
+      } else set(0)
+    }
+    el.addEventListener('touchstart', start, { passive: true })
+    el.addEventListener('touchmove', move, { passive: false })
+    el.addEventListener('touchend', end)
+    el.addEventListener('touchcancel', end)
+    return () => {
+      el.removeEventListener('touchstart', start)
+      el.removeEventListener('touchmove', move)
+      el.removeEventListener('touchend', end)
+      el.removeEventListener('touchcancel', end)
+    }
+  }, [])
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
     const el = e.target as HTMLElement
     if (el.matches(FIELD)) setTimeout(() => { if (document.activeElement === el) el.scrollIntoView({ block: 'nearest' }) }, 300)
   }
   return (
     <div className="absolute inset-0 z-30">
-      <div className="anim-fade absolute inset-0 bg-[rgba(42,36,32,.42)]" onClick={() => close.current()} aria-hidden="true" />
+      <div ref={shade} className="anim-fade sheet-shade absolute inset-0 bg-[rgba(42,36,32,.42)]" onClick={() => close.current()} aria-hidden="true" />
       <div
         ref={ref}
         role="dialog"
@@ -80,9 +159,13 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
         aria-label={label}
         tabIndex={-1}
         onFocus={onFocus}
-        className="anim-sheet sheet-kb absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col gap-4 overflow-y-auto overscroll-contain rounded-t-[28px] bg-card px-5 pb-safe-sheet pt-3.5"
+        className="anim-sheet sheet-kb absolute inset-x-0 bottom-0 flex max-h-[92%] flex-col gap-4 overflow-y-auto overscroll-none rounded-t-[28px] bg-card px-5 pb-safe-sheet pt-3.5"
+        data-testid="sheet"
       >
-        <div className="mx-auto h-[5px] w-10 shrink-0 rounded-full bg-line" />
+        {/* The bar is 5 px; the grab area around it reaches the top edge and the gap below without moving the layout. */}
+        <div className="relative mx-auto h-[5px] w-10 shrink-0 rounded-full bg-line" data-sheet-handle>
+          <span className="absolute -inset-x-16 -top-3.5 -bottom-4" aria-hidden="true" />
+        </div>
         {children}
       </div>
     </div>
@@ -116,7 +199,7 @@ export function Stepper({ value, onChange, label, unit, min = 0.5 }: { value: nu
   const done = () => { if (typed !== null) onChange(typed); setTyping(false) }
   const btn = 'grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-line bg-card text-2xl font-bold disabled:opacity-40'
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1" data-no-drag>
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-bg p-2">
         <button type="button" className={btn} aria-label="Decrease amount" disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
         {typing ? (

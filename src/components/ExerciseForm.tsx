@@ -13,7 +13,7 @@ export function MinutesStepper({ value, onChange }: { value: number; onChange: (
   const btn = 'grid h-12 w-12 place-items-center rounded-xl border border-line bg-card text-2xl font-bold disabled:opacity-40'
   const step = value >= 60 ? 15 : 5
   return (
-    <div className="flex items-center justify-between rounded-2xl bg-bg p-2">
+    <div className="flex items-center justify-between rounded-2xl bg-bg p-2" data-no-drag>
       <button type="button" className={btn} aria-label="Decrease duration" disabled={value <= 5} onClick={() => onChange(Math.max(5, value - (value > 60 ? 15 : 5)))}>−</button>
       <b className="text-[22px]" aria-live="polite" data-testid="minutes">{value} min</b>
       <button type="button" className={btn} aria-label="Increase duration" onClick={() => onChange(Math.min(600, value + step))}>+</button>

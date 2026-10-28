@@ -133,7 +133,13 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 .tap { transition: transform .35s cubic-bezier(.34, 1.56, .64, 1), background-color .15s; }
 .tap:active { transform: scale(.97); transition-duration: .08s; }
 /* v1.6.4: the sheet rides the keyboard edge (offset set from visualViewport, see Sheet.tsx). */
-.sheet-kb { transition: translate .25s cubic-bezier(.2, .8, .2, 1); }
+.sheet-kb { transition: translate .25s cubic-bezier(.2, .8, .2, 1), transform .24s cubic-bezier(.2, .8, .2, 1); }
+/* v1.13.4: swipe to close. While the finger drives the sheet nothing animates; on release it springs back or slides out. */
+.sheet-kb[data-drag] { transition: translate .25s cubic-bezier(.2, .8, .2, 1); }
+.sheet-shade { transition: opacity .24s cubic-bezier(.2, .8, .2, 1); }
+.sheet-kb[data-drag] ~ .sheet-shade, .sheet-shade:has(~ .sheet-kb[data-drag]) { transition: none; }
+/* The app never scrolls as a page; stop iOS bouncing the whole document when a pan reaches it. */
+html, body { overscroll-behavior: none; }
 .fab { transition: transform .4s cubic-bezier(.34, 1.8, .64, 1), box-shadow .2s; }
 .fab:active { transform: scale(.92); transition-duration: .08s; }
 

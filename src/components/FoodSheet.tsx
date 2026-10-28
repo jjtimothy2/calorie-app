@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FOOD_BY_ID, servingsFor, type Food } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
-import { fmt, round1 } from '../lib/calc'
+import { dayView, fmt, goalMessage, round1 } from '../lib/calc'
 import { formatAmount } from '../lib/amount'
 import { entryFromFood, useStore } from '../lib/store'
 import { MEALS, MEAL_LABEL, type Entry, type Meal } from '../lib/types'
@@ -98,7 +98,7 @@ export function FoodSheet(props: Props) {
       )}
       <Stepper value={qty} onChange={setQty} label={qtyLabel} unit={servingLabel} />
       {props.mode === 'edit' && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Meal">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Meal" data-no-drag>
           {MEALS.map((m) => (
             <Chip key={m} on={meal === m} onClick={() => setMeal(m)}>{MEAL_LABEL[m]}</Chip>
           ))}
@@ -109,7 +109,7 @@ export function FoodSheet(props: Props) {
         <div><small className="text-[13px] text-mute">Carbs</small><b className="block text-[15px]">{round1(totals.c)}g</b></div>
         <div><small className="text-[13px] text-mute">Fat</small><b className="block text-[15px]">{round1(totals.f)}g</b></div>
       </div>
-      <AfterThis remaining={props.remaining - totals.kcal} />
+      <AfterThis remaining={props.remaining - totals.kcal} date={props.mode === 'edit' ? props.entry.date : props.date} />
       <Button data-autofocus={props.mode === 'add' ? true : undefined} onClick={save}>
         {props.mode === 'add' ? `Add ${fmt(totals.kcal)} kcal` : `Save · ${fmt(totals.kcal)} kcal`}
       </Button>
@@ -119,12 +119,20 @@ export function FoodSheet(props: Props) {
   )
 }
 
-export function AfterThis({ remaining }: { remaining: number }) {
-  const over = remaining < 0
+/**
+ * The day after this change. `remaining` = balance - goal once the change is in (an edit passes the day total minus
+ * the entry's old value; the sheet takes off the new one). v1.13.4: worded exactly like Home's goal line for that
+ * day ("601 kcal past your 438 goal", "120 kcal to go to your 438 goal", surplus and break-even goals too). It used to
+ * say "N kcal left" while Home said "N kcal past your goal" for the same day, and "past your goal" for the opposite case.
+ */
+export function AfterThis({ remaining, date }: { remaining: number; date: string }) {
+  const { state } = useStore()
+  const goal = state.profile ? dayView(state, date).goal : null
+  const text = goal == null ? `${fmt(Math.abs(remaining))} kcal ${remaining < 0 ? 'over' : 'left'}` : goalMessage(Math.round(remaining + goal), goal, false).replace(/\.$/, '')
   return (
-    <div className="flex justify-between text-base">
-      <span className="text-mute">After this</span>
-      <b>{fmt(Math.abs(remaining))} kcal {over ? 'past your goal' : 'left'}</b>
+    <div className="flex items-baseline justify-between gap-3 text-base">
+      <span className="shrink-0 text-mute">After this</span>
+      <b className="text-right" data-testid="after-this">{text}</b>
     </div>
   )
 }

@@ -60,7 +60,7 @@ export function AiGroupSheet({ items, onEdit, onAdd, onMove, onClose }: { items:
           </div>
           <h2 className="title mt-1 text-[26px] leading-tight">{title}</h2>
           {onMove && (
-            <label className="mt-2.5 flex items-center gap-2 text-[15px] font-semibold text-mute">
+            <label className="mt-2.5 flex items-center gap-2 text-[15px] font-semibold text-mute" data-no-drag>
               <span>Meal</span>
               <span className="relative flex h-11 min-w-0 items-center gap-1.5 rounded-full border border-line bg-card pl-4 pr-3 focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-g-ink" data-testid="group-meal-pill">
                 <span className="truncate font-display text-[18px] font-semibold leading-none text-g-ink" aria-hidden="true">{MEAL_LABEL[items[0].meal]}</span>

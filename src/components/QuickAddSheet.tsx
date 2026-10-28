@@ -112,13 +112,13 @@ export function QuickAddSheet(props: Props) {
           ))}
         </fieldset>
         {props.mode !== 'new' && !(props.mode === 'add' && props.group) && (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Meal">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Meal" data-no-drag>
             {MEALS.map((m) => (
               <Chip key={m} on={meal === m} onClick={() => setMeal(m)}>{MEAL_LABEL[m]}</Chip>
             ))}
           </div>
         )}
-        {props.mode !== 'new' && <AfterThis remaining={props.remaining - (valid ? k : 0)} />}
+        {props.mode !== 'new' && <AfterThis remaining={props.remaining - (valid ? k : 0)} date={props.mode === 'edit' ? props.entry.date : props.date} />}
         <Button type="submit" disabled={!valid} data-testid={isNew ? 'newfood-save' : undefined}>
           {props.mode === 'add' ? `Add ${valid ? fmt(k) + ' ' : ''}kcal` : 'Save'}
         </Button>
