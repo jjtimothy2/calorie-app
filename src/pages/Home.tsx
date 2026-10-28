@@ -8,6 +8,7 @@ import { QuickAddSheet } from '../components/QuickAddSheet'
 import { SparkleIcon } from '../components/PhotoSheets'
 import { AiGroupSheet, groupRows, groupTitle } from '../components/AiGroupSheet'
 import { AddItemSheet } from '../components/AddItemSheet'
+import { MealMacros } from '../components/MealMacros'
 import type { EntryGroup } from '../components/FoodSheet'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { DaySwitcher, PastDayNote } from '../components/PastDay'
@@ -183,6 +184,8 @@ export default function Home() {
                   <h2 className="eyebrow text-[15px] font-semibold text-ink">{MEAL_LABEL[m]}{list.length > 0 && <span className="text-mute"> · {fmt(sum)} kcal</span>}</h2>
                   {!locked && <Link to={`/log?meal=${m}`} className="tap px-1 py-1 text-[15px] font-bold text-g-ink" aria-label={`Add to ${MEAL_LABEL[m]}`}>+ Add</Link>}
                 </div>
+                {/* v1.13.5: the meal's protein, carbs and fat (AI groups included). Hidden for an empty meal. */}
+                <MealMacros entries={list} />
                 {list.length > 0 && (
                   <ul className="mt-2">
                     {groupRows(list).map((row) => row.kind === 'group' ? (
