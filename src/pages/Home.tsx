@@ -201,8 +201,8 @@ export default function Home() {
                             <span className="block truncate text-[16px] font-semibold leading-snug">{groupTitle(row.items)}</span>
                             <span className="block text-[12px] text-mute">{MEAL_LABEL[m]} · {row.items.length} items · <SparkleIcon className="inline-block h-3 w-3 align-[-1px]" /> AI</span>
                           </span>
+                          {/* v1.15.1: no › here, so the kcal lines up with single rows. The whole row still opens the breakdown. */}
                           <span className="num text-[18px]">{fmt(row.kcal)}</span>
-                          <svg viewBox="0 0 24 24" className="-ml-1 h-4 w-4 shrink-0 text-mute-soft" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
                         </button>
                       </li>
                     ) : (() => { const e = row.entry; return (
