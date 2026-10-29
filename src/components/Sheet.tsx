@@ -188,7 +188,7 @@ const qtyText = (n: number) => String(Math.round(n * 100) / 100)
  */
 type StepperProps = {
   value: number; onChange: (n: number) => void; label: string; unit?: string; min?: number; title?: string
-  /** v1.14.1: the small row stepper on the AI result sheet (32 px buttons, the number between). */
+  /** v1.14.1: the small row stepper on the AI result sheet (32 px buttons, the number between; v1.14.2: 44 px hit areas). */
   compact?: boolean
   /** v1.14.1: per-row names for screen readers, e.g. "Less Nasi putih" / "More Nasi putih". */
   decLabel?: string; incLabel?: string; inputLabel?: string; numberLabel?: string
@@ -227,19 +227,25 @@ export function Stepper({ value, onChange, label, unit, min = 0.5, title, compac
   const err = (cls: string) => bad && <p id={errId} role="alert" className={`${cls} text-danger`} data-testid="qty-err">Enter an amount above 0, like 1.5 or 0.75.</p>
   if (compact) {
     // v1.14.1: sits at the end of a wrapping row; the error drops onto its own full-width line under the row.
-    const sb = 'grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line bg-card text-xl font-bold disabled:opacity-40'
+    // v1.14.2: each target is 44x44 without changing the look: a ::before hit area reaches 6 px above and below,
+    // and − / + reach 10 px outward (into the box padding and the row gap) and 2 px inward, half the 4 px gap, where
+    // the number's area (2 px wider each side) meets them edge to edge without overlapping. While typing,
+    // a label around the field carries the same area (a tap on its edge keeps the field open and focused).
+    const hitY = 'relative before:absolute before:-top-1.5 before:-bottom-1.5'
+    // − / + have a 1 px border and ::before is placed from the padding box, so their offsets are 1 px larger.
+    const sb = `relative before:absolute before:-top-[7px] before:-bottom-[7px] grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line bg-card text-xl font-bold disabled:opacity-40`
     return (
       <div className="contents" data-no-drag>
         <div className="flex shrink-0 items-center gap-1 rounded-xl bg-bg p-1" data-no-drag data-testid="row-stepper">
-          <button type="button" className={sb} aria-label={decLabel} disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
+          <button type="button" className={`${sb} before:-left-[11px] before:-right-[3px]`} aria-label={decLabel} disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }} data-testid="qty-dec">−</button>
           {typing
-            ? field('h-8 w-[52px] px-1 text-[15px]')
+            ? <label className={`${hitY} flex before:-inset-x-0.5`} onMouseDown={(e) => e.target !== input.current && e.preventDefault()} data-testid="qty-hit">{field('h-8 w-[52px] px-1 text-[15px]')}</label>
             : (
-              <button type="button" onClick={open} className="tap h-8 min-w-[52px] rounded-lg px-1 text-[15px] font-bold" aria-label={`${numberLabel ?? label}. Tap to type an amount`} data-testid="qty-edit">
+              <button type="button" onClick={open} className={`tap ${hitY} h-8 min-w-[52px] rounded-lg px-1 text-[15px] font-bold before:-inset-x-0.5`} aria-label={`${numberLabel ?? label}. Tap to type an amount`} data-testid="qty-edit">
                 <b aria-live="polite" data-testid="qty">{label}</b>
               </button>
             )}
-          <button type="button" className={sb} aria-label={incLabel} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); inc() }}>+</button>
+          <button type="button" className={`${sb} before:-left-[3px] before:-right-[11px]`} aria-label={incLabel} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); inc() }} data-testid="qty-inc">+</button>
         </div>
         {err('basis-full text-right text-[13px] leading-snug')}
       </div>
