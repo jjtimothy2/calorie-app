@@ -124,6 +124,7 @@ export function FoodSheet(props: Props) {
  * the entry's old value; the sheet takes off the new one). v1.13.4: worded exactly like Home's goal line for that
  * day ("601 kcal past your 438 goal", "120 kcal to go to your 438 goal", surplus and break-even goals too). It used to
  * say "N kcal left" while Home said "N kcal past your goal" for the same day, and "past your goal" for the opposite case.
+ * v1.16: goalMessage is now the Home gauge's sentence ("301 kcal left to eat", "299 kcal over your 837 goal", "On target").
  */
 export function AfterThis({ remaining, date }: { remaining: number; date: string }) {
   const { state } = useStore()

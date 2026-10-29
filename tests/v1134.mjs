@@ -270,11 +270,13 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   await step(`${tag} After this reads like Home's goal line, with edit math day total - old + new`, async () => {
     await home()
     const goalLine = (await page.getByTestId('goal-progress').innerText()).replace(/\.( Nice work\.)?$/, '')
-    const m = goalLine.match(/^([\d,]+) kcal (past|to go to) your ([\d,]+) goal$/)
+    // v1.16: the gauge's words, "N kcal left to eat" before the goal line and "N kcal over your G goal" past it.
+    const m = goalLine.match(/^([\d,]+) kcal (left to eat|over your [\d,]+ goal)$/)
     assert.ok(m, `goal line: ${goalLine}`)
     const num = (x) => Number(x.replace(/,/g, ''))
-    const goal = num(m[3]), bal = m[2] === 'past' ? goal + num(m[1]) : goal - num(m[1])
-    const say = (b) => b === goal ? `Right on your ${goal.toLocaleString('en-US')} goal` : b > goal ? `${(b - goal).toLocaleString('en-US')} kcal past your ${goal.toLocaleString('en-US')} goal` : `${(goal - b).toLocaleString('en-US')} kcal to go to your ${goal.toLocaleString('en-US')} goal`
+    const goal = num((await page.getByTestId('ring-goal').textContent()).match(/goal ([\d,]+)$/)[1])
+    const bal = m[2] === 'left to eat' ? goal + num(m[1]) : goal - num(m[1])
+    const say = (b) => b === goal ? `Right on your ${goal.toLocaleString('en-US')} goal` : b > goal ? `${(b - goal).toLocaleString('en-US')} kcal left to eat` : `${(goal - b).toLocaleString('en-US')} kcal over your ${goal.toLocaleString('en-US')} goal`
     const after = () => dialog.getByTestId('after-this').innerText()
     // Quick add edit, unchanged: the same as Home's line (old out, same value back in).
     await page.getByRole('button', { name: /^Edit Kopi susu/ }).click(); await dialog.waitFor()
@@ -284,7 +286,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     // 140 -> 840: the day goes under its goal.
     await dialog.locator('input[name=kcal]').fill('840')
     assert.equal(await after(), say(bal - 700))
-    assert.match(await after(), /to go to your/)
+    assert.match(await after(), /kcal over your/)
     await shot('after-this-under')
     await dialog.locator('input[name=kcal]').fill('100')
     assert.equal(await after(), say(bal + 40))

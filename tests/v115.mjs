@@ -187,7 +187,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await page.waitForURL(BASE + '/'); await page.getByTestId('balance').waitFor()
     const p = (await stored(page)).profile
     assert.deepEqual([p.goalDate, p.dailyGoal, p.target, p.bmr, p.includeMovement], [safeDate, safe.deficit, safe.eat, 1795, true])
-    assert.equal(await page.getByTestId('ring-goal').innerText(), `goal ${safe.deficit}`) // 1: the same number Home measures against
+    assert.match(await page.getByTestId('ring-goal').textContent(), new RegExp(`· goal ${safe.deficit}$`)) // 1: the same number Home measures against
     assert.equal(await page.getByTestId('cap-card').count(), 0)
     await untouched(page)
     await ctx.close()
@@ -291,7 +291,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const s0 = await stored(page)
     assert.deepEqual([s0.profile.target, s0.profile.dailyGoal, s0.profile.goalDate, s0.profile.planFrom], [1309, 550, JORDY.goalDate, JORDY.planFrom])
     assert.equal('capCardDismissed' in s0, false)
-    assert.equal(await page.getByTestId('ring-goal').innerText(), 'goal 550')
+    assert.match(await page.getByTestId('ring-goal').textContent(), /· goal 550$/)
     const card = page.getByTestId('cap-card')
     await card.waitFor()
     const t = await card.innerText()
@@ -313,11 +313,11 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.match(a, new RegExp(`Goal date is now ${longDay(J_DATE)}\\. Your daily deficit is ${fmt(J_SAFE.deficit)} kcal, so you'd eat about ${fmt(J_SAFE.eat)} kcal a day`))
     const s1 = await stored(page)
     assert.deepEqual([s1.profile.goalDate, s1.profile.dailyGoal, s1.profile.target, s1.profile.planFrom, s1.capCardDismissed], [J_DATE, J_SAFE.deficit, J_SAFE.eat, JORDY.planFrom, TODAY])
-    assert.equal(await page.getByTestId('ring-goal').innerText(), `goal ${J_SAFE.deficit}`)
+    assert.match(await page.getByTestId('ring-goal').textContent(), new RegExp(`· goal ${J_SAFE.deficit}$`))
     await page.getByTestId('cap-undo').click()
     assert.equal(await raw(page, 'calorie-app:v3'), before, 'Undo restores the exact saved state')
     await card.waitFor()
-    assert.equal(await page.getByTestId('ring-goal').innerText(), 'goal 550')
+    assert.match(await page.getByTestId('ring-goal').textContent(), /· goal 550$/)
     await untouched(page)
     await ctx.close()
   })

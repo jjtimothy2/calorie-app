@@ -2,10 +2,15 @@ import { Link } from 'react-router-dom'
 import { fmt, overBy } from '../lib/calc'
 import type { Macros } from '../lib/types'
 
-/** Home card: protein left today, with a small carbs and fat line. Opens Nutrition. */
+/**
+ * Home card: protein eaten today against the target from macroTargets, with a small carbs and fat line. Opens Nutrition.
+ * v1.16 (Reed): "44 g" big with "of 125 g" small and muted on the same baseline, the bar fills with grams eaten, and
+ * a green "Target hit" once the target is reached. Over the target it keeps the eaten number.
+ */
 export function ProteinCard({ totals, targets }: { totals: Macros; targets: { protein: number; carbs: number; fat: number } }) {
   const p = Math.round(totals.protein)
   const left = targets.protein - p
+  const hit = targets.protein > 0 && left <= 0
   const pct = targets.protein ? Math.min(100, (p / targets.protein) * 100) : 0
   const cOver = overBy(totals.carbs, targets.carbs)
   const fOver = overBy(totals.fat, targets.fat)
@@ -25,9 +30,11 @@ export function ProteinCard({ totals, targets }: { totals: Macros; targets: { pr
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="eyebrow">{left >= 0 ? 'Protein left today' : 'Protein target hit'}</div>
+          <div className="eyebrow" data-testid="protein-eyebrow">
+            Protein today{hit && <> <b className="ml-1 font-sans text-[13px] font-bold tracking-normal text-g-ink [font-variant-caps:normal]" data-testid="protein-hit">Target hit</b></>}
+          </div>
           <div className="num text-[32px] leading-tight text-protein-ink" data-testid="protein-left">
-            {left > 0 ? `${fmt(left)} g left` : left === 0 ? 'Target hit' : `+${fmt(-left)} g over`}
+            {fmt(p)} g{' '}<span className="ml-0.5 font-sans text-[17px] font-normal tracking-normal text-mute" data-testid="protein-target">of {fmt(targets.protein)} g</span>
           </div>
         </div>
         <span className="pt-1 text-[15px] font-bold text-g-ink" aria-hidden="true">View ›</span>

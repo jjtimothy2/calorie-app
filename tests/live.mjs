@@ -43,7 +43,7 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   await page.getByTestId('balance').waitFor()
   assert.equal(Number((await page.getByTestId('eq-movement').innerText()).replace(/\D/g, '')), 525)
   assert.equal(Number((await page.getByTestId('eq-bmr').innerText()).replace(/\D/g, '')), 1400)
-  assert.match(await page.getByTestId('ring-goal').innerText(), new RegExp(`goal ${1925 - target}`))
+  assert.match(await page.getByTestId('ring-goal').textContent(), new RegExp(`goal ${1925 - target}`))
   const st = await page.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')))
   assert.deepEqual([st.version, st.profile.includeMovement, 'pace' in st.profile, st.profile.goalWeightKg, st.profile.goalDate], [3, true, false, 64, dueKey])
 })
@@ -61,7 +61,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.15\.1-[0-9a-f]{12}'/) // v1.15.1 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.16-[0-9a-f]{12}'/) // v1.16 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()

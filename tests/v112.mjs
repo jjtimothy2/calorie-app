@@ -50,7 +50,7 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
   const title = page.locator('#day-title')
   const dialog = page.getByRole('dialog')
   // the ring number ticks (motion on), so wait for it to settle
-  const bal = (v) => page.waitForFunction((v) => document.querySelector('[data-testid=balance]')?.textContent === v, v, { timeout: 5000 })
+  const bal = (v) => page.waitForFunction((v) => document.querySelector('[data-testid=eq-balance]')?.textContent === v, v, { timeout: 5000 })
 
   await step(`${tag} v1.11-shaped data loads: migrated to v3 (same target, v2 key kept), entries, yesterday's summary, AI and foods keys untouched; opens on Today`, async () => {
     await page.goto(`${BASE}/`)

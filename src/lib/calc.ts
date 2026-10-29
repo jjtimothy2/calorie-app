@@ -430,22 +430,74 @@ export function goalLabel(g: number): string {
   return g > 0 ? `${fmt(g)} kcal deficit` : g < 0 ? `${fmt(-g)} kcal surplus` : 'Break even'
 }
 
-/** Short message comparing the balance with the goal. */
+// ---------- Home gauge wording (v1.16) ----------
+
+/** Keep plans count as on target within this many kcal of even; Gain plans have a band this wide above the goal. */
+export const KEEP_BAND = 100
+export const GAIN_BAND = 200
+
+export type GaugeZone = 'green' | 'light' | 'red' | 'track'
+export type GaugeState = 'on' | 'past' | 'surplus' | 'under' | 'band' | 'still'
+export type GaugeRead = {
+  plan: 'lose' | 'keep' | 'gain'
+  state: GaugeState
+  /** The zone the day's net sits in; text and the Balance number take its ink. */
+  zone: GaugeZone
+  /** The big number, or null for "On target". */
+  big: number | null
+  label: string
+  sub: string
+  /** The one sentence Home, the After this line and the verdict share. */
+  message: string
+}
+
+const plus = (n: number) => `+${fmt(n)}`
+
+/**
+ * v1.16: one reading of the day for the Home gauge, the equation card line, the food sheet's After this line and the
+ * closed-day verdict, so they never disagree. `balance` is burn - eaten (positive = deficit); `goal` is the daily goal
+ * (positive = deficit, negative = surplus, 0 = break even). Remaining amounts say "left to eat", overages say "over".
+ * The plan comes from the goal's sign, so a closed day reads by the goal it was closed with.
+ */
+export function gaugeRead(balance: number, goal: number, done = false): GaugeRead {
+  const net = -Math.round(balance)
+  const g = Math.round(goal)
+  const soFar = done ? '' : ' so far'
+  const so = net <= 0 ? `Deficit${soFar} ${fmt(-net)}` : `Surplus${soFar} ${fmt(net)}`
+  const nice = done ? ' Nice work.' : ''
+  const left = (x: number, tail = '') => (done ? `Finished with ${fmt(x)} kcal left to eat${tail}.${nice}` : `${fmt(x)} kcal left to eat${tail}.`)
+  const over = (x: number, what: string, tail = '') => `${done ? 'Finished ' : ''}${fmt(x)} kcal over ${what}.${tail}`
+  if (g > 0) {
+    const l = -net - g // kcal left before the goal line
+    const sub = `${so} · goal ${fmt(g)}`
+    if (l >= 0) return { plan: 'lose', state: 'on', zone: 'green', big: l, label: 'kcal left to eat', sub, message: l === 0 ? `Right on your ${fmt(g)} goal.${nice}` : left(l) }
+    const surplus = net > 0
+    return { plan: 'lose', state: surplus ? 'surplus' : 'past', zone: surplus ? 'red' : 'light', big: -l, label: 'kcal over your goal', sub, message: over(-l, `your ${fmt(g)} goal`, done && !surplus ? ' Still a good day.' : '') }
+  }
+  if (g < 0) {
+    const s = -g
+    const sub = `${so} · goal ${plus(s)}`
+    if (net < s) return { plan: 'gain', state: 'still', zone: 'track', big: s - net, label: 'kcal left to eat', sub: `to hit your ${plus(s)} goal`, message: left(s - net, ` to hit your ${plus(s)} goal`) }
+    if (net <= s + GAIN_BAND) {
+      const label = net === s ? `Right on your ${plus(s)} goal` : `${fmt(net - s)} kcal above your ${plus(s)} goal`
+      return { plan: 'gain', state: 'band', zone: 'green', big: null, label, sub, message: `On target. ${label}.${nice}` }
+    }
+    return { plan: 'gain', state: 'surplus', zone: 'red', big: net - s, label: 'kcal over your goal', sub, message: over(net - s, `your ${plus(s)} goal`) }
+  }
+  if (net < -KEEP_BAND) return { plan: 'keep', state: 'under', zone: 'track', big: -net, label: 'kcal left to eat', sub: `${so} · goal even`, message: left(-net) }
+  if (net <= KEEP_BAND) {
+    const label = net === 0 ? 'Right on break even' : `${fmt(Math.abs(net))} kcal ${net < 0 ? 'under' : 'over'} break even`
+    return { plan: 'keep', state: 'band', zone: 'green', big: null, label, sub: `Even, give or take ${KEEP_BAND}`, message: `On target. ${label}.${nice}` }
+  }
+  return { plan: 'keep', state: 'surplus', zone: 'red', big: net, label: 'kcal over break even', sub: `${so} · goal even`, message: over(net, 'break even') }
+}
+
+/** Text colour class for a gauge zone (green ink, light orange ink, deep red, or plain ink on the track). */
+export const zoneInk = (z: GaugeZone) => (z === 'green' ? 'text-g-ink' : z === 'light' ? 'text-over-ink' : z === 'red' ? 'text-deep-ink' : 'text-ink')
+
+/** Short message comparing the balance with the goal: the gauge's shared sentence (v1.16). */
 export function goalMessage(balance: number, goal: number, done: boolean): string {
-  const b = Math.round(balance)
-  if (goal > 0) {
-    if (b === goal) return `Right on your ${fmt(goal)} goal.${done ? ' Nice work.' : ''}`
-    if (b >= goal) return `${fmt(b - goal)} kcal past your ${fmt(goal)} goal.${done ? ' Nice work.' : ''}`
-    return done ? `You were ${fmt(goal - b)} kcal short of your ${fmt(goal)} goal.${b > 0 ? ' Still a good day.' : ''}` : `${fmt(goal - b)} kcal to go to your ${fmt(goal)} goal.`
-  }
-  if (goal < 0) {
-    const need = -goal
-    if (-b === need) return `Right on your ${fmt(need)} surplus goal.`
-    if (-b >= need) return `${fmt(-b - need)} kcal past your ${fmt(need)} surplus goal.`
-    return done ? `You were ${fmt(need + b)} kcal short of your ${fmt(need)} surplus goal.` : `Eat ${fmt(need + b)} kcal more to reach your ${fmt(need)} surplus goal.`
-  }
-  if (Math.abs(b) <= 100) return done ? 'Close to even. Right on goal.' : 'Close to even. Right on goal so far.'
-  return b > 0 ? `${fmt(b)} kcal under break even.` : `${fmt(-b)} kcal over break even.`
+  return gaugeRead(balance, goal, done).message
 }
 
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BalanceRing, Equation } from '../components/BalanceRing'
+import { Equation } from '../components/BalanceRing'
+import { BalanceGauge } from '../components/BalanceGauge'
 import { ExerciseEditSheet, ExerciseQuickSheet, exerciseLine } from '../components/ExerciseForm'
 import { FoodSheet } from '../components/FoodSheet'
 import { ProteinCard } from '../components/ProteinCard'
@@ -15,7 +16,7 @@ import { DaySwitcher, PastDayNote } from '../components/PastDay'
 import { reducedMotion, useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
-import { dayName, dayView, keyDate, entryTotals, fmt, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
+import { dayName, dayView, keyDate, entryTotals, fmt, gaugeRead, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { aiAmount, formatAmount } from '../lib/amount'
 import { newId, useStore, type Landing } from '../lib/store'
@@ -144,9 +145,9 @@ export default function Home() {
               <Link to={`/day/${date}`} className="px-1 py-1 text-[15px] font-bold text-g-ink">View verdict ›</Link>
             </div>
           )}
-          <BalanceRing balance={day.balance} goal={day.goal} closed={closed} />
+          <BalanceGauge balance={day.balance} burned={burned} eaten={day.eaten} goal={day.goal} closed={closed} />
           <Card className="px-3.5 py-3.5">
-          <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} />
+          <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} zone={gaugeRead(day.balance, day.goal, closed).zone} />
           <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
           </Card>
         </section>

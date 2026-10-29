@@ -1,62 +1,15 @@
-import { fmt, goalLabel } from '../lib/calc'
-import type { CSSProperties } from 'react'
-import { Ticker, useRingFrom } from './motion'
+import { fmt, zoneInk, type GaugeZone } from '../lib/calc'
 
 /**
- * Ring for the daily balance (positive = deficit, green; negative = surplus, orange).
- * Fill shows progress toward the daily goal.
- */
-export function BalanceRing({ balance, goal, size = 230, stroke = 12, closed = false, minimum = false }: { balance: number; goal: number; size?: number; stroke?: number; closed?: boolean; minimum?: boolean }) {
-  const b = Math.round(balance)
-  const surplus = b < 0
-  const r = (size - stroke) / 2
-  const c = 2 * Math.PI * r
-  let pct: number
-  if (goal > 0) pct = b / goal
-  else if (goal < 0) pct = -b / -goal
-  else pct = 1 - Math.min(1, Math.abs(b) / 500) // keep: full when even
-  pct = Math.max(0, Math.min(1, pct))
-  const offset = c * (1 - pct)
-  const from = useRingFrom('balance', c, offset)
-  const label = b === 0 ? 'Even' : `${surplus ? 'Surplus' : 'Deficit'}${closed ? '' : ' so far'}`
-  return (
-    <div className="relative mx-auto my-1" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-track)" strokeWidth={stroke} />
-        <circle
-          className="ring-arc"
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={surplus ? 'var(--color-over)' : 'var(--color-g)'}
-          strokeWidth={stroke}
-          strokeLinecap={pct > 0 && pct < 1 ? 'round' : 'butt'}
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-          style={{ '--from': `${from}px` } as CSSProperties}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center" data-testid="ring" data-state={surplus ? 'surplus' : 'deficit'}>
-        <div className="eyebrow" data-testid="balance-label">{label}</div>
-        <div className={`num text-[64px] leading-none ${surplus ? 'text-over-ink' : 'text-g-ink'}`} style={{ fontSize: size > 200 ? 64 : 44 }} data-testid="balance">
-          <Ticker value={Math.abs(b)} format={(n) => fmt(Math.round(n))} id="balance" />
-        </div>
-        <div className="mt-1 text-[13px] text-mute" data-testid="ring-goal">{minimum ? 'at minimum intake' : goal === 0 ? 'goal: even' : `goal ${fmt(Math.abs(goal))}${goal < 0 ? ' surplus' : ''}`}</div>
-        <span className="sr-only">{`Balance ${fmt(Math.abs(b))} kcal ${surplus ? 'surplus' : 'deficit'}. ${minimum ? 'At the minimum intake.' : `Goal ${goalLabel(goal)}.`}`}</span>
-      </div>
-    </div>
-  )
-}
-
-/**
+ * v1.16: the ring moved to BalanceGauge; this file keeps the equation card.
  * BMR + Movement + Exercise - Eaten = Balance. Movement is null when the daily movement setting is off.
  * Movement off (v1.3.1): BMR + Exercise - Eaten = Balance. baseBurn only comes from days closed by v1.2.1 to v1.3 with
  * Movement off; those keep their closed numbers, so the first term shows that day's burn (BMR x 1.2) and still adds up.
  */
-export function Equation({ bmr, movement, baseBurn, burned, eaten, balance }: { bmr: number; movement: number | null; baseBurn?: number; burned: number; eaten: number; balance: number }) {
+export function Equation({ bmr, movement, baseBurn, burned, eaten, balance, zone }: { bmr: number; movement: number | null; baseBurn?: number; burned: number; eaten: number; balance: number; zone?: GaugeZone }) {
   const surplus = Math.round(balance) < 0
+  // v1.16: the Balance number takes the gauge zone's ink, so an on-target Gain day is green, not orange.
+  const tone = zone ? zoneInk(zone) : surplus ? 'text-over-ink' : 'text-g-ink'
   const item = (label: string, v: string, id: string, cls = 'text-ink') => (
     <div className="flex flex-col-reverse items-center text-center" data-term={label}>
       <span className="mt-0.5">{label}</span>
@@ -73,7 +26,7 @@ export function Equation({ bmr, movement, baseBurn, burned, eaten, balance }: { 
       {op('−')}
       {item('Eaten', fmt(eaten), 'eaten')}
       {op('=')}
-      {item('Balance', `${surplus ? '−' : ''}${fmt(Math.abs(balance))}`, 'eq-balance', surplus ? 'text-over-ink' : 'text-g-ink')}
+      {item('Balance', `${surplus ? '−' : ''}${fmt(Math.abs(balance))}`, 'eq-balance', tone)}
     </div>
   )
 }

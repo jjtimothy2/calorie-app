@@ -58,11 +58,11 @@ try {
     await dlg.getByLabel('Protein').fill('75')
     await dlg.getByRole('button', { name: 'Add 700 kcal' }).click()
     await page.getByTestId('toast').waitFor() // v1.13.2: a log lands on Today with the snackbar
-    assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
+    assert.equal(await page.getByTestId('protein-left').innerText(), '75 g of 110 g')
   })
   await step('data persists across reload, deep hash links work', async () => {
     await page.reload()
-    assert.equal(await page.getByTestId('protein-left').innerText(), '35 g left')
+    assert.equal(await page.getByTestId('protein-left').innerText(), '75 g of 110 g')
     await page.goto(FILE + '#/nutrition')
     assert.equal(await page.getByTestId('protein-progress').innerText(), '75 of 110 g, 68%')
     await page.reload()
