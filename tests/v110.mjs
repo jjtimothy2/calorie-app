@@ -70,15 +70,23 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await shot('watch-question')
     })
 
-    await step(`${tag} Yes skips Activity and works the plan from resting burn: 1,859 - 550 = 1,309, a soft (never blocking) warning, the Quick add burn note`, async () => {
+    await step(`${tag} Yes skips Activity and works the plan from resting burn: a 550 deficit leaves 1,309, over the cap, so the safer date (359) and the Quick add burn note`, async () => {
       await pg.getByTestId('ob-watch-yes').click()
       await pg.getByTestId('ob-target').waitFor()
       assert.equal(await pg.getByTestId('ob-act-light').count(), 0)
       assert.equal(await pg.getByTestId('ob-pace').count(), 0)
-      assert.equal(await num(pg.getByTestId('target')), 1309)
-      // v1.13: no 1,500 floor on a new plan; under 1,500 for a man shows the soft warning instead.
-      assert.match(await pg.getByTestId('pace-warning').innerText(), /1,500/)
-      assert.equal(await pg.getByTestId('ob-next').isDisabled(), false)
+      // v1.15: the Lose hero is the daily deficit. 550 would leave 1,309 to eat, under the 1,500 floor, so the date
+      // isn't safe: muted deficit, the card, Use safer date and Change goal, no Continue.
+      assert.equal(await num(pg.getByTestId('deficit')), 550)
+      assert.equal(await pg.getByTestId('ob-target').getAttribute('data-state'), 'unsafe')
+      assert.match(await pg.getByTestId('unsafe-card').innerText(), /1,309[\s\S]*1,500/)
+      assert.equal(await pg.getByTestId('ob-next').count(), 0)
+      await pg.getByTestId('ob-safer').click()
+      assert.equal(await pg.getByTestId('ob-target').getAttribute('data-state'), 'safe')
+      const capped = await num(pg.getByTestId('deficit'))
+      assert.ok(capped <= 359 && capped >= 350, String(capped)) // the cap: 1,859 resting burn - 1,500 (the earliest whole day lands at or just under it)
+      assert.equal(await num(pg.getByTestId('eat-line')), 1859 - capped)
+      await pg.getByTestId('watch-sooner').waitFor()
       const note = pg.getByTestId('ob-watch-note')
       assert.match(await note.innerText(), /active calories each day with Quick add burn/)
       await noSideways(pg, 'target with watch note')
@@ -97,7 +105,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await pg.getByTestId('ob-back').click()
       assert.equal(await pg.getByTestId('ob-watch-yes').getAttribute('aria-pressed'), 'true')
       await pg.getByTestId('ob-back').click()
-      assert.equal(await pg.getByTestId('by-date').inputValue(), D140)
+      const safeDate = await pg.getByTestId('by-date').inputValue()
+      assert.ok(safeDate > D140, safeDate) // the safer date replaced the custom one
       await pg.getByTestId('ob-next').click()
       await pg.getByTestId('ob-watch-yes').click()
       await pg.getByTestId('ob-target').waitFor()
@@ -105,7 +114,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await pg.waitForURL(BASE + '/')
       await pg.getByTestId('balance').waitFor()
       const p = (await ls()).profile
-      assert.deepEqual([p.includeMovement, p.goalDate, 'pace' in p, p.target, p.bmr, p.bmrCustom], [false, D140, false, 1309, 1859, false])
+      assert.deepEqual([p.includeMovement, p.goalDate, 'pace' in p, p.target, p.dailyGoal, p.bmr, p.bmrCustom], [false, safeDate, false, 1859 - p.dailyGoal, p.dailyGoal, 1859, false])
+      assert.ok(p.dailyGoal <= 359 && p.target >= 1500)
       assert.equal(await pg.getByTestId('eq-movement').count(), 0)
     })
 
@@ -115,7 +125,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
       await pg.getByTestId('ob-act-light').click()
       await pg.getByTestId('ob-target').waitFor()
       assert.equal(await pg.getByTestId('ob-watch-note').count(), 0)
-      assert.equal(await num(pg.getByTestId('target')), 2006) // 1,859 + light 697 - 550
+      assert.equal(await num(pg.getByTestId('deficit')), 550) // safe with movement: 1,859 + light 697 - 550 = 2,006 to eat
+      assert.match(await pg.getByTestId('eat-line').innerText(), /about 2,006 kcal a day/)
       assert.equal(await pg.getByTestId('ob-watch-note').count(), 0)
       await pg.getByTestId('ob-next').click(); await pg.getByTestId('ob-skip').click()
       await pg.waitForURL(BASE + '/')

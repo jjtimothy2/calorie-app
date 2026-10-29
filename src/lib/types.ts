@@ -116,4 +116,9 @@ export type State = {
   favourites: string[]
   /** v3: dated weigh-ins, oldest first, one per day. */
   weights: WeightEntry[]
+  /**
+   * v1.15 (optional, v3): the day the Home "safer date" card for a plan over the safe cap was dismissed. Once set, the
+   * card never shows again. Missing in older data, which loads unchanged.
+   */
+  capCardDismissed?: string
 }

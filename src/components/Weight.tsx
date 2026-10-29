@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { addDays, dailyPlan, daysBetween, fmt, goalReached, kgWeek, longDay, paceCheck, round1, shortDay, weighInStatus, type WeighIn } from '../lib/calc'
+import { addDays, dailyPlan, daysBetween, fmt, goalReached, kgWeek, longDay, paceCheck, round1, safeDeficit, saferPlan, shortDay, weighInStatus, type WeighIn } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { deleteWeight, lastWeigh, logWeight, shouldNudge as nudgeDue } from '../lib/weigh'
 import { WEIGH_KEY } from '../lib/backup'
@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom'
 import { Sheet } from './Sheet'
 import { Button, Card, Chip } from './ui'
 import { GOAL_LABEL } from './ProfileFields'
-import { ByWhenPicker, goalWeightError, goalWeightOk, PaceWarning, type ByWhen } from './GoalPlan'
+import { ByWhenPicker, goalWeightError, goalWeightOk, noSaferLine, PaceWarning, UnsafeCard, unsafeWhy, type ByWhen } from './GoalPlan'
 
 const readDismissed = (): string | null => {
   try { return (JSON.parse(localStorage.getItem(WEIGH_KEY) ?? 'null') as { dismissedAt?: string } | null)?.dismissedAt ?? null } catch { return null }
@@ -35,6 +35,48 @@ export function WeighInNudge() {
       )}
       {open && inFrame(<LogWeightSheet onClose={() => setOpen(false)} />)}
     </>
+  )
+}
+
+/**
+ * v1.15 (Jordy picked option a): a saved Lose plan over the safe deficit cap keeps its numbers. Home shows this card
+ * once. "Use safer date" moves the goal date to the earliest safe one (plan start unchanged), with Undo. "Keep my plan"
+ * hides it for good (state.capCardDismissed, an optional v3 field). Nothing changes unless one is tapped.
+ */
+export function SaferDateCard() {
+  const { state, dispatch, today } = useStore()
+  const [undo, setUndo] = useState<Profile | null>(null)
+  const p = state.profile
+  if (!p) return null
+  if (undo) {
+    return (
+      <div role="status" className="flex items-center gap-3 rounded-2xl bg-g-soft py-3 pl-4 pr-2 text-[15px] leading-snug text-g-soft-ink" data-testid="cap-applied">
+        <span className="flex-1">Goal date is now {p.goalDate ? longDay(p.goalDate) : ''}. Your daily deficit is {fmt(p.dailyGoal)} kcal, so you'd eat about {fmt(p.target)} kcal a day.</span>
+        <button type="button" onClick={() => { dispatch({ type: 'setProfile', profile: undo }); dispatch({ type: 'dismissCapCard', date: null }); setUndo(null) }} className="tap min-h-11 shrink-0 rounded-full bg-card px-4 text-[15px] font-bold text-g-soft-ink" data-testid="cap-undo">Undo</button>
+        <button type="button" onClick={() => setUndo(null)} aria-label="Close" className="grid h-11 w-9 shrink-0 place-items-center rounded-full text-xl font-bold" data-testid="cap-close">×</button>
+      </div>
+    )
+  }
+  if (state.capCardDismissed || p.goal !== 'lose' || goalReached(p)) return null
+  const plan = dailyPlan(p)
+  const s = safeDeficit(p, plan)
+  if (!s.unsafe) return null
+  const safer = saferPlan(p, s)
+  if (!safer || safer.date <= today) return null
+  const use = () => {
+    setUndo(p)
+    dispatch({ type: 'setProfile', profile: { ...p, goalDate: safer.date } })
+    dispatch({ type: 'dismissCapCard', date: today })
+  }
+  return (
+    <div role="note" className="flex flex-col gap-2 rounded-2xl bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="cap-card">
+      <p><b className="block">Your daily deficit is over the safe limit.</b>Your plan takes {fmt(s.deficit)} kcal a day off your {p.includeMovement ? 'daily burn' : 'resting burn'} and leaves about {fmt(Math.max(0, s.eat))} kcal to eat. The safe limit for you is {fmt(s.cap)} kcal a day. It keeps you eating at least {fmt(s.floor)} kcal and losing no more than 1% of your weight a week.</p>
+      <p data-testid="cap-safer">A safer plan: a {fmt(safer.deficit)} kcal deficit, eating about {fmt(safer.eat)} kcal a day, {round1(p.goalWeightKg)} kg by {longDay(safer.date)}. Nothing changes unless you tap.</p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <button type="button" onClick={use} className="tap min-h-11 rounded-full bg-ink px-4 text-[15px] font-bold text-bg" data-testid="cap-use">Use safer date ({longDay(safer.date)})</button>
+        <button type="button" onClick={() => dispatch({ type: 'dismissCapCard', date: today })} className="tap min-h-11 rounded-full px-3 text-[15px] font-bold" data-testid="cap-dismiss">Keep my plan</button>
+      </div>
+    </div>
   )
 }
 
@@ -123,13 +165,20 @@ export function WeightCard() {
             <button type="button" onClick={() => setSheet('goal')} className="tap min-h-11 shrink-0 rounded-full border border-line px-4 text-[15px] font-bold text-g-ink" data-testid="edit-goal">Edit</button>
           </div>
           {p.goalAssumed && <p className="rounded-[14px] bg-bg px-3 py-2 text-[14px] leading-snug text-mute" data-testid="goal-assumed">We set this from your old pace. Tap Edit to pick your own goal weight and date.</p>}
-          {!reached && check.warn && check.suggest && (
+          {/* v1.15: a Lose plan over the safe deficit cap offers the earliest safe date (same cap as onboarding). */}
+          {!reached && p.goal === 'lose' && check.warn && (
+            <div role="note" className="flex flex-col gap-2 rounded-[18px] bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="push-prompt">
+              <p><b>This date isn't safe now.</b> {unsafeWhy(safeDeficit(p, plan), plan.weeklyKg)} {check.suggest ? `The earliest safe date is ${longDay(check.suggest)}.` : noSaferLine(safeDeficit(p, plan))}</p>
+              {check.suggest && <button type="button" onClick={() => dispatch({ type: 'setProfile', profile: { ...p, goalDate: check.suggest } })} className="tap min-h-11 self-start rounded-full bg-card px-4 font-bold" data-testid="push-date">Use safer date</button>}
+            </div>
+          )}
+          {!reached && p.goal !== 'lose' && check.warn && check.suggest && (
             <div role="note" className="flex items-center gap-3 rounded-[18px] bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="push-prompt">
               <span className="flex-1"><b>That's a fast pace now.</b> Push goal date to {longDay(check.suggest)}?</span>
               <button type="button" onClick={() => dispatch({ type: 'setProfile', profile: { ...p, goalDate: check.suggest } })} className="tap min-h-11 shrink-0 rounded-full bg-card px-4 font-bold" data-testid="push-date">Push</button>
             </div>
           )}
-          {!reached && check.warn && !check.suggest && <PaceWarning check={check} weeklyKg={plan.weeklyKg} sex={p.sex} />}
+          {!reached && p.goal !== 'lose' && check.warn && !check.suggest && <PaceWarning check={check} weeklyKg={plan.weeklyKg} sex={p.sex} />}
           <Button variant="ghost" onClick={() => setSheet('log')} data-testid="log-weight">Log weight</Button>
         </section>
       </Card>
@@ -244,7 +293,16 @@ function WeighResult({ r, onClose, onNewGoal }: { r: { status: WeighIn | null; l
         <h2 className="title mt-1 text-[26px]">{head}</h2>
       </div>
       <p className="text-[16px] leading-snug text-ink">{body}</p>
-      {r.latest && check.warn && !pushed && (
+      {r.latest && check.warn && !pushed && p.goal === 'lose' && (
+        <div role="note" className="flex flex-col gap-2 rounded-[18px] bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="push-prompt">
+          <p><b>This date isn't safe now.</b> {unsafeWhy(safeDeficit(p, plan), plan.weeklyKg)} {check.suggest ? `The earliest safe date is ${longDay(check.suggest)}.` : noSaferLine(safeDeficit(p, plan))}</p>
+          <div className="flex flex-wrap gap-2">
+            {check.suggest && <button type="button" onClick={() => { dispatch({ type: 'setProfile', profile: { ...p, goalDate: check.suggest } }); setPushed(true) }} className="tap min-h-11 rounded-full bg-card px-4 font-bold" data-testid="push-date">Use safer date ({shortDay(check.suggest)})</button>}
+            <button type="button" onClick={() => setPushed(true)} className="tap min-h-11 rounded-full px-3 font-bold" data-testid="push-keep">Keep {p.goalDate ? shortDay(p.goalDate) : 'date'}</button>
+          </div>
+        </div>
+      )}
+      {r.latest && check.warn && !pushed && p.goal !== 'lose' && (
         check.suggest ? (
           <div role="note" className="flex flex-col gap-2 rounded-[18px] bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="push-prompt">
             <p><b>That's a fast pace now.</b> {plan.weeklyKg > 0 && `About ${kgWeek(plan.weeklyKg)} kg a week from here.`} Push goal date to {longDay(check.suggest)}?</p>
@@ -278,7 +336,12 @@ export function GoalSheet({ onClose, fresh }: { onClose: () => void; fresh?: boo
     : { ...p, goal, goalWeightKg: Number.isNaN(g) ? p.weightKg : round1(g), goalDate: date ?? addDays(today, 182), planFrom: { date: today, kg: p.weightKg }, goalAssumed: undefined }
   const plan = dailyPlan(draft)
   const check = ok ? paceCheck(draft, plan) : null
-  const save = () => { if (ok) { dispatch({ type: 'setProfile', profile: draft }); onClose() } }
+  // v1.15: a Lose date over the safe deficit cap can't be saved. The card offers the earliest safe date instead.
+  const cap = goal === 'lose' ? safeDeficit(draft, plan) : null
+  const unsafe = ok && !!cap?.unsafe
+  const safer = unsafe ? saferPlan(draft, cap!) : null
+  const unsafeOn = goal === 'lose' && goalWeightOk(goal, p.weightKg, g) ? (d: string) => safeDeficit({ ...draft, goalDate: d }).unsafe : undefined
+  const save = () => { if (ok && !unsafe) { dispatch({ type: 'setProfile', profile: draft }); onClose() } }
   return (
     <Sheet label="Your goal" onClose={onClose}>
       <div className="flex flex-col gap-4" data-testid="goal-sheet">
@@ -298,19 +361,34 @@ export function GoalSheet({ onClose, fresh }: { onClose: () => void; fresh?: boo
             {err && <p className="-mt-2 px-2 text-[14px] font-semibold text-carbs-ink" data-testid="goal-kg-error">{err}</p>}
             <div>
               <div className="mb-2 text-[15px] font-semibold">By when?</div>
-              <ByWhenPicker compact value={by} date={date} today={today} fromKg={p.weightKg} goalKg={g} onPick={(b, d) => { setBy(b); setDate(d) }} />
+              <ByWhenPicker compact value={by} date={date} today={today} fromKg={p.weightKg} goalKg={g} unsafe={unsafeOn} onPick={(b, d) => { setBy(b); setDate(d) }} />
             </div>
           </>
         )}
         {ok && (
           <div className="flex flex-col gap-2 rounded-[18px] border border-line px-4 py-3" data-testid="goal-preview">
-            <p className="text-[16px]"><b className="num">About {fmt(plan.target)} kcal a day</b>{goal !== 'keep' && <span className="text-mute"> · about {kgWeek(plan.weeklyKg)} kg a week</span>}</p>
-            {check && <PaceWarning check={check} weeklyKg={plan.weeklyKg} sex={p.sex} onTry={(d) => { setBy('custom'); setDate(d) }} />}
+            {cap && plan.gap > 0 ? (
+              <>
+                <p className="text-[16px]" data-testid="goal-preview-deficit"><b className={`num ${unsafe ? 'text-mute' : ''}`}>{fmt(cap.deficit)} kcal deficit a day</b><span className="text-mute"> · about {kgWeek(plan.weeklyKg)} kg a week</span></p>
+                {!unsafe && <p className="-mt-1 text-[15px] text-mute" data-testid="goal-preview-eat">You'd eat about {fmt(cap.eat)} kcal a day</p>}
+                {unsafe && (
+                  <>
+                    <UnsafeCard s={cap} weeklyKg={plan.weeklyKg} safer={safer} goalKg={draft.goalWeightKg} />
+                    {safer && <button type="button" onClick={() => { setBy('custom'); setDate(safer.date) }} className="tap min-h-11 self-start rounded-full bg-ink px-4 text-[15px] font-bold text-bg" data-testid="goal-safer">Use safer date ({longDay(safer.date)})</button>}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-[16px]"><b className="num">About {fmt(plan.target)} kcal a day</b>{goal !== 'keep' && <span className="text-mute"> · about {kgWeek(plan.weeklyKg)} kg a week</span>}</p>
+                {check && <PaceWarning check={check} weeklyKg={plan.weeklyKg} sex={p.sex} onTry={(d) => { setBy('custom'); setDate(d) }} />}
+              </>
+            )}
           </div>
         )}
         <div className="flex gap-2" data-keep-visible>
           <Button variant="danger" className="!text-ink" onClick={onClose}>Cancel</Button>
-          <Button disabled={!ok} onClick={save} data-testid="goal-save">Save goal</Button>
+          <Button disabled={!ok || unsafe} onClick={save} data-testid="goal-save">Save goal</Button>
         </div>
       </div>
     </Sheet>

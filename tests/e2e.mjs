@@ -88,7 +88,8 @@ try {
     assert.equal(await page.getByTestId('ob-pace').count(), 0)
     // BMR = 10*68 + 6.25*165 - 5*30 - 161 = 1400; light movement 525 -> burn 1925. 10 kg x 7,700 / 140 days = 550 -> 1,375.
     await page.getByTestId('ob-target').waitFor()
-    assert.equal(await num(page.getByTestId('target')), 1375)
+    assert.equal(await num(page.getByTestId('deficit')), 550) // v1.15: the Lose hero is the deficit, under the cap (min(748, 725))
+    assert.equal(await page.getByTestId('eat-line').innerText(), "You'd eat about 1,375 kcal a day")
     assert.match(await page.getByTestId('goal-line').innerText(), /0\.5 kg a week/)
     assert.match(await page.getByTestId('goal-date-line').innerText(), /^58 kg by /)
     assert.equal(await page.getByTestId('pace-warning').count(), 0)
@@ -456,7 +457,7 @@ try {
     await dlg.waitFor({ state: 'detached' })
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'About macro targets') // focus back on the (i)
     // Each sheet: content, Close button, focus back.
-    for (const [name, title, re] of [['About activity level', 'Activity level', /\+20%[\s\S]*\+90%/], ['About BMR', 'BMR', /Mifflin-St Jeor[\s\S]*type it here/], ['About daily target', 'Daily target', /kg left over the days left[\s\S]*over 1% of your weight a week, or under 1,500 kcal for men or 1,200 for women/]]) {
+    for (const [name, title, re] of [['About activity level', 'Activity level', /\+20%[\s\S]*\+90%/], ['About BMR', 'BMR', /Mifflin-St Jeor[\s\S]*type it here/], ['About daily target', 'Daily target', /kg left over the days left[\s\S]*no more than 1% of your weight a week, and it leaves at least 1,500 kcal to eat for men or 1,200 for women/]]) {
       await page.getByRole('button', { name }).click()
       const d = page.getByRole('dialog', { name: title })
       assert.match(await d.innerText(), re, title)
@@ -854,7 +855,7 @@ try {
     assert.ok(await fp.evaluate(() => localStorage.getItem('calorie-app:v1') !== null), 'old key kept as a backup')
     await fp.goto(BASE + '/settings')
     assert.equal(await fp.getByTestId('settings-target').innerText(), '1,050 kcal')
-    assert.match(await fp.getByTestId('push-prompt').innerText(), /Push goal date to/) // the same soft warning as a new plan
+    assert.match(await fp.getByTestId('push-prompt').innerText(), /This date isn't safe now[\s\S]*earliest safe date/) // v1.15: the same cap as a new plan
   })
   await step('v1.13 no floor, Lose: man, BMR 1600, movement off -> target 1,050, goal 550, soft warning with a later date', async () => {
     await seedProfile({ sex: 'male', bmr: 1600, ...PLAN })
@@ -865,11 +866,11 @@ try {
     assert.equal(await fp.getByTestId('settings-target').innerText(), '1,050 kcal')
     assert.equal(await fp.getByTestId('target-sum').innerText(), 'BMR 1,600 − 550 deficit')
     assert.match(await sheetText(fp, 'target', 'plan-line'), /With movement off the plan starts from your BMR/)
-    // 13 kg x 7700 / (1600 - 1500) = 1001 days clears the 1,500 line.
-    assert.match(await fp.getByTestId('push-prompt').innerText(), /Push goal date to/)
+    // v1.15: cap = min(1% of 68 kg a week = 748, 1600 - 1500 = 100) = 100. 13 x 7700 / 997 = 100.4, rounds to 100, so 997 days is the earliest safe date.
+    assert.match(await fp.getByTestId('push-prompt').innerText(), /This date isn't safe now[\s\S]*1,050[\s\S]*1,500/)
     await fp.getByTestId('push-date').click()
     assert.equal(await fp.getByTestId('push-prompt').count(), 0)
-    assert.equal(await fp.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')).profile.goalDate), addDaysKey(TODAY, 1001))
+    assert.equal(await fp.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')).profile.goalDate), addDaysKey(TODAY, 997))
     assert.equal(await fp.getByTestId('settings-target').innerText(), '1,500 kcal')
   })
   for (const sex of ['female', 'male']) {
@@ -880,9 +881,10 @@ try {
       assert.equal(await fp.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')).profile.dailyGoal), 550)
       await fp.goto(BASE + '/settings')
       assert.equal(await fp.getByTestId('settings-target').innerText(), '650 kcal')
-      assert.equal(await fp.getByTestId('push-prompt').count(), 0)
-      assert.match(await fp.getByTestId('pace-warning').innerText(), new RegExp(`under ${sex === 'male' ? '1,500' : '1,200'} kcal a day[\\s\\S]*a later date can't lift the target`))
-      if (sex === 'male') await fp.getByTestId('pace-warning').screenshot({ path: OUT + 'v113-e2e-me-no-date.png' })
+      // v1.15: no safe date can make room (burn at or under the floor), so no date button. The target is not raised.
+      assert.match(await fp.getByTestId('push-prompt').innerText(), new RegExp(`This date isn't safe now[\\s\\S]*safe minimum of ${sex === 'male' ? '1,500' : '1,200'}[\\s\\S]*a later date can't make room`))
+      assert.equal(await fp.getByTestId('push-date').count(), 0)
+      if (sex === 'male') await fp.getByTestId('push-prompt').screenshot({ path: OUT + 'v113-e2e-me-no-date.png' })
     })
   }
   await step('v1.13 Keep: man, BMR 1200, movement off -> target 1,200, goal even, no warning', async () => {

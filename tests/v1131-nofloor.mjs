@@ -67,13 +67,15 @@ for (const [w, h, motion] of [[390, 844, 'no-preference'], [375, 667, 'reduce']]
     const s = await st()
     assert.deepEqual([s.profile.goalWeightKg, s.profile.goalDate, s.profile.target, s.profile.dailyGoal, s.profile.goalAssumed, s.profile.goalAssumedV], [79, plus(U, 182), 1309, 550, true, 2])
     assert.deepEqual(s.profile.planFrom, { date: U, kg: 92 })
+    await page.getByTestId('cap-card').waitFor() // v1.15: the one-time safer date card, plan untouched
+    assert.equal('capCardDismissed' in s, false)
     assert.deepEqual(s.closedDays[YDAY], YSUM, 'yesterday keeps the baseline it closed with (goal 359)')
     assert.deepEqual([s.entries, s.weights], [V113.entries, V113.weights])
     assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:v2')), V2, 'v2 backup byte-identical')
     assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:ai')), AI)
     assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:foods')), FOODS)
   })
-  await step(`${tag} Me: Weight card note reworded (no "same daily target"), Goal 79 kg, 1,309 kcal with the soft under-1,500 warning (push date offer), no clamp`, async () => {
+  await step(`${tag} Me: Weight card note reworded (no "same daily target"), Goal 79 kg, 1,309 kcal with the v1.15 safer date offer, no clamp`, async () => {
     await page.goto(`${BASE}/settings`)
     const card = page.getByTestId('weight-card')
     await card.waitFor()
@@ -81,7 +83,9 @@ for (const [w, h, motion] of [[390, 844, 'no-preference'], [375, 667, 'reduce']]
     assert.doesNotMatch(await card.innerText(), /same daily target/)
     assert.match(await page.getByTestId('goal-summary').innerText(), /^Goal 79 kg by /)
     assert.equal(await page.getByTestId('settings-target').innerText(), '1,309 kcal')
-    assert.match(await page.getByTestId('push-prompt').innerText(), /Push goal date to/)
+    // v1.15: over the safe cap (1,309 is under 1,500), so the card offers the earliest safe date. Nothing changes unless tapped.
+    assert.match(await page.getByTestId('push-prompt').innerText(), /This date isn't safe now[\s\S]*1,309[\s\S]*1,500[\s\S]*earliest safe date/)
+    assert.equal(await page.getByTestId('push-date').innerText(), 'Use safer date')
     await flat(page, `${tag} Me`)
     await card.evaluate((el) => el.scrollIntoView({ block: 'start' }))
     await page.waitForTimeout(motion === 'reduce' ? 300 : 900)

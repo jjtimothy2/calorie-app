@@ -39,7 +39,7 @@ const newPage = async (state) => {
 // ---------- 1 month ----------
 {
   const page = await newPage(null)
-  await step('onboarding: By when offers 1 month first; 4 kg in 1 month warns but Continue still works', async () => {
+  await step('onboarding: By when offers 1 month first; 4 kg in 1 month is not safe, Use safer date then Continue', async () => {
     await page.goto(BASE + '/')
     await page.getByTestId('ob-start').click()
     await page.getByTestId('ob-sex-female').click()
@@ -64,20 +64,21 @@ const newPage = async (state) => {
     await page.getByTestId('ob-watch-no').click()
     await page.getByTestId('ob-act-light').click()
     await page.getByTestId('ob-target').waitFor()
-    await page.getByTestId('pace-warning').waitFor()
-    assert.match(await page.getByTestId('pace-warning').innerText(), /more than 1% of your weight[\s\S]*under 1,200 kcal/)
-    await page.getByTestId('pace-try').waitFor()
+    // v1.15: 4 kg in a month needs more than the safe cap, so the date isn't safe: no Continue, Use safer date.
+    assert.equal(await page.getByTestId('ob-target').getAttribute('data-state'), 'unsafe')
+    await page.getByTestId('unsafe-card').waitFor()
+    assert.equal(await page.getByTestId('ob-next').count(), 0)
     await page.screenshot({ path: OUT + 'v113-result-1m.png' })
-    assert.equal(await page.getByTestId('ob-next').isDisabled(), false)
+    await page.getByTestId('ob-safer').click()
     await page.getByTestId('ob-next').click()
     await page.getByTestId('ob-extras').waitFor()
     await page.getByTestId('ob-skip').click()
     await page.waitForURL(BASE + '/')
     const s = await stored(page)
-    assert.equal(s.profile.goalDate, addMonthsKey(TODAY, 1))
+    assert.ok(s.profile.goalDate > addMonthsKey(TODAY, 1), s.profile.goalDate) // the earliest safe date
     assert.equal(s.profile.goalWeightKg, 64)
   })
-  await step('Me goal sheet: the same five choices in order; 1 month previews the warning and saves', async () => {
+  await step('Me goal sheet: the same five choices in order; 1 month is not safe, Use safer date then saves', async () => {
     await page.getByRole('link', { name: 'Me', exact: true }).click()
     await page.getByTestId('edit-goal').click()
     await page.getByTestId('goal-sheet').waitFor()
@@ -86,12 +87,17 @@ const newPage = async (state) => {
     await page.getByTestId('by-6m').click()
     assert.equal(await page.getByTestId('pace-warning').count(), 0)
     await page.getByTestId('by-1m').click()
-    await page.getByTestId('goal-preview').getByTestId('pace-warning').waitFor()
+    // v1.15: a Lose date over the cap shows the unsafe card and can't be saved until the safer date is picked.
+    await page.getByTestId('goal-preview').getByTestId('unsafe-card').waitFor()
+    assert.equal(await page.getByTestId('goal-save').isDisabled(), true)
+    await page.getByTestId('goal-safer').click()
+    assert.equal(await page.getByTestId('unsafe-card').count(), 0)
     assert.equal(await page.getByTestId('goal-save').isDisabled(), false)
     await page.getByTestId('goal-save').click()
     await page.getByTestId('goal-sheet').waitFor({ state: 'detached' })
     const s = await stored(page)
-    assert.deepEqual([s.profile.goalWeightKg, s.profile.goalDate], [65, addMonthsKey(TODAY, 1)])
+    assert.equal(s.profile.goalWeightKg, 65)
+    assert.ok(s.profile.goalDate > addMonthsKey(TODAY, 1), s.profile.goalDate)
   })
   await page.context().close()
 }

@@ -1,4 +1,4 @@
-import { addDays, addMonths, daysBetween, fmt, kgWeek, longDay, MIN_PLAN_DAYS, FAST_WEEKLY_SHARE, targetFloor, type PaceCheck } from '../lib/calc'
+import { addDays, addMonths, daysBetween, fmt, kgWeek, longDay, MIN_PLAN_DAYS, FAST_WEEKLY_SHARE, targetFloor, type PaceCheck, type SafeDeficit } from '../lib/calc'
 import type { ReactNode } from 'react'
 import type { Goal, Sex } from '../lib/types'
 
@@ -61,15 +61,17 @@ export function PaceWarning({ check, weeklyKg, sex, onTry, className = '', tryLa
 }
 
 /** The date choices as option rows. Shared by onboarding (big cards) and the goal sheet (compact). */
-export function ByWhenPicker({ value, date, today, fromKg, goalKg, onPick, compact }: {
+export function ByWhenPicker({ value, date, today, fromKg, goalKg, onPick, compact, unsafe }: {
   value: ByWhen | null; date: string | null; today: string; fromKg: number; goalKg: number
   onPick: (by: ByWhen, date: string | null) => void; compact?: boolean
+  /** v1.15: when given (Me, Lose), marks dates over the safe deficit cap "· not safe" instead of the 1% "· fast". */
+  unsafe?: (date: string) => boolean
 }) {
   const known = !Number.isNaN(goalKg)
   const hint = (d: string) => {
     if (!known) return longDay(d)
     const w = weeklyFor(fromKg, goalKg, today, d)
-    return { text: `${longDay(d)} · about ${kgWeek(w)} kg a week`, fast: tooFast(w, fromKg) }
+    return { text: `${longDay(d)} · about ${kgWeek(w)} kg a week`, fast: unsafe ? unsafe(d) : tooFast(w, fromKg) }
   }
   const row = (id: ByWhen, title: string, d: string | null, extra?: ReactNode) => {
     const on = value === id
@@ -80,7 +82,7 @@ export function ByWhenPicker({ value, date, today, fromKg, goalKg, onPick, compa
           className={`opt flex w-full items-center gap-4 text-left ${compact ? 'min-h-[62px] px-4 py-2.5' : 'min-h-[76px] px-5 py-3 [@media(max-height:700px)]:min-h-[52px] [@media(max-height:700px)]:py-1'}`}>
           <span className="flex flex-1 flex-col gap-0.5">
             <span className={`${compact ? 'text-[17px]' : 'text-[18px]'} font-bold`}>{title}</span>
-            {h && <span className="text-[15px] leading-snug text-mute">{typeof h === 'string' ? h : h.text}{typeof h !== 'string' && h.fast && <b className="font-semibold text-carbs-ink"> · fast</b>}</span>}
+            {h && <span className="text-[15px] leading-snug text-mute">{typeof h === 'string' ? h : h.text}{typeof h !== 'string' && h.fast && <b className="font-semibold text-carbs-ink">{unsafe ? ' · not safe' : ' · fast'}</b>}</span>}
           </span>
           <span aria-hidden="true" className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 ${on ? 'border-ink bg-ink text-bg' : 'border-line'}`}>
             {on && <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}
@@ -101,6 +103,39 @@ export function ByWhenPicker({ value, date, today, fromKg, goalKg, onPick, compa
     <div className={`flex flex-col ${compact ? 'gap-2' : 'gap-2.5 [@media(max-height:700px)]:gap-1.5'}`} data-testid="by-when">
       {BY_WHEN.map((b) => row(b.id, b.label, byWhenDate(b.id, today)))}
       {row('custom', 'Custom date', value === 'custom' ? date : null, custom)}
+    </div>
+  )
+}
+
+/**
+ * v1.15: why a Lose date is over the safe cap. Always says what it would leave to eat. No em dashes or semicolons.
+ * "It would leave about 1,001 kcal a day to eat, under the safe minimum of 1,200."
+ */
+export function unsafeWhy(s: SafeDeficit, weeklyKg: number): string {
+  if (s.eat <= 0) return `It would leave nothing to eat. The safe minimum is ${fmt(s.floor)} kcal a day.`
+  const eat = `It would leave about ${fmt(s.eat)} kcal a day to eat`
+  if (s.low) return `${eat}, under the safe minimum of ${fmt(s.floor)}.`
+  return `${eat}, but about ${kgWeek(weeklyKg)} kg a week is more than 1% of your weight.`
+}
+
+/** "A safer plan: a 653 kcal deficit, eating about 1,501 kcal a day, 78 kg by 24 Feb 2027." */
+export const saferLine = (safer: { deficit: number; eat: number; date: string }, goalKg: number) =>
+  `A safer plan: a ${fmt(safer.deficit)} kcal deficit, eating about ${fmt(safer.eat)} kcal a day, ${goalKg} kg by ${longDay(safer.date)}.`
+
+/** No date can fit the cap (the plan base is at or near the floor). */
+export const noSaferLine = (s: SafeDeficit) =>
+  `Your burn is too close to the safe minimum of ${fmt(s.floor)} kcal, so a later date can't make room for a deficit. A smaller goal or more movement helps most.`
+
+/**
+ * v1.15: the card for a Lose date over the safe cap. Onboarding and the Me goal sheet. The buttons sit outside it.
+ */
+export function UnsafeCard({ s, weeklyKg, safer, goalKg, className = '', title = "This date isn't safe." }: {
+  s: SafeDeficit; weeklyKg: number; safer: { deficit: number; eat: number; date: string } | null; goalKg: number; className?: string; title?: string
+}) {
+  return (
+    <div role="note" className={`flex flex-col gap-1.5 rounded-[18px] bg-carbs-soft px-4 py-3 text-left text-[15px] leading-snug text-carbs-ink ${className}`} data-testid="unsafe-card">
+      <p><b>{title}</b> {unsafeWhy(s, weeklyKg)}</p>
+      {safer ? <p data-testid="safer-plan">{saferLine(safer, goalKg)}</p> : <p data-testid="safer-none">{noSaferLine(s)}</p>}
     </div>
   )
 }

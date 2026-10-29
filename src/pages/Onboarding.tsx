@@ -6,8 +6,8 @@ import { Sheet } from '../components/Sheet'
 import { useCountUp } from '../components/motion'
 import { WelcomeArt } from '../components/WelcomeArt'
 import { useInstall } from '../lib/install'
-import { ACTIVITY, calcBmr, dailyPlan, fmt, kgWeek, longDay, paceCheck, shortDay } from '../lib/calc'
-import { byWhenDate, ByWhenPicker, goalWeightError, goalWeightOk, PaceWarning, skipGoalKg, SKIP_BY_WHEN, type ByWhen } from '../components/GoalPlan'
+import { ACTIVITY, calcBmr, dailyPlan, fmt, kgWeek, longDay, paceCheck, safeDeficit, saferPlan, shortDay, type SafeDeficit } from '../lib/calc'
+import { byWhenDate, ByWhenPicker, goalWeightError, goalWeightOk, PaceWarning, skipGoalKg, SKIP_BY_WHEN, UnsafeCard, type ByWhen } from '../components/GoalPlan'
 import { normaliseProfile, useStore } from '../lib/store'
 import type { Activity, Goal, Sex } from '../lib/types'
 
@@ -63,6 +63,8 @@ export default function Onboarding() {
   // The plan starts today at today's weight. Keep has no goal date (normaliseProfile sets goal weight = weight).
   const profile = () => normaliseProfile({ ...d, goalWeightKg: d.goal === 'keep' ? d.weightKg : d.goalWeightKg, goalDate: d.goal === 'keep' ? null : d.goalDate, planFrom: { date: today, kg: d.weightKg }, bmr: calcBmr(d), bmrCustom: false, includeMovement: watch !== true }, today)
   const plan = validBody(d) ? dailyPlan(profile()) : null
+  // v1.15: a Lose plan shows its daily deficit (capped to a safe size) instead of the daily target.
+  const lose = d.goal === 'lose' && !!plan && plan.gap > 0
 
   // Question order (see orderFor).
   const order = orderFor(d.goal, watch)
@@ -87,6 +89,8 @@ export default function Onboarding() {
   }
 
   const finish = (then = '/') => {
+    // v1.15: a Lose date over the safe cap has no Continue, so it never gets saved from here.
+    if (lose && safeDeficit(profile(), plan!).unsafe) { go('target'); return }
     // The /onboarding route redirects as soon as a profile exists (App.tsx), so it takes the destination from here
     // rather than racing a second navigate (extras -> AI key setup in Me).
     afterOnboarding.to = then
@@ -205,7 +209,9 @@ export default function Onboarding() {
           </Question>
         )}
 
-        {step === 'target' && plan && <Target d={d} plan={plan} watch={watch === true} today={today} skipped={skipped} onTry={(date) => { setByWhen('custom'); setD({ ...d, goalDate: date }) }} onHow={() => setHow(true)} onNext={() => next()} />}
+        {step === 'target' && plan && (lose
+          ? <DeficitTarget d={d} plan={plan} s={safeDeficit(profile(), plan)} safer={saferPlan(profile())} watch={watch === true} skipped={skipped} onSafer={(date) => { setByWhen('custom'); setD({ ...d, goalDate: date }); setSkipped({ ...skipped, date: false }) }} onChangeGoal={() => go('goalWeight')} onHow={() => setHow(true)} onNext={() => next()} />
+          : <Target d={d} plan={plan} watch={watch === true} today={today} skipped={skipped} onTry={(date) => { setByWhen('custom'); setD({ ...d, goalDate: date }) }} onHow={() => setHow(true)} onNext={() => next()} />)}
 
         {step === 'extras' && (
           <div className="flex flex-1 flex-col pt-6" data-testid="ob-extras">
@@ -237,7 +243,9 @@ export default function Onboarding() {
         )}
       </div>
 
-      {how && plan && <HowSheet d={d} plan={plan} watch={watch === true} onClose={() => setHow(false)} />}
+      {how && plan && (lose
+        ? <HowSheetDeficit d={d} plan={plan} s={safeDeficit(profile(), plan)} watch={watch === true} onClose={() => setHow(false)} />
+        : <HowSheet d={d} plan={plan} watch={watch === true} onClose={() => setHow(false)} />)}
     </main>
   )
 }
@@ -377,6 +385,112 @@ function Target({ d, plan, watch, today, skipped, onTry, onHow, onNext }: { d: O
       <p className="pb-3 text-center text-[14px] text-mute">You can change any of this in Me.</p>
       <Button onClick={onNext} data-testid="ob-next">Continue</Button>
     </div>
+  )
+}
+
+/** "1,795" with a real minus sign for negatives ("−330"). */
+const signed = (n: number) => (n < 0 ? `−${fmt(-n)}` : fmt(n))
+/** kg to go as the plan uses it (up to 2 decimals), so kg × 7,700 is exactly the total shown. */
+const kgText = (kg: number) => String(Math.round(kg * 100) / 100)
+
+/**
+ * v1.15 Lose result: the hero is the daily deficit, the same number Home measures against (profile.dailyGoal), with
+ * "You'd eat about X kcal a day" (plan base minus the deficit) under it. A date that needs more than the safe cap mutes
+ * the deficit, says why with what it would leave to eat, and offers the earliest safe date or a new goal. No Continue.
+ */
+function DeficitTarget({ d, plan, s, safer, watch, skipped, onSafer, onChangeGoal, onHow, onNext }: {
+  d: OBDraft; plan: Plan; s: SafeDeficit; safer: ReturnType<typeof saferPlan>; watch: boolean; skipped: { kg?: boolean; date?: boolean }
+  onSafer: (date: string) => void; onChangeGoal: () => void; onHow: () => void; onNext: () => void
+}) {
+  const shown = useCountUp(s.deficit, undefined, 800, 150)
+  const unsafe = s.unsafe
+  return (
+    <div className="flex flex-1 flex-col" data-testid="ob-target" data-state={unsafe ? 'unsafe' : 'safe'}>
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="eyebrow">Your daily deficit</div>
+        <div className={`num mt-3 text-[96px] leading-none [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:text-[76px] ${unsafe ? 'text-mute-soft' : 'text-g-ink'}`} data-testid="deficit">{fmt(shown)}</div>
+        <div className="mt-2 text-[17px] text-mute [@media(max-height:700px)]:mt-1">kcal a day</div>
+        <p className={`mt-3 text-[17px] [@media(max-height:700px)]:mt-2 ${unsafe ? 'text-mute' : 'font-semibold text-ink'}`} data-testid="eat-line">
+          {unsafe && s.eat <= 0 ? `More than you burn in a day (${fmt(s.planBase)} kcal)` : `You'd eat about ${fmt(s.eat)} kcal a day`}
+        </p>
+        {!unsafe && <p className="mt-6 text-[20px] font-bold [@media(max-height:700px)]:mt-4" data-testid="goal-line">{goalLine(d.goal, plan)}</p>}
+        {d.goalDate && <p className={`text-[16px] text-mute ${unsafe ? 'mt-2' : 'mt-1'}`} data-testid="goal-date-line">{d.goalWeightKg} kg by {longDay(d.goalDate)}</p>}
+        {!unsafe && watch && <p className="mt-1 text-[15px] text-mute" data-testid="watch-sooner">Likely sooner, since your watch adds burn on top.</p>}
+        {(skipped.kg || skipped.date) && (
+          <p className="mt-3 max-w-[320px] text-[15px] leading-snug text-mute" data-testid="ob-skipped-note">
+            {skipped.kg && skipped.date ? 'We picked a first goal of 5% of your weight in 6 months.' : skipped.kg ? 'We picked a first goal of 5% of your weight.' : 'We picked 6 months.'}
+          </p>
+        )}
+        {unsafe && <UnsafeCard s={s} weeklyKg={plan.weeklyKg} safer={safer} goalKg={d.goalWeightKg} className="mt-4 w-full max-w-[340px] [@media(max-height:700px)]:mt-3" />}
+        {watch && <div className="mt-3 w-full max-w-[340px]"><WatchNote /></div>}
+        <button type="button" onClick={onHow} className="mt-3 min-h-11 px-2 py-1 text-[16px] font-bold text-g-ink underline decoration-g/40 underline-offset-4" data-testid="ob-how">How we worked this out</button>
+      </div>
+      <div className="sticky bottom-0 -mx-5 bg-bg px-5 pt-2" data-testid="ob-target-actions">
+        {unsafe ? (
+          <>
+            {safer && <Button onClick={() => onSafer(safer.date)} data-testid="ob-safer">Use safer date ({longDay(safer.date)})</Button>}
+            <button type="button" onClick={onChangeGoal} className="tap mt-1 min-h-12 w-full rounded-[18px] px-4 text-[17px] font-bold text-g-ink" data-testid="ob-change-goal">Change goal</button>
+          </>
+        ) : (
+          <>
+            <p className="pb-3 text-center text-[14px] text-mute">You can change any of this in Me.</p>
+            <Button onClick={onNext} data-testid="ob-next">Continue</Button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * v1.15 Lose breakdown. Resting burn + daily movement = daily burn (plan base), minus the daily deficit = what you'd
+ * eat. Every number is the one on the result screen, and the sentence under it adds up to them exactly.
+ */
+function HowSheetDeficit({ d, plan, s, watch, onClose }: { d: OBDraft; plan: Plan; s: SafeDeficit; watch: boolean; onClose: () => void }) {
+  const kg = kgText(plan.kgToGo)
+  const total = Math.round(plan.kgToGo * 7700)
+  const rest = plan.planBase - (watch ? 0 : plan.movement)
+  const baseName = watch ? 'Plan base' : 'Your daily burn'
+  const row = (k: ReactNode, v: string, testid: string, bold?: boolean) => (
+    <div className={`flex items-start justify-between gap-3 border-b border-line py-3 text-[16px] ${bold ? 'font-bold' : ''}`} data-testid={testid}><span>{k}</span><b className="num shrink-0 font-semibold" data-testid={`${testid}-v`}>{v}</b></div>
+  )
+  return (
+    <Sheet label="How we worked this out" onClose={onClose}>
+      <div data-testid="ob-how-sheet" className="flex flex-col gap-4">
+        <h2 className="title text-[26px]">How we worked this out</h2>
+        <div className="rounded-[18px] border border-line px-4">
+          {row('Resting burn (BMR)', `${fmt(rest)} kcal`, 'how-bmr')}
+          {watch ? row('Daily movement', 'From your watch', 'how-move') : row(`Daily movement (${ACTIVITY_SHORT[d.activity].toLowerCase()})`, `+${fmt(plan.movement)} kcal`, 'how-move')}
+          {row(baseName, `${fmt(plan.planBase)} kcal`, 'how-base', true)}
+          {row(<>Daily deficit<span className="block text-[14px] font-normal text-mute" data-testid="how-deficit-sub">Lose {kg} kg by {d.goalDate ? longDay(d.goalDate) : ''}</span></>, `−${fmt(s.deficit)} kcal`, 'how-deficit')}
+          <div className="flex justify-between py-3 text-[16px]" data-testid="how-eat"><b>You'd eat</b><b className={`num ${s.unsafe ? 'text-carbs-ink' : 'text-g-ink'}`} data-testid="how-eat-v">{signed(s.eat)} kcal</b></div>
+        </div>
+        {s.unsafe && <p className="text-[15px] font-semibold leading-snug text-carbs-ink" data-testid="how-unsafe">This date isn't safe. The safe cap is {fmt(s.cap)} kcal a day.</p>}
+        <p className="text-[15px] leading-snug text-mute" data-testid="ob-how-why">
+          BMR uses the Mifflin-St Jeor formula with your age, height, weight and sex. About 7,700 kcal is one kg, so {kg} kg × 7,700 = {fmt(total)} kcal.
+          {' '}Over {fmt(plan.days)} days that's {fmt(total)} ÷ {fmt(plan.days)} = {fmt(s.deficit)} kcal a day (rounded), about {kgWeek(plan.weeklyKg)} kg a week.
+          {' '}{fmt(plan.planBase)} − {fmt(s.deficit)} = {signed(s.eat)} kcal to eat.
+        </p>
+        <p className="text-[15px] leading-snug text-mute" data-testid="ob-how-cap">
+          A safe deficit is at most {fmt(s.cap)} kcal a day. That's the lower of 1% of your weight a week ({fmt(s.capPace)} kcal) and your {watch ? 'plan base' : 'daily burn'} minus the {fmt(s.floor)} kcal minimum ({signed(s.capFloor)} kcal). It only limits the deficit, it never raises what you eat.
+        </p>
+        <div>
+          <div className="mb-2 text-[15px] font-bold">Macro goals</div>
+          <div className="grid grid-cols-3 gap-2">
+            {([['Protein', plan.protein, 'bg-protein-soft text-protein-ink'], ['Carbs', plan.carbs, 'bg-carbs-soft text-carbs-ink'], ['Fat', plan.fat, 'bg-fat-soft text-fat-ink']] as const).map(([k, g, c]) => (
+              <div key={k} className={`rounded-2xl px-3 py-2.5 text-center ${c}`}>
+                <div className="num text-[24px] leading-tight">{g} g</div>
+                <div className="text-[13px] font-semibold">{k}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[15px] leading-snug text-mute">Set from your {watch ? 'resting' : 'daily'} burn ({fmt(plan.maintenance)} kcal) and current weight. They stay the same on exercise days.</p>
+        </div>
+        <p className="text-[15px] leading-snug text-mute">Each time you log your weight in Me, the plan is worked out again from what's left over the days left.</p>
+        <p className="text-[15px] leading-snug text-mute">{watch ? 'Daily movement is off because your watch counts it. Each day, add its active calories with Quick add burn and your budget grows to match. That extra burn comes on top, so you will likely get there sooner.' : 'Got a watch later? Turn daily movement off in Me.'}</p>
+        <Button variant="ghost" onClick={onClose} data-testid="ob-how-close">Got it</Button>
+      </div>
+    </Sheet>
   )
 }
 

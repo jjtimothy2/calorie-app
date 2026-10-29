@@ -71,6 +71,7 @@ type Action =
   | { type: 'deleteWeight'; date: string }
   /** Undo for deleteWeight: puts the weight log and profile back exactly as they were. */
   | { type: 'restoreWeights'; weights: WeightEntry[]; profile: Profile }
+  | { type: 'dismissCapCard'; date: string | null }
   | { type: 'addEntry'; entry: Entry }
   | { type: 'updateEntry'; entry: Entry }
   | { type: 'deleteEntry'; id: string }
@@ -246,6 +247,14 @@ function apply(state: State, a: Action): State {
       return deleteWeight(state, a.date)
     case 'restoreWeights':
       return { ...state, weights: a.weights, profile: a.profile }
+    case 'dismissCapCard': {
+      // v1.15: the Home "safer date" card. A date hides it for good, null (Undo) takes the field out again.
+      if (a.date) return state.capCardDismissed ? state : { ...state, capCardDismissed: a.date }
+      if (!('capCardDismissed' in state)) return state
+      const next = { ...state }
+      delete next.capCardDismissed
+      return next
+    }
     case 'addExercise':
       return { ...state, exercises: [...state.exercises, a.entry] }
     case 'updateExercise':

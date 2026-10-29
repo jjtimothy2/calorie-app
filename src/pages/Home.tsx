@@ -20,7 +20,7 @@ import { FOOD_BY_ID } from '../data/foods'
 import { aiAmount, formatAmount } from '../lib/amount'
 import { newId, useStore, type Landing } from '../lib/store'
 import { readMeta, shouldRemind, writeMeta } from '../lib/backup'
-import { WeighInNudge } from '../components/Weight'
+import { SaferDateCard, WeighInNudge } from '../components/Weight'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
 export default function Home() {
@@ -135,6 +135,7 @@ export default function Home() {
             <button type="button" onClick={dismiss} aria-label="Dismiss backup reminder" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-xl font-bold">×</button>
           </div>
         )}
+        {!past && <SaferDateCard />}
         {!past && <WeighInNudge />}
         <section aria-label="Balance" className="flex flex-col gap-2.5">
           {closed && (

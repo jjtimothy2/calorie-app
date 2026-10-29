@@ -151,8 +151,9 @@ export const MIN_PLAN_DAYS = 7
 export const FAST_WEEKLY_SHARE = 0.01
 
 /**
- * Soft warning line (goal-date plan): 1,500 kcal a day for men, 1,200 for women; any other or missing value gets the
- * lower 1,200. v1.2 to v1.12 this was a hard floor the target could never go under. Now it only shows a warning.
+ * Minimum intake: 1,500 kcal a day for men, 1,200 for women. Any other or missing value gets the lower 1,200.
+ * v1.2 to v1.12 this was a hard floor the target could never go under, v1.13 to v1.14 only a soft warning. v1.15: it
+ * limits the size of a Lose deficit (safeDeficit) and is shown openly. It never raises a saved target by itself.
  */
 export const targetFloor = (sex: Sex | string | undefined) => (sex === 'male' ? 1500 : 1200)
 
@@ -224,30 +225,102 @@ export type PaceCheck = {
 }
 
 /**
- * Soft warning for an aggressive plan. Never blocks. Checks use the plan start weight.
- * Earliest date: days >= kg x 7 / (1% of weight) clears "fast"; for Lose, days >= kg x 7,700 / (base - line) clears "low".
+ * Pace check. Checks use the plan start weight. Gain: a soft warning over 1% of body weight a week (never blocks).
+ * v1.15 Lose: the safe deficit cap (safeDeficit), with suggest = the earliest date that fits it.
  */
 export function paceCheck(p: PlanInput, plan = dailyPlan(p)): PaceCheck {
   const none = { fast: false, low: false, warn: false, suggest: null }
   if (p.goal === 'keep' || plan.gap === 0) return none
-  const line = targetFloor(p.sex)
+  // v1.15: Lose plans use the safe deficit cap (safeDeficit), so every Lose screen agrees on what is safe.
+  if (p.goal === 'lose') {
+    const s = safeDeficit(p, plan)
+    return { fast: s.fast, low: s.low, warn: s.unsafe, suggest: s.safeDate }
+  }
+  // Gain (as in v1.13): only the 1% a week check. Earliest date: days >= kg x 7 / (1% of weight).
   const fast = plan.weeklyKg > FAST_WEEKLY_SHARE * p.planFrom.kg + 1e-9
-  const low = p.goal === 'lose' && plan.target < line
-  if (!fast && !low) return none
-  const kg = plan.kgToGo
-  const dFast = (kg * 7) / (FAST_WEEKLY_SHARE * p.planFrom.kg)
-  const room = plan.planBase - line
-  const dLow = p.goal === 'lose' ? (room > 0 ? (kg * KCAL_PER_KG) / room : Infinity) : 0
-  const need = Math.max(dFast, dLow)
-  if (!Number.isFinite(need)) return { fast, low, warn: true, suggest: null }
-  let days = Math.max(MIN_PLAN_DAYS, Math.ceil(need - 1e-9))
-  // Rounding: step on until the date really clears both checks (at most a day or two).
+  if (!fast) return none
+  let days = Math.max(MIN_PLAN_DAYS, Math.ceil((plan.kgToGo * 7) / (FAST_WEEKLY_SHARE * p.planFrom.kg) - 1e-9))
+  // Rounding: step on until the date really clears the check (at most a day or two).
   for (let i = 0; i < 5; i++) {
     const c = dailyPlan({ ...p, goalDate: addDays(p.planFrom.date, days) })
-    if (c.weeklyKg <= FAST_WEEKLY_SHARE * p.planFrom.kg + 1e-9 && !(p.goal === 'lose' && c.target < line)) break
+    if (c.weeklyKg <= FAST_WEEKLY_SHARE * p.planFrom.kg + 1e-9) break
     days++
   }
-  return { fast, low, warn: true, suggest: addDays(p.planFrom.date, days) }
+  return { fast, low: false, warn: true, suggest: addDays(p.planFrom.date, days) }
+}
+
+/**
+ * v1.15: the deficit a Lose plan takes off its plan base, in whole kcal. One rounding for every screen: it is
+ * planBase - round(planBase - gap), so it is exactly dailyPlan's planDeficit (what Home measures against) whenever the
+ * gap fits in the plan base, and "You'd eat" = planBase - deficit is exactly the target.
+ */
+export const deficitOf = (planBase: number, gap: number) => (gap > 0 ? planBase - Math.round(planBase - gap) : 0)
+
+/** v1.15: plans further out than this get no "safer date" (the plan base is too close to the floor to make room). */
+export const MAX_SAFE_DAYS = 3650
+
+export type SafeDeficit = {
+  /** The deficit this date asks for (deficitOf). Can be more than the plan base, then eat is negative. */
+  deficit: number
+  /** planBase - deficit. */
+  eat: number
+  planBase: number
+  /** The safe cap, whole kcal: floor(min(capPace, capFloor)), never under 0. */
+  cap: number
+  /** 1% of the plan start weight a week, in kcal a day: kg x 0.01 x 7,700 / 7. */
+  capPace: number
+  /** planBase - floor: the most that still leaves the floor to eat. */
+  capFloor: number
+  /** 1,500 kcal for men, 1,200 for women. Only limits the deficit, never raises a target. */
+  floor: number
+  /** The deficit is over the cap. */
+  unsafe: boolean
+  /** Over the 1% a week part of the cap. */
+  fast: boolean
+  /** Over the floor part of the cap (would leave under the floor to eat). */
+  low: boolean
+  /** Earliest goal date (from the plan start) whose deficit fits the cap. Null when safe, or when no date can. */
+  safeDate: string | null
+}
+
+/**
+ * v1.15 safe cap for a Lose plan: deficit <= min(weight x 0.01 x 7,700 / 7, plan base - floor). The weight is the plan
+ * start weight. dailyPlan itself is not capped (saved plans keep their numbers); the cap only picks the date.
+ * Gain and Keep: never unsafe here (Gain keeps the v1.13 pace check).
+ */
+export function safeDeficit(p: PlanInput, plan = dailyPlan(p)): SafeDeficit {
+  const floor = targetFloor(p.sex)
+  const capPace = (p.planFrom.kg * FAST_WEEKLY_SHARE * KCAL_PER_KG) / 7
+  const capFloor = plan.planBase - floor
+  const cap = Math.max(0, Math.floor(Math.min(capPace, capFloor) + 1e-9))
+  const lose = p.goal === 'lose' && plan.gap > 0
+  const deficit = lose ? deficitOf(plan.planBase, plan.gap) : 0
+  const out = { deficit, eat: plan.planBase - deficit, planBase: plan.planBase, cap, capPace, capFloor, floor }
+  const unsafe = lose && deficit > cap
+  if (!unsafe) return { ...out, unsafe: false, fast: false, low: false, safeDate: null }
+  const fast = deficit > Math.floor(capPace + 1e-9)
+  const low = deficit > capFloor
+  return { ...out, unsafe, fast, low, safeDate: safeDateFor(p, cap, plan.planBase) }
+}
+
+/** v1.15: the plan a safer date gives (same rounding as every other Lose screen). Null when there is no safer date. */
+export function saferPlan(p: PlanInput, s = safeDeficit(p)) {
+  if (!s.safeDate) return null
+  const plan = dailyPlan({ ...p, goalDate: s.safeDate })
+  const deficit = deficitOf(plan.planBase, plan.gap)
+  return { date: s.safeDate, deficit, eat: plan.planBase - deficit, weeklyKg: plan.weeklyKg, plan }
+}
+
+/** Earliest date from the plan start whose deficit (deficitOf) is at most cap. */
+function safeDateFor(p: PlanInput, cap: number, planBase: number): string | null {
+  if (cap < 1) return null
+  const k = kgToGo(p) * KCAL_PER_KG
+  // deficitOf(base, k / days) <= cap  <=>  k / days <= cap + 0.5, so start there and check (float rounding).
+  let days = Math.max(MIN_PLAN_DAYS, Math.ceil(k / (cap + 0.5) - 1e-9))
+  while (days > MIN_PLAN_DAYS && deficitOf(planBase, k / (days - 1)) <= cap) days--
+  while (deficitOf(planBase, k / days) > cap) days++
+  if (days > MAX_SAFE_DAYS) return null
+  return addDays(p.planFrom.date, days)
 }
 
 /** Where the plan line says the weight should be on a day (straight line from the plan start to the goal). */

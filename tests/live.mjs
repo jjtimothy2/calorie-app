@@ -34,7 +34,9 @@ await step('loads, redirects to onboarding, onboard to Home', async () => {
   const dueKey = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`
   const days = Math.round((Date.UTC(due.getFullYear(), due.getMonth(), due.getDate()) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5)
   const target = Math.round(1925 - (4 * 7700) / days)
-  assert.equal(Number((await page.getByTestId('target').innerText()).replace(/\D/g, '')), target)
+  // v1.15: the Lose hero is the daily deficit, with what you'd eat under it.
+  assert.equal(Number((await page.getByTestId('deficit').innerText()).replace(/\D/g, '')), 1925 - target)
+  assert.equal(Number((await page.getByTestId('eat-line').innerText()).replace(/\D/g, '')), target)
   await page.getByTestId('ob-next').click()
   await page.getByTestId('ob-skip').click()
   await page.waitForURL(BASE + '/')
@@ -59,7 +61,7 @@ await step('manifest and service worker', async () => {
   assert.equal(new URL(m.start_url, href).href, BASE + '/')
   assert.equal(new URL(m.scope, href).href, BASE + '/')
   for (const i of m.icons) assert.equal((await page.request.get(new URL(i.src, href).href)).status(), 200, i.src)
-  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.14\.2-[0-9a-f]{12}'/) // v1.14.2 build is live
+  assert.match(await (await page.request.get(BASE + '/sw.js')).text(), /'v1\.15-[0-9a-f]{12}'/) // v1.15 build is live
   const sw = await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)
   assert.equal(sw, BASE + '/sw.js')
   await page.reload()

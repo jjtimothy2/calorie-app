@@ -109,7 +109,7 @@ await step('reduced motion: no animation on welcome, steps or the target reveal 
   const styles = await pg.getByTestId('welcome-art').evaluate((svg) => [...svg.querySelectorAll('.wa-draw, .wa-pop, .wa-fade, .wa-steam')].map((el) => getComputedStyle(el).animationName))
   assert.ok(styles.length > 0 && styles.every((n) => n === 'none'), styles.join())
   await answer(pg)
-  assert.equal(await num(pg.getByTestId('target')), 2006) // straight to the final number, no count-up
+  assert.equal(await num(pg.getByTestId('deficit')), 550) // v1.15: the Lose hero is the deficit, straight to the final number, no count-up
   assert.equal(await running(), 0)
   await ctx.close()
 })
@@ -119,9 +119,9 @@ await step('with motion allowed: the illustration animates and the target counts
   const names = await pg.getByTestId('welcome-art').evaluate((svg) => [...svg.querySelectorAll('.wa-draw, .wa-pop')].map((el) => getComputedStyle(el).animationName))
   assert.ok(names.some((n) => n !== 'none'), names.join())
   await answer(pg)
-  const first = await num(pg.getByTestId('target'))
-  assert.ok(first < 2006, `starts below the target (${first})`)
-  await pg.waitForFunction(() => document.querySelector('[data-testid=target]').textContent === '2,006', null, { timeout: 3000 })
+  const first = await num(pg.getByTestId('deficit'))
+  assert.ok(first < 550, `starts below the deficit (${first})`)
+  await pg.waitForFunction(() => document.querySelector('[data-testid=deficit]').textContent === '550', null, { timeout: 3000 })
   await ctx.close()
 })
 
@@ -190,22 +190,24 @@ await step('Keep skips goal weight and By when: activity goes straight to the ta
   assert.deepEqual([p.goal, p.target, p.dailyGoal, p.includeMovement], ['keep', 2556, 0, true])
   await ctx.close()
 })
-await step('goal-date targets have no floor and no cap (male 32, 92 kg, 175 cm, light): 10 kg in 140 days = 2,006; a soft warning, never a block', async () => {
+await step('goal-date plans (male 32, 92 kg, 175 cm, light): 10 kg in 140 days = a 550 deficit, eat 2,006, under the cap; 1 month is over it', async () => {
   const ctx = await ctxFor(390, 844)
   const pg = await fresh(ctx)
   await answer(pg)
   // BMR 10x92 + 6.25x175 - 5x32 + 5 = 1859; light +697 -> 2556. 10 kg x 7,700 / 140 days = 550 -> 2,006.
-  assert.equal(await num(pg.getByTestId('target')), 2006)
+  assert.equal(await num(pg.getByTestId('deficit')), 550)
+  assert.equal(await pg.getByTestId('eat-line').innerText(), "You'd eat about 2,006 kcal a day")
   assert.equal(await pg.getByTestId('goal-line').innerText(), 'Lose about 0.5 kg a week')
   assert.match(await pg.getByTestId('goal-date-line').innerText(), /^82 kg by /)
   assert.equal(await pg.getByTestId('pace-warning').count(), 0)
+  assert.equal(await pg.getByTestId('unsafe-card').count(), 0)
   assert.doesNotMatch(await pg.locator('main').innerText(), /cap|minimum|Gentle|Standard|Faster/i)
   // How we worked this out: BMR + movement = burn, minus the goal's daily gap, = target.
   await pg.getByTestId('ob-how').click()
   const sheet = pg.getByRole('dialog', { name: 'How we worked this out' })
   const t = await sheet.innerText()
-  for (const re of [/Resting burn \(BMR\)\s*1,859 kcal/, /Daily movement \(lightly active\)\s*\+697 kcal/, /Your daily burn\s*2,556 kcal/, /Lose 10 kg by [^\n]+\s*−550 kcal/, /Daily target\s*2,006 kcal/]) assert.match(t, re)
-  assert.doesNotMatch(t, /cap/i)
+  for (const re of [/Resting burn \(BMR\)\s*1,859 kcal/, /Daily movement \(lightly active\)\s*\+697 kcal/, /Your daily burn\s*2,556 kcal/, /Daily deficit\s*Lose 10 kg by [^\n]+\s*−550 kcal/, /You'd eat\s*2,006 kcal/]) assert.match(t, re)
+  assert.match(t, /safe deficit is at most 1,012 kcal/) // v1.15: the cap is explained openly in the sheet
   await pg.getByTestId('ob-how-close').click()
   await sheet.waitFor({ state: 'detached' })
   // 10 kg in about a month: over 1% of body weight a week and under 1,500, so a soft warning with a later date to try.
@@ -213,18 +215,26 @@ await step('goal-date targets have no floor and no cap (male 32, 92 kg, 175 cm, 
   await pg.getByTestId('by-1m').click(); await pg.getByTestId('ob-next').click()
   await pg.getByTestId('ob-watch-no').click(); await pg.getByTestId('ob-act-light').click()
   await pg.getByTestId('ob-target').waitFor()
-  assert.ok(await num(pg.getByTestId('target')) < 1500)
-  assert.match(await pg.getByTestId('pace-warning').innerText(), /Try /)
-  assert.equal(await pg.getByTestId('ob-next').isDisabled(), false)
+  // v1.15: that needs more than the safe cap, so no Continue, the safer date or Change goal.
+  assert.equal(await pg.getByTestId('ob-target').getAttribute('data-state'), 'unsafe')
+  assert.match(await pg.getByTestId('unsafe-card').innerText(), /isn't safe/)
+  assert.equal(await pg.getByTestId('ob-next').count(), 0)
+  await pg.getByTestId('ob-safer').waitFor()
+  await pg.getByTestId('ob-change-goal').click()
+  await pg.getByTestId('ob-goal-weight').waitFor()
   await ctx.close()
 })
-await step('a target under the 1,200 line (80-year-old woman, 40 kg) warns but is not raised', async () => {
+await step('a burn under the 1,200 line (80-year-old woman, 40 kg) has no safe deficit, the target is not raised', async () => {
   const ctx = await ctxFor(390, 844)
   const pg = await fresh(ctx)
-  // BMR 777 + desk 155 = 932; 4 kg in 140 days = 220 a day -> 712, no 1,200 floor any more.
+  // BMR 777 + desk 155 = 932; 4 kg in 140 days = 220 a day -> 712. v1.15: a burn under the 1,200 floor leaves no
+  // room for any deficit, so the date isn't safe and there's no safer date. The target is never raised.
   await answer(pg, { sex: 'female', age: 80, h: 150, w: 40, gw: 36, act: 'sedentary' })
-  assert.equal(await num(pg.getByTestId('target')), 712)
-  assert.match(await pg.getByTestId('pace-warning').innerText(), /1,200/)
+  assert.equal(await num(pg.getByTestId('deficit')), 220)
+  assert.equal(await pg.getByTestId('eat-line').innerText(), "You'd eat about 712 kcal a day")
+  assert.match(await pg.getByTestId('unsafe-card').innerText(), /1,200/)
+  await pg.getByTestId('safer-none').waitFor()
+  assert.equal(await pg.getByTestId('ob-safer').count() + await pg.getByTestId('ob-next').count(), 0)
   await ctx.close()
 })
 await step('extras are skippable (Skip and Done land on Home); a new profile has includeMovement true', async () => {
