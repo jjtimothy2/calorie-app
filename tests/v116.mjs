@@ -47,7 +47,9 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const tag = `${width}x${height}`
   const ctx = await browser.newContext({ ...devices['iPhone 14'], viewport: { width, height }, deviceScaleFactor: 2, serviceWorkers: 'block', reducedMotion: 'reduce' })
   const page = await ctx.newPage()
-  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/service worker/i.test(m.text())) errors.push(`${tag}: ${m.type()}: ${m.text()}`) })
+  // GitHub Pages answers a deep link (/day/...) with 404.html, the app shell, and a 404 status: allowed for page loads only.
+  page.on('response', (r) => { if (r.status() === 404 && r.request().resourceType() !== 'document') errors.push(`${tag}: 404 ${r.url()}`) })
+  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/service worker/i.test(m.text()) && !/status of 404/.test(m.text())) errors.push(`${tag}: ${m.type()}: ${m.text()}`) })
   page.on('pageerror', (er) => errors.push(`${tag}: pageerror: ${er.message}`))
   await page.goto(`${BASE}/`)
   let seeded = null
