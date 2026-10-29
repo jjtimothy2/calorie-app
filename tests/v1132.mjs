@@ -167,7 +167,7 @@ for (const [w, h, motion] of [[390, 844, 'no-preference'], [375, 667, 'reduce']]
       await page.getByRole('menuitem', { name: 'Type it' }).click()
       await dialog.getByRole('textbox').fill('nasi ayam goreng with sambal')
       await dialog.getByRole('button', { name: /Estimate/ }).click()
-      await dialog.getByRole('button', { name: /^Log \d+ items$/ }).click()
+      await dialog.getByRole('button', { name: /^Log \d+ items · [\d,]+ kcal$/ }).click() // v1.14.1: total in the label
     }, /^Added \d+ items from AI · [\d,]+ kcal/)
     assert.ok(fresh.length >= 2)
     const lit = await page.locator('.row-flash').evaluateAll((els) => els.map((el) => el.dataset.testid))

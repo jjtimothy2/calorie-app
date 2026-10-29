@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
 import { AiFlow, CameraIcon, GalleryIcon, NoKeySheet, PencilIcon, SparkleIcon, type LogItem } from '../components/PhotoSheets'
+import { aiServingLabel } from '../lib/amount'
 import { Screen } from '../components/Layout'
 import { PastDayNote } from '../components/PastDay'
 import { Button, Chip } from '../components/ui'
@@ -13,7 +14,7 @@ import { dayView, defaultMeal, entryTotals, fmt, verdict } from '../lib/calc'
 import { entryFromFood, entryFromUserFood, newId, useStore } from '../lib/store'
 import { USER_SERVING, type UserFood } from '../lib/myFoods'
 import { SavedMark, MyFoodSheet, MyFoodEditSheet, macroLine } from '../components/MyFoodSheet'
-import { readAi, type AiSettings } from '../lib/ai'
+import { perServing, readAi, type AiSettings } from '../lib/ai'
 import { downscalePhoto } from '../lib/photo'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
@@ -107,13 +108,15 @@ export default function Log() {
   const logAi = (rows: LogItem[], dish: string) => {
     // v1.10: one groupId for everything logged from this estimate, so Home can show it as one meal row.
     const groupId = rows.length > 1 ? newId() : undefined
-    // v1.6: always the AI's own numbers, scaled by grams. Marked as from AI (source 'photo', kept for older data).
-    const added: Entry[] = rows.map(({ item, grams }) => {
-      const r = grams / item.ai.grams
+    // v1.6: always the AI's own numbers. v1.14.1: saved per serving (the AI's whole portion, label '1 piece (8 g)') with
+    // qty = servings, the way v1.14 stores and scales items, so Edit opens at that number and keeps the portion words.
+    // Marked as from AI (source 'photo', kept for older data).
+    const added: Entry[] = rows.map(({ item, servings }) => {
+      const p = perServing(item)
       return {
         id: newId(), date: today, meal, foodId: null, name: item.ai.name,
-        servingLabel: grams === item.ai.grams && item.ai.portion ? `${item.ai.portion} (${grams} g)` : `${grams} g`, servingMult: 1, qty: 1,
-        kcal: Math.round(item.ai.kcal * r), protein: +(item.ai.protein * r).toFixed(1), carbs: +(item.ai.carbs * r).toFixed(1), fat: +(item.ai.fat * r).toFixed(1),
+        servingLabel: aiServingLabel(item.ai.portion, item.ai.grams), servingMult: 1, qty: servings,
+        kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat,
         createdAt: Date.now(), source: 'photo' as const,
         ...(groupId ? { groupId, groupName: dish } : {}),
       }

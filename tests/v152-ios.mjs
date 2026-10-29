@@ -115,15 +115,15 @@ for (const [width, height, kb] of [[390, 844, 336], [375, 667, 260]]) {
     assert.ok(body && !body.includes('inlineData'), 'text-only request has no image part')
     await dlg.getByText('Estimated from your description').waitFor()
     await shot('ai-results')
-    const grams = dlg.getByRole('listitem').filter({ hasText: 'Ayam goreng' }).getByTestId('item-grams')
+    const grams = dlg.getByRole('listitem').filter({ hasText: 'Ayam goreng' }).getByTestId('qty') // v1.14.1: servings, not grams
     await more.tap()
     await more.tap()
-    assert.equal(await grams.innerText(), '140 g')
+    assert.equal(await grams.innerText(), '3')
     await keyboard(true); await keyboard(false) // a parent re-render must not reset the sheet or its focus
-    assert.equal(await grams.innerText(), '140 g')
+    assert.equal(await grams.innerText(), '3')
     assert.equal(await active(page), 'button[More Ayam goreng]', 'stepper keeps focus across a re-render')
     await dlg.getByRole('button', { name: 'Less Ayam goreng' }).tap()
-    assert.equal(await grams.innerText(), '130 g')
+    assert.equal(await grams.innerText(), '2')
     // Edit goes back to the input with the text kept; a photo can still be added.
     await dlg.getByRole('button', { name: 'Edit' }).tap()
     assert.match(await dlg.getByRole('textbox').inputValue(), /dragonfruit salsa/)

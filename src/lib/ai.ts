@@ -247,6 +247,15 @@ export function itemMacros(it: Pick<PhotoItem, 'ai'>, grams: number): PhotoMacro
   const r = grams / it.ai.grams
   return { kcal: it.ai.kcal * r, protein: it.ai.protein * r, carbs: it.ai.carbs * r, fat: it.ai.fat * r }
 }
+/** v1.14.1: one serving = the AI's whole portion, rounded the way it is saved (kcal whole, grams of macros to 0.1). */
+export function perServing(it: Pick<PhotoItem, 'ai'>): PhotoMacros {
+  return { kcal: Math.round(it.ai.kcal), protein: +it.ai.protein.toFixed(1), carbs: +it.ai.carbs.toFixed(1), fat: +it.ai.fat.toFixed(1) }
+}
+/** Totals for n servings, like Home's entryTotals (kcal rounded after scaling). */
+export function servingMacros(it: Pick<PhotoItem, 'ai'>, n: number): PhotoMacros {
+  const p = perServing(it)
+  return { kcal: Math.round(p.kcal * n), protein: p.protein * n, carbs: p.carbs * n, fat: p.fat * n }
+}
 /** Stepper size: 5 g for small items (sambal), 10 g otherwise. */
 export const gramStep = (g: number) => (g < 50 ? 5 : 10)
 

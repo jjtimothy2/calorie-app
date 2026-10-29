@@ -5,16 +5,16 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { FOODS } from '../data/foods'
 import { foodEmoji } from '../data/foodEmoji'
 import {
-  AiError, MODELS, PROVIDER_LABEL, errorText, estimateMeal, gramStep, itemMacros, noteHas, portionLabel, toPhotoItems, toggleNoteChip,
+  AiError, MODELS, PROVIDER_LABEL, errorText, estimateMeal, noteHas, servingMacros, toPhotoItems, toggleNoteChip,
   type AiErrorKind, type AiSettings, type PhotoItem, type PhotoMacros,
   scaleLine,
 } from '../lib/ai'
+import { aiAmount, aiServingLabel } from '../lib/amount'
 import { fmt } from '../lib/calc'
-import { Sheet } from './Sheet'
+import { Sheet, Stepper } from './Sheet'
 import { Button, Chip } from './ui'
 
 export const NOTE_CHIPS = ['Shared', 'Half eaten', 'Extra sambal', 'Santan', 'No rice']
-const sb = 'grid h-8 w-8 place-items-center rounded-lg border border-line bg-card text-xl font-bold disabled:opacity-40'
 const ghost = '!w-auto shrink-0 border border-line !bg-card px-5 !text-ink'
 
 const MACROS = [
@@ -23,7 +23,11 @@ const MACROS = [
   { k: 'fat', letter: 'F', word: 'fat', ink: 'text-fat-ink', pill: 'bg-fat-soft text-fat-ink' },
 ] as const
 
-/** v1.5.1: "1 cup cooked · 4P 42C 0F" on one line. If it would wrap, the portion is dropped first (text never shrinks). */
+/**
+ * v1.5.1: "1 cup cooked · 4P 42C 0F" on one line; text never shrinks. v1.14.1: the portion now carries the scaled
+ * grams ("1.5 pieces (12 g)") and is never dropped: if the line would not fit beside the stepper, the portion goes on
+ * its own line (wrapping by words) and the macros sit on the line under it, still on one line.
+ */
 function MacroLine({ portion, m }: { portion: string; m: PhotoMacros }) {
   const ref = useRef<HTMLSpanElement>(null)
   const [fits, setFits] = useState(true)
@@ -32,7 +36,7 @@ function MacroLine({ portion, m }: { portion: string; m: PhotoMacros }) {
     const el = ref.current
     if (!el) return
     const check = () => {
-      el.dataset.measure = '1' // show the portion while measuring
+      el.dataset.measure = '1' // measure as one line
       const over = el.scrollWidth > el.clientWidth + 0.5
       delete el.dataset.measure
       setFits(!over)
@@ -43,19 +47,21 @@ function MacroLine({ portion, m }: { portion: string; m: PhotoMacros }) {
     return () => ro.disconnect()
   }, [text])
   return (
-    <span ref={ref} className="group block overflow-hidden whitespace-nowrap text-[15px] font-semibold" data-testid="item-macros">
+    <span ref={ref} className={`group block text-[15px] font-semibold data-[measure]:overflow-hidden data-[measure]:whitespace-nowrap ${fits ? 'overflow-hidden whitespace-nowrap' : ''}`} data-testid="item-macros" data-stacked={fits ? undefined : ''}>
       {portion && (
-        <span className={`text-mute group-data-[measure]:!inline ${fits ? '' : 'hidden'}`} data-testid="item-portion">
-          {portion}<span aria-hidden="true"> · </span><span className="sr-only">, </span>
+        <span className={`text-mute group-data-[measure]:!inline ${fits ? '' : 'block'}`} data-testid="item-portion">
+          {portion}<span aria-hidden="true" className={fits ? '' : 'hidden group-data-[measure]:!inline'}> · </span><span className="sr-only">, </span>
         </span>
       )}
-      {MACROS.map((x, i) => (
-        <span key={x.k} className={x.ink} data-testid={`item-${x.k}`}>
-          {i > 0 && ' '}
-          <span aria-hidden="true">{fmt(m[x.k])}{x.letter}</span>
-          <span className="sr-only">{`${fmt(m[x.k])} g ${x.word}${i < 2 ? ',' : ''}`}</span>
-        </span>
-      ))}
+      <span className="whitespace-nowrap" data-testid="item-macro-nums">
+        {MACROS.map((x, i) => (
+          <span key={x.k} className={x.ink} data-testid={`item-${x.k}`}>
+            {i > 0 && ' '}
+            <span aria-hidden="true">{fmt(m[x.k])}{x.letter}</span>
+            <span className="sr-only">{`${fmt(m[x.k])} g ${x.word}${i < 2 ? ',' : ''}`}</span>
+          </span>
+        ))}
+      </span>
     </span>
   )
 }
@@ -121,7 +127,10 @@ export function NoKeySheet({ onClose, onSetup }: { onClose: () => void; onSetup:
 }
 
 type Phase = { k: 'input' } | { k: 'loading' } | { k: 'results'; dish: string; scaleRef: string; items: PhotoItem[] } | { k: 'error'; kind: AiErrorKind }
-export type LogItem = { item: PhotoItem; grams: number }
+/** v1.14.1: servings of the AI's whole portion (1 = what the AI saw). */
+export type LogItem = { item: PhotoItem; servings: number }
+
+const servingsText = (n: number) => String(Math.round(n * 100) / 100)
 
 type Props = {
   settings: AiSettings
@@ -293,10 +302,11 @@ export function AiFlow({ settings, photo, photoError, photoSource = 'camera', on
 }
 
 function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }: { dish: string; scaleRef: string; items: PhotoItem[]; photo: string | null; note: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[], dish: string) => void }) {
-  const [rows, setRows] = useState(() => items.map((it) => ({ it, g: it.grams })))
-  const view = rows.map((r) => ({ ...r, m: itemMacros(r.it, r.g), step: gramStep(r.it.grams) }))
+  // v1.14.1: servings instead of grams. 1 serving = the AI's whole portion; -/+ and typing work like the v1.14 Servings row.
+  const [rows, setRows] = useState(() => items.map((it) => ({ it, s: 1 })))
+  const view = rows.map((r) => ({ ...r, m: servingMacros(r.it, r.s), unit: aiServingLabel(r.it.ai.portion, r.it.ai.grams) }))
   const total = view.reduce<PhotoMacros>((a, r) => ({ kcal: a.kcal + r.m.kcal, protein: a.protein + r.m.protein, carbs: a.carbs + r.m.carbs, fat: a.fat + r.m.fat }), { kcal: 0, protein: 0, carbs: 0, fat: 0 })
-  const set = (key: string, d: number) => setRows((x) => x.map((r) => (r.it.key === key ? { ...r, g: Math.max(gramStep(r.it.grams), r.g + d) } : r)))
+  const set = (key: string, s: number) => setRows((x) => x.map((r) => (r.it.key === key ? { ...r, s } : r)))
   const remove = (key: string) => setRows((x) => x.filter((r) => r.it.key !== key))
   const n = rows.length
   const sized = scaleLine(scaleRef, !!photo)
@@ -312,24 +322,30 @@ function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }:
         </div>
       </div>
       {note.trim() && <p className="-mt-1 rounded-xl bg-bg px-3 py-2 text-[15px]" data-testid="photo-note"><span className="text-mute">{photo ? 'Your note: ' : 'You said: '}</span>{note.trim()}</p>}
+      {n > 0 && <p className="-mb-3 px-1 text-right text-[13px] text-mute" data-testid="servings-hint">Tap the number to type</p>}
       <ul aria-label="Estimated items" className="flex flex-col">
         {view.map((r) => (
-          <li key={r.it.key} className="flex flex-col gap-1.5 border-b border-line py-2">
-            <div className="flex items-center gap-3">
+          <li key={r.it.key} className="flex flex-col gap-1.5 border-b border-line py-2" data-testid="ai-item">
+            <div className="flex items-start gap-3">
               <span className="tile" aria-hidden="true">{foodEmoji(r.it.emojiName)}</span>
-              <div className="min-w-0 flex-1 text-[17px] font-semibold leading-tight">{r.it.name}</div>
-              <b className="num text-[20px] leading-none" data-testid="item-kcal">{fmt(r.m.kcal)}<span className="ml-1 font-sans text-[13px] font-normal text-mute">kcal</span></b>
-              <button type="button" onClick={() => remove(r.it.key)} aria-label={`Remove ${r.it.name}`} className="tap -mr-1 grid h-8 w-8 place-items-center rounded-full text-[18px] text-mute">✕</button>
+              <div className="min-w-0 flex-1 self-center break-words text-[17px] font-semibold leading-tight" data-testid="item-name">{r.it.name}</div>
+              <b className="num shrink-0 self-center whitespace-nowrap text-[20px] leading-none" data-testid="item-kcal">{fmt(r.m.kcal)}<span className="ml-1 font-sans text-[13px] font-normal text-mute">kcal</span></b>
+              <button type="button" onClick={() => remove(r.it.key)} aria-label={`Remove ${r.it.name}`} className="tap -mr-1 grid h-8 w-8 shrink-0 place-items-center self-center rounded-full text-[18px] text-mute">✕</button>
             </div>
-            <div className="flex items-center justify-between gap-3 pl-[52px]">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pl-[52px]">
               <div className="min-w-0 flex-1 leading-tight">
-                <MacroLine portion={portionLabel(r.it, r.g)} m={r.m} />
+                <MacroLine portion={aiAmount(r.unit, r.s)} m={r.m} />
               </div>
-              <div className="flex items-center gap-1 rounded-xl bg-bg p-1">
-                <button type="button" className={sb} aria-label={`Less ${r.it.name}`} disabled={r.g <= r.step} onClick={() => set(r.it.key, -r.step)}>−</button>
-                <span className="w-[56px] text-center text-[15px] font-bold" aria-live="polite" data-testid="item-grams">{r.g} g</span>
-                <button type="button" className={sb} aria-label={`More ${r.it.name}`} onClick={() => set(r.it.key, r.step)}>+</button>
-              </div>
+              <Stepper
+                compact
+                value={r.s}
+                onChange={(s) => set(r.it.key, s)}
+                label={servingsText(r.s)}
+                numberLabel={`${servingsText(r.s)} ${r.s === 1 ? 'serving' : 'servings'} of ${r.it.name}`}
+                decLabel={`Less ${r.it.name}`}
+                incLabel={`More ${r.it.name}`}
+                inputLabel={`Servings of ${r.it.name}`}
+              />
             </div>
           </li>
         ))}
@@ -351,7 +367,7 @@ function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }:
       <p className="-mt-2 text-center text-[14px] text-mute">Estimates are rough. Adjust before logging.</p>
       <div className="flex gap-2.5">
         <Button variant="ghost" className={ghost} onClick={onEdit}>Edit</Button>
-        <Button className="flex-1" disabled={!n} onClick={() => onLog(rows.map((r) => ({ item: r.it, grams: r.g })), dish)}>Log {n} {n === 1 ? 'item' : 'items'}</Button>
+        <Button className="flex-1" disabled={!n} onClick={() => onLog(rows.map((r) => ({ item: r.it, servings: r.s })), dish)}>Log {n} {n === 1 ? 'item' : 'items'}{n > 0 && ` · ${fmt(total.kcal)} kcal`}</Button>
       </div>
     </Sheet>
   )

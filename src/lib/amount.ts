@@ -60,3 +60,17 @@ export function aiAmount(servingLabel: string, qty: number): string {
   if (m) return `${formatAmount(m[1], qty)} (${Math.round(Number(m[2]) * qty)} g)`
   return formatAmount(servingLabel, qty)
 }
+
+/**
+ * v1.14.1: the per-serving label an AI item is saved with: the AI's portion words and its grams, '1 piece (8 g)'.
+ * One serving is the AI's whole portion; qty counts servings, so aiAmount(label, 1.5) reads '1.5 pieces (12 g)'.
+ * No portion falls back to '1 serving (250 g)'. Grams already in the words are not repeated; a portion that is only
+ * grams ('150 g') stays grams, so it scales as '225 g'.
+ */
+export function aiServingLabel(portion: string, grams: number): string {
+  const p = portion.replace(/\s*\(\s*\d+(?:[.,]\d+)?\s*g\s*\)\s*$/i, '').trim()
+  const g = fmtNum(Math.round(grams * 10) / 10)
+  if (!p) return `1 serving (${g} g)`
+  if (/^\d+(?:\.\d+)?\s*g$/i.test(p)) return `${g} g`
+  return `${p} (${g} g)`
+}

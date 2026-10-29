@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react'
 
 const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select'
 
@@ -186,10 +186,18 @@ const qtyText = (n: number) => String(Math.round(n * 100) / 100)
  * Whole steps above 1, half steps below (0.5 minimum for the minus button). v1.10.1: tap the amount to type any
  * amount on the decimal keypad, e.g. 1.5 or 0.75. `unit` is one serving, shown beside the typed number.
  */
-export function Stepper({ value, onChange, label, unit, min = 0.5, title }: { value: number; onChange: (n: number) => void; label: string; unit?: string; min?: number; title?: string }) {
+type StepperProps = {
+  value: number; onChange: (n: number) => void; label: string; unit?: string; min?: number; title?: string
+  /** v1.14.1: the small row stepper on the AI result sheet (32 px buttons, the number between). */
+  compact?: boolean
+  /** v1.14.1: per-row names for screen readers, e.g. "Less Nasi putih" / "More Nasi putih". */
+  decLabel?: string; incLabel?: string; inputLabel?: string; numberLabel?: string
+}
+export function Stepper({ value, onChange, label, unit, min = 0.5, title, compact, decLabel = 'Decrease amount', incLabel = 'Increase amount', inputLabel = 'Servings', numberLabel }: StepperProps) {
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
+  const errId = useId()
   const inc = () => onChange(Math.min(MAX_QTY, value < 1 ? Math.min(1, Math.floor(value * 2 + 1e-9) / 2 + 0.5) : Math.floor(value + 1e-9) + 1))
   const dec = () => onChange(Math.max(min, value <= 1 ? 0.5 : Math.ceil(value - 1e-9) - 1))
   const typed = parseQty(text)
@@ -198,6 +206,45 @@ export function Stepper({ value, onChange, label, unit, min = 0.5, title }: { va
   const open = () => { setText(qtyText(value)); setTyping(true) }
   useEffect(() => { if (typing) { input.current?.focus(); input.current?.select() } }, [typing])
   const done = () => { if (typed !== null) onChange(typed); setTyping(false) }
+  const field = (cls: string) => (
+    <input
+      ref={input}
+      type="text"
+      inputMode="decimal"
+      enterKeyHint="done"
+      autoComplete="off"
+      aria-label={inputLabel}
+      aria-invalid={bad || undefined}
+      aria-describedby={bad ? errId : undefined}
+      value={text}
+      onChange={(e) => { setText(e.target.value); const n = parseQty(e.target.value); if (n !== null) onChange(n) }}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); done() } }}
+      onBlur={done}
+      data-testid="qty-input"
+      className={`${cls} rounded-xl border-2 bg-card text-center font-bold ${bad ? 'border-danger' : 'border-ink'}`}
+    />
+  )
+  const err = (cls: string) => bad && <p id={errId} role="alert" className={`${cls} text-danger`} data-testid="qty-err">Enter an amount above 0, like 1.5 or 0.75.</p>
+  if (compact) {
+    // v1.14.1: sits at the end of a wrapping row; the error drops onto its own full-width line under the row.
+    const sb = 'grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line bg-card text-xl font-bold disabled:opacity-40'
+    return (
+      <div className="contents" data-no-drag>
+        <div className="flex shrink-0 items-center gap-1 rounded-xl bg-bg p-1" data-no-drag data-testid="row-stepper">
+          <button type="button" className={sb} aria-label={decLabel} disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
+          {typing
+            ? field('h-8 w-[52px] px-1 text-[15px]')
+            : (
+              <button type="button" onClick={open} className="tap h-8 min-w-[52px] rounded-lg px-1 text-[15px] font-bold" aria-label={`${numberLabel ?? label}. Tap to type an amount`} data-testid="qty-edit">
+                <b aria-live="polite" data-testid="qty">{label}</b>
+              </button>
+            )}
+          <button type="button" className={sb} aria-label={incLabel} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); inc() }}>+</button>
+        </div>
+        {err('basis-full text-right text-[13px] leading-snug')}
+      </div>
+    )
+  }
   const btn = 'grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-line bg-card text-2xl font-bold disabled:opacity-40'
   return (
     <div className="flex flex-col gap-1" data-no-drag>
@@ -209,35 +256,20 @@ export function Stepper({ value, onChange, label, unit, min = 0.5, title }: { va
         </div>
       )}
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-bg p-2">
-        <button type="button" className={btn} aria-label="Decrease amount" disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
+        <button type="button" className={btn} aria-label={decLabel} disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }}>−</button>
         {typing ? (
           <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
-            <input
-              ref={input}
-              type="text"
-              inputMode="decimal"
-              enterKeyHint="done"
-              autoComplete="off"
-              aria-label="Servings"
-              aria-invalid={bad || undefined}
-              aria-describedby={bad ? 'qty-err' : undefined}
-              value={text}
-              onChange={(e) => { setText(e.target.value); const n = parseQty(e.target.value); if (n !== null) onChange(n) }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); done() } }}
-              onBlur={done}
-              data-testid="qty-input"
-              className={`h-12 w-[84px] rounded-xl border-2 bg-card px-2 text-center text-[22px] font-bold ${bad ? 'border-danger' : 'border-ink'}`}
-            />
+            {field('h-12 w-[84px] px-2 text-[22px]')}
             {unit && <span className="min-w-0 truncate text-[15px] font-semibold text-mute">× {unit}</span>}
           </span>
         ) : (
-          <button type="button" onClick={open} className="tap min-h-12 min-w-0 flex-1 rounded-xl px-2 text-[22px] font-bold" aria-label={`${label}. Tap to type an amount`} data-testid="qty-edit">
+          <button type="button" onClick={open} className="tap min-h-12 min-w-0 flex-1 rounded-xl px-2 text-[22px] font-bold" aria-label={`${numberLabel ?? label}. Tap to type an amount`} data-testid="qty-edit">
             <b aria-live="polite" data-testid="qty">{label}</b>
           </button>
         )}
-        <button type="button" className={btn} aria-label="Increase amount" onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); inc() }}>+</button>
+        <button type="button" className={btn} aria-label={incLabel} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); inc() }}>+</button>
       </div>
-      {bad && <p id="qty-err" role="alert" className="px-2 text-[14px] text-danger" data-testid="qty-err">Enter an amount above 0, like 1.5 or 0.75.</p>}
+      {err('px-2 text-[14px]')}
     </div>
   )
 }
