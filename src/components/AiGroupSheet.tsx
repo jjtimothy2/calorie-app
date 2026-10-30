@@ -71,7 +71,7 @@ export function AiGroupSheet({ items, onEdit, onAdd, onMove, onClose }: { items:
                   value={items[0].meal}
                   onChange={(ev) => onMove(ev.target.value as Meal)}
                   data-testid="group-meal"
-                  className="absolute -inset-px h-[calc(100%+2px)] w-[calc(100%+2px)] cursor-pointer appearance-none rounded-full opacity-0 focus:outline-none"
+                  className="absolute -inset-px h-[calc(100%+2px)] w-[calc(100%+2px)] cursor-pointer appearance-none rounded-full text-[16px] opacity-0 focus:outline-none"
                 >
                   {MEALS.map((m) => <option key={m} value={m}>{MEAL_LABEL[m]}</option>)}
                 </select>

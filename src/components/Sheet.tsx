@@ -239,9 +239,9 @@ export function Stepper({ value, onChange, label, unit, min = 0.5, title, compac
         <div className="flex shrink-0 items-center gap-1 rounded-xl bg-bg p-1" data-no-drag data-testid="row-stepper">
           <button type="button" className={`${sb} before:-left-[11px] before:-right-[3px]`} aria-label={decLabel} disabled={value <= min} onMouseDown={(e) => typing && e.preventDefault()} onClick={() => { setTyping(false); dec() }} data-testid="qty-dec">−</button>
           {typing
-            ? <label className={`${hitY} flex before:-inset-x-0.5`} onMouseDown={(e) => e.target !== input.current && e.preventDefault()} data-testid="qty-hit">{field('h-8 w-[52px] px-1 text-[15px]')}</label>
+            ? <label className={`${hitY} flex before:-inset-x-0.5`} onMouseDown={(e) => e.target !== input.current && e.preventDefault()} data-testid="qty-hit">{field('h-8 w-[52px] px-1 text-[16px]')}</label>
             : (
-              <button type="button" onClick={open} className={`tap ${hitY} h-8 min-w-[52px] rounded-lg px-1 text-[15px] font-bold before:-inset-x-0.5`} aria-label={`${numberLabel ?? label}. Tap to type an amount`} data-testid="qty-edit">
+              <button type="button" onClick={open} className={`tap ${hitY} h-8 min-w-[52px] rounded-lg px-1 text-[16px] font-bold before:-inset-x-0.5`} aria-label={`${numberLabel ?? label}. Tap to type an amount`} data-testid="qty-edit">
                 <b aria-live="polite" data-testid="qty">{label}</b>
               </button>
             )}
