@@ -366,7 +366,7 @@ try {
     await page.getByTestId('toast').getByRole('button', { name: 'Undo' }).click()
     assert.equal((await state(page)).entries.filter((e) => e.source === 'photo').length, 0)
     // Log again for real and see it on Today.
-    await page.getByRole('button', { name: 'Log food' }).click()
+    await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click() // v1.17: + opens the Quick Log Menu
     await snap(page)
     await dialog(page).getByRole('button', { name: /Estimate/ }).click()
     await dialog(page).getByRole('button', { name: 'Log 4 items' }).click()

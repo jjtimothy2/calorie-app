@@ -39,7 +39,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     if (name != null) await page.fill('input[name=name]', name)
     if (protein != null) await dialog.getByLabel('Protein').fill(String(protein))
   }
-  const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.waitForURL('**/log**') }
+  const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click(); await page.waitForURL('**/log**') }
   // v1.13.2: a log goes to Home and the snackbar shows there; back to Log for the next one.
   const landed = async () => { await page.waitForURL(BASE + '/'); await page.getByTestId('toast').waitFor(); await toLog() }
   const toHome = async () => { await page.goto(BASE + '/'); await page.getByTestId('eaten').waitFor() }

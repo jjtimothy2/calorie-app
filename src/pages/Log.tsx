@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FoodSheet } from '../components/FoodSheet'
 import { QuickAddSheet } from '../components/QuickAddSheet'
@@ -16,6 +16,7 @@ import { USER_SERVING, type UserFood } from '../lib/myFoods'
 import { SavedMark, MyFoodSheet, MyFoodEditSheet, macroLine } from '../components/MyFoodSheet'
 import { perServing, readAi, type AiSettings } from '../lib/ai'
 import { downscalePhoto } from '../lib/photo'
+import { useOnline } from '../components/PlusMenu'
 import { MEALS, MEAL_LABEL, type Entry, type ExerciseEntry, type Meal } from '../lib/types'
 
 type Tab = 'recent' | 'fav' | 'mine' | 'all'
@@ -90,10 +91,6 @@ export default function Log() {
   const takePhoto = () => { setAiMenu(null); captureRef.current?.click() }
   const fromLibrary = () => { setAiMenu(null); fileRef.current?.click() }
   const typeIt = () => { const ai = readAi(); setAiMenu(null); if (ai) setAiFlow({ ai, photo: null, photoError: false }) }
-  // v1.14 AI-first cards (Reed's option 3): straight to the camera or the typed estimate. No key yet: the same setup
-  // sheet as the AI button. Offline: they show "Needs internet" (like the AI button) and open nothing.
-  const snapCard = () => { if (!online) return; if (!readAi()) { setNoKey(true); return } takePhoto() }
-  const describeCard = () => { if (!online) return; if (!readAi()) { setNoKey(true); return } typeIt() }
   const onFile = async (file: Blob | undefined, src: 'camera' | 'library') => {
     if (fileRef.current) fileRef.current.value = '' // same photo can be picked again
     if (captureRef.current) captureRef.current.value = ''
@@ -225,10 +222,8 @@ export default function Log() {
             <p className="mt-auto text-center text-xs text-mute">From a watch? Use Quick add burn below. Estimates are illustrative.</p>
           </>
         ) : (<>
-        <div className="grid shrink-0 grid-cols-2 gap-3" role="group" aria-label="Log with AI" data-testid="ai-cards">
-          <AiCardButton icon={<CameraIcon className="h-[22px] w-[22px]" />} label="Snap a photo" onClick={snapCard} offline={!online} testId="ai-card-snap" />
-          <AiCardButton icon={<PencilIcon className="h-[20px] w-[20px]" />} label="Describe your meal" onClick={describeCard} offline={!online} testId="ai-card-describe" />
-        </div>
+        {/* v1.17: the Snap a photo / Describe your meal tiles (v1.14) moved into the + menu, so search and the list sit
+            98 px higher. The ✦ button below keeps its own menu. */}
         <div className="flex items-center gap-2.5 rounded-2xl border-2 border-line bg-card px-4 py-3 focus-within:border-g-ink">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="text-mute" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input
@@ -373,18 +368,6 @@ export default function Log() {
   )
 }
 
-/** navigator.onLine, kept live. */
-function useOnline() {
-  const [on, setOn] = useState(() => typeof navigator === 'undefined' || navigator.onLine !== false)
-  useEffect(() => {
-    const up = () => setOn(true), down = () => setOn(false)
-    window.addEventListener('online', up)
-    window.addEventListener('offline', down)
-    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
-  }, [])
-  return on
-}
-
 /**
  * True while an on-screen keyboard takes a big bite out of the visual viewport (iOS keeps the layout height, Android
  * shrinks it; both shrink visualViewport). Compared with the tallest height seen at this width, so a desktop window
@@ -455,30 +438,6 @@ function AiMenu({ pos, fromKeyboard, onClose, onTakePhoto, onFromLibrary, onType
         <SparkleIcon gradient className="h-[34px] w-[34px]" />
       </button>
     </div>
-  )
-}
-
-/**
- * v1.14: one of the two AI cards above search (Reed's option 3). Green icon in a soft circle over a one-line label,
- * 84 px tall, 18 px radius, card background, line border. Offline: the AI button's needs-internet look (dashed border,
- * muted, "Needs internet") and it opens nothing (aria-disabled, so it stays readable and focusable).
- */
-function AiCardButton({ icon, label, onClick, offline, testId }: { icon: ReactNode; label: string; onClick: () => void; offline?: boolean; testId: string }) {
-  return (
-    <button type="button" onClick={offline ? undefined : onClick} aria-disabled={offline || undefined} aria-label={offline ? `${label}. Needs internet` : undefined} data-testid={testId}
-      className={`tap flex h-[84px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-[18px] px-2 ${offline ? 'border-2 border-dashed border-line text-mute' : 'border border-line bg-card'}`}>
-      {offline ? (
-        <>
-          <span className="max-w-full truncate text-[15px] font-bold leading-tight" data-testid="ai-card-label">{label}</span>
-          <span className="flex items-center gap-1 text-[13px] font-semibold" data-testid="ai-card-offline"><SparkleIcon className="h-4 w-4" />Needs internet</span>
-        </>
-      ) : (
-        <>
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-g-soft text-g-ink" aria-hidden="true">{icon}</span>
-          <span className="max-w-full truncate text-[15px] font-bold leading-tight text-ink" data-testid="ai-card-label">{label}</span>
-        </>
-      )}
-    </button>
   )
 }
 

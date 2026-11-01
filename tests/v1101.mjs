@@ -91,7 +91,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
   const dialog = page.getByRole('dialog')
   const ls = (k) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), k)
   const toHome = async () => { await page.goto(BASE + '/'); await page.getByTestId('eaten').waitFor() }
-  const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.waitForURL('**/log**') }
+  const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click(); await page.waitForURL('**/log**') }
   const toMine = async () => { await toHome(); await toLog(); await page.getByTestId('tab-mine').click(); await page.getByTestId('food-list').waitFor() }
   const list = page.getByTestId('food-list')
   const toastGone = () => page.getByTestId('toast').waitFor({ state: 'detached', timeout: 8000 })

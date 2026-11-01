@@ -150,7 +150,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     const dialog = page.getByRole('dialog')
     const ls = (k) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), k)
     const toHome = async () => { await page.goto(BASE + '/'); await page.getByTestId('eaten').waitFor() }
-    const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.waitForURL('**/log**') }
+    const toLog = async () => { await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click(); await page.waitForURL('**/log**') }
 
     await step(`${tag} a saved food shows a bookmark (aria-label Saved food) in search and Recent, no Mine or "your food" text`, async () => {
       await toHome(); await toLog()

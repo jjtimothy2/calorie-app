@@ -84,8 +84,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   const logBtn = () => dialog.getByRole('button', { name: /^Log \d+ items?/ })
   const focused = () => page.evaluate(() => { const a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) ? a.tagName : null })
   const describe = async () => {
-    await page.goto(BASE + '/log?meal=lunch'); await page.getByTestId('ai-cards').waitFor()
-    await page.getByTestId('ai-card-describe').click()
+    await page.goto(BASE + '/log?meal=lunch'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
+    await page.getByTestId('ai-btn').click(); await page.getByTestId('menu-type').click() // v1.17: the cards moved to the + menu
     await dialog.getByRole('textbox', { name: 'What did you eat?' }).fill('keripik tempe, nasi, sambal, ayam goreng')
     await dialog.getByRole('button', { name: /^Estimate$/ }).click()
     await item('Ayam goreng').waitFor(); await page.waitForTimeout(450)
@@ -232,9 +232,9 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(JSON.stringify((await st()).entries.filter((e) => e.id === 'o1' || e.id === 'o2')), before)
   })
 
-  await step(`${tag} Snap a photo leads to the same servings sheet`, async () => {
-    await page.goto(BASE + '/log?meal=dinner'); await page.getByTestId('ai-cards').waitFor()
-    await page.getByTestId('ai-card-snap').click()
+  await step(`${tag} a photo (✦ › Take photo) leads to the same servings sheet`, async () => {
+    await page.goto(BASE + '/log?meal=dinner'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
+    await page.getByTestId('ai-btn').click(); await page.getByTestId('menu-photo').click()
     await page.getByTestId('photo-capture').setInputFiles(PLATE)
     await dialog.getByTestId('photo-added').waitFor()
     await dialog.getByRole('button', { name: /^Estimate$/ }).click()

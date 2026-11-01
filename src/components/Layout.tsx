@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
+import { PlusButton } from './PlusMenu'
 import { useFirstVisit } from './motion'
 
 /**
@@ -42,7 +43,6 @@ function Ico({ d }: { d: string }) {
 }
 
 export function TabBar() {
-  const nav = useNavigate()
   const tab = ({ isActive }: { isActive: boolean }) =>
     `tap flex min-w-[60px] flex-col items-center gap-1 px-1 py-1 ${isActive ? 'font-bold text-ink' : 'text-mute'}`
   return (
@@ -57,15 +57,8 @@ export function TabBar() {
         <Ico d="M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 5V2M12 13l3-3" />
         Nutrition
       </NavLink>
-      <button
-        type="button"
-        aria-label="Log food"
-        onClick={() => nav('/log')}
-        data-testid="plus"
-        className="fab -mt-6 grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-ink text-bg shadow-[0_8px_20px_rgba(42,36,32,.28)]"
-      >
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-      </button>
+      {/* v1.17: the + opens the Quick Log Menu (PlusMenu.tsx) instead of going straight to Log. */}
+      <PlusButton />
       <NavLink to="/history" className={tab}>
         <Ico d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
         History

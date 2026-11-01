@@ -203,3 +203,24 @@ html, body { overscroll-behavior: none; }
 @keyframes wa-steam { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .wa-steam { animation: wa-steam .35s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .wa-draw, .wa-pop, .wa-fade, .wa-steam { animation: none !important; } }
+
+/* v1.17 Quick Log Menu: the + turns into an x, the scrim fades in, the pills rise out of the + one after another with a
+   light spring (140 ms each, 20 ms apart: 200 ms in all). .plus-out plays it in reverse (top pill first). Reduced
+   motion: everything just fades. Backwards fill on the way in, so the pill press scale is not held by the animation. */
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes plus-rise { from { opacity: 0; transform: translateY(calc((var(--i) + 1) * 54px + 16px)) scale(.4); } to { opacity: 1; transform: none; } }
+@keyframes plus-sink { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(calc((var(--i) + 1) * 54px + 16px)) scale(.4); } }
+@keyframes plus-turn { from { transform: rotate(0); } to { transform: rotate(45deg); } }
+@keyframes plus-unturn { from { transform: rotate(45deg); } to { transform: rotate(0); } }
+.plus-scrim { animation: fade-in .2s ease-out; }
+.plus-out .plus-scrim { animation: fade-out .2s ease-in forwards; }
+.plus-pill { transform-origin: 50% 100%; animation: plus-rise .14s cubic-bezier(.34, 1.4, .64, 1) calc(var(--i) * 20ms) backwards; }
+.plus-out .plus-pill { animation: plus-sink .14s cubic-bezier(.4, 0, .9, .6) calc((3 - var(--i)) * 20ms) forwards; }
+.plus-x svg { transform: rotate(45deg); animation: plus-turn .2s cubic-bezier(.34, 1.4, .64, 1) backwards; }
+.plus-out .plus-x svg { animation: plus-unturn .2s ease-in forwards; }
+@media (prefers-reduced-motion: reduce) {
+  /* !important to win over the global reduced-motion reset above: the spec asks for a fade here, not nothing. */
+  .plus-scrim, .plus-pill, .plus-x { animation: fade-in .15s ease-out backwards !important; }
+  .plus-out .plus-scrim, .plus-out .plus-pill, .plus-out .plus-x { animation: fade-out .15s ease-in forwards !important; }
+  .plus-x svg, .plus-out .plus-x svg { animation: none !important; }
+}

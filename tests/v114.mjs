@@ -123,7 +123,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await page.getByTestId('ai-group-row').click(); await page.getByTestId('ai-group-sheet').waitFor()
     assert.match(await page.getByTestId('ai-group-sheet').innerText(), /1 plate \(300 g\)[\s\S]*1 tbsp \(15 g\)/)
     await close()
-    await page.goto(BASE + '/log?meal=lunch'); await page.getByTestId('ai-cards').waitFor()
+    await page.goto(BASE + '/log?meal=lunch'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
     assert.equal(await raw(), before, 'storage untouched until a save')
   })
 
@@ -260,66 +260,38 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await close()
   })
 
-  await step(`${tag} Log: search not focused, two equal AI cards above search (84 px, 18 px radius, card bg, line border, green icon over label); bottom bar and sparkle unchanged`, async () => {
-    await page.goto(BASE + '/log?meal=lunch'); await page.getByTestId('ai-cards').waitFor(); await page.waitForTimeout(400)
+  // v1.17: the two AI cards moved into the bottom-nav + menu (tests/v117.mjs). Log keeps the ✦ button and its menu.
+  await step(`${tag} Log (v1.17): search not focused, no AI cards, search right under the Food / Exercise chips; ✦ and Add Calories in the bar`, async () => {
+    await page.goto(BASE + '/log?meal=lunch'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor(); await page.waitForTimeout(400)
     assert.equal(await focused(), null, 'search not focused')
-    const search = page.getByRole('searchbox', { name: 'Search foods' })
-    const cards = await page.getByTestId('ai-cards').evaluate((g) => [...g.children].map((b) => { const r = b.getBoundingClientRect(), cs = getComputedStyle(b), ic = b.children[0].getBoundingClientRect(), lb = b.children[1].getBoundingClientRect()
-      return { text: b.innerText.trim(), h: Math.round(r.height), w: Math.round(r.width), bottom: r.bottom, radius: cs.borderTopLeftRadius, border: cs.borderTopStyle, bg: cs.backgroundColor, iconAbove: ic.bottom <= lb.top + 1, iconColor: getComputedStyle(b.children[0]).color } }))
-    assert.deepEqual(cards.map((c) => c.text), ['Snap a photo', 'Describe your meal'])
-    for (const c of cards) { assert.equal(c.h, 84); assert.equal(c.radius, '18px'); assert.equal(c.border, 'solid'); assert.ok(c.iconAbove); assert.notEqual(c.bg, 'rgba(0, 0, 0, 0)') }
-    assert.equal(cards[0].w, cards[1].w, 'equal widths')
-    assert.ok(cards[0].bottom <= (await search.boundingBox()).y, 'cards above search')
+    assert.equal(await page.getByTestId('ai-cards').count(), 0)
+    assert.equal(await page.getByText(/Snap a photo|Describe your meal/).count(), 0)
+    const gap = await page.evaluate(() => document.querySelector('input[aria-label="Search foods"]').closest('div').getBoundingClientRect().top - document.querySelector('[role=group][aria-label="What to log"]').getBoundingClientRect().bottom)
+    assert.ok(Math.abs(gap - 14) < 0.5, `gap ${gap}`)
     assert.equal(await page.getByRole('button', { name: 'Estimate with AI', exact: true }).count(), 1, 'sparkle still in the bar')
     assert.equal(await page.getByRole('button', { name: /^Add Calories/ }).count(), 1)
-    await shot('log-cards-key')
   })
 
-  await step(`${tag} key set: Snap opens the camera capture, Describe opens the typed estimate`, async () => {
+  await step(`${tag} ✦ with a key: Take photo opens the camera capture, Type it the typed estimate; no key: the AI setup sheet`, async () => {
+    const ai = page.getByRole('button', { name: 'Estimate with AI', exact: true })
     await page.evaluate(() => { window.__clicks = [] })
-    await page.getByTestId('ai-card-snap').click()
+    await ai.click(); await page.getByTestId('menu-photo').click()
     assert.deepEqual(await page.evaluate(() => window.__clicks), [{ id: 'photo-capture', capture: 'environment' }])
-    assert.equal(await dialog.count(), 0)
-    await page.getByTestId('ai-card-describe').click()
+    await ai.click(); await page.getByTestId('menu-type').click()
     await dialog.getByRole('textbox', { name: 'What did you eat?' }).waitFor()
     await close()
-  })
-
-  await step(`${tag} no key: either card opens the AI setup sheet`, async () => {
     await page.evaluate(() => localStorage.removeItem('calorie-app:ai'))
-    await page.reload(); await page.getByTestId('ai-cards').waitFor()
-    for (const c of ['ai-card-snap', 'ai-card-describe']) {
-      await page.evaluate(() => { window.__clicks = [] })
-      await page.getByTestId(c).click()
-      await page.getByRole('dialog', { name: 'Set up AI estimates' }).waitFor()
-      assert.deepEqual(await page.evaluate(() => window.__clicks), [])
-      if (c === 'ai-card-snap') await shot('log-cards-nokey')
-      await close()
-    }
+    await page.reload(); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
+    await page.evaluate(() => { window.__clicks = [] })
+    await ai.click()
+    await page.getByRole('dialog', { name: 'Set up AI estimates' }).waitFor()
+    assert.deepEqual(await page.evaluate(() => window.__clicks), [])
+    await close()
     await page.evaluate((v) => localStorage.setItem('calorie-app:ai', v), AI)
-    await page.reload(); await page.getByTestId('ai-cards').waitFor()
+    await page.reload(); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
   })
 
-  await step(`${tag} offline: both cards show "Needs internet" like the AI button and open nothing`, async () => {
-    await ctx.setOffline(true)
-    await page.getByTestId('ai-offline').waitFor()
-    await page.getByTestId('ai-card-offline').first().waitFor()
-    assert.equal(await page.getByTestId('ai-card-offline').count(), 2)
-    for (const c of ['ai-card-snap', 'ai-card-describe']) {
-      const b = page.getByTestId(c)
-      assert.equal(await b.getAttribute('aria-disabled'), 'true')
-      assert.match(await b.innerText(), /Needs internet/)
-      assert.equal(await b.evaluate((el) => getComputedStyle(el).borderTopStyle), 'dashed')
-      await page.evaluate(() => { window.__clicks = [] })
-      await b.click({ force: true }); await page.waitForTimeout(250)
-      assert.equal(await dialog.count(), 0); assert.deepEqual(await page.evaluate(() => window.__clicks), [])
-    }
-    await shot('log-cards-offline')
-    await ctx.setOffline(false)
-    await page.getByTestId('ai-card-offline').first().waitFor({ state: 'detached' })
-  })
-
-  await step(`${tag} cards only in Food mode; storage: v3 schema, :v2 :v1 :ai :foods byte-identical, no new keys, untouched entries byte-identical`, async () => {
+  await step(`${tag} no cards in Exercise mode either; storage: v3 schema, :v2 :v1 :ai :foods byte-identical, no new keys, untouched entries byte-identical`, async () => {
     await page.goto(BASE + '/log?meal=lunch&mode=exercise'); await page.waitForTimeout(400)
     assert.equal(await page.getByTestId('ai-cards').count(), 0)
     const s = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])))

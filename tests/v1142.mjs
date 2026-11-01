@@ -113,8 +113,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   const box = (loc) => loc.evaluate((e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height } })
   const tap = (x, y) => page.touchscreen.tap(x, y)
   const describe = async () => {
-    await page.goto(BASE + '/log?meal=lunch'); await page.getByTestId('ai-cards').waitFor()
-    await page.getByTestId('ai-card-describe').click()
+    await page.goto(BASE + '/log?meal=lunch'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
+    await page.getByTestId('ai-btn').click(); await page.getByTestId('menu-type').click() // v1.17: the cards moved to the + menu
     await dialog.getByRole('textbox', { name: 'What did you eat?' }).fill('keripik tempe, nasi, sambal, ayam goreng')
     await dialog.getByRole('button', { name: /^Estimate$/ }).click()
     await item('Ayam goreng').waitFor(); await page.waitForTimeout(450)

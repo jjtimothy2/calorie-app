@@ -219,7 +219,7 @@ try {
     assert.equal(await page.getByTestId('goal-progress').innerText(), 'Right on your 400 goal.')
   })
   await step('log exercise: Food/Exercise switch, search, duration, intensity', async () => {
-    await page.getByRole('button', { name: 'Log food' }).click()
+    await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click() // v1.17: + opens the Quick Log Menu
     await page.getByRole('button', { name: 'Exercise' }).click()
     await page.waitForURL('**/log?mode=exercise')
     await page.getByLabel('Search activity').fill('badm')
@@ -317,7 +317,7 @@ try {
     await page.waitForURL(BASE + '/')
     await page.getByTestId('closed-pill').waitFor()
     assert.equal(await page.getByRole('link', { name: 'Add to Lunch' }).count(), 0)
-    await page.getByRole('button', { name: 'Log food' }).click()
+    await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click() // v1.17: + opens the Quick Log Menu
     await page.getByTestId('day-locked').waitFor()
     // v1.3.4: a closed day hides the Quick add bar on both tabs (not just disabled).
     assert.equal(await page.getByTestId('qa-bar').count(), 0)
@@ -675,7 +675,7 @@ try {
       const nav = await pg.locator('nav').boundingBox()
       assert.ok(nav.y + nav.height <= h + 0.5, 'nav inside the viewport')
       assert.equal(await pg.locator('nav').evaluate((el) => getComputedStyle(el).paddingBottom), inset ? `${inset}px` : '12px')
-      await plus.tap()
+      await plus.tap(); await pg.getByTestId('plus-manual').tap() // v1.17: + opens the Quick Log Menu
       await pg.waitForURL('**/log**')
       await c.close()
     })

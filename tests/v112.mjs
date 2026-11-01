@@ -181,7 +181,7 @@ for (const [width, height, motion] of [[390, 844, 'no-preference'], [375, 667, '
     assert.equal(await page.getByTestId('past-day-note').count(), 0)
     await page.getByText('Nasi uduk').waitFor()
     assert.ok(await page.getByTestId('streak').isVisible())
-    await page.getByTestId('plus').click()
+    await page.getByTestId('plus').click(); await page.getByTestId('plus-manual').click() // v1.17: + opens the Quick Log Menu
     await page.getByTestId('qa-bar').waitFor()
     assert.equal(await page.getByTestId('past-day-note').count(), 0)
     await page.getByTestId('qa-btn').click()

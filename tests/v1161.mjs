@@ -142,8 +142,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     return f
   }
   const describe = async () => {
-    await page.goto(BASE + '/log?meal=lunch'); await page.getByTestId('ai-cards').waitFor()
-    await page.getByTestId('ai-card-describe').click()
+    await page.goto(BASE + '/log?meal=lunch'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
+    await page.getByTestId('ai-btn').click(); await page.getByTestId('menu-type').click() // v1.17: the cards moved to the + menu
     await audit('describe sheet')
     await dialog.getByRole('textbox', { name: 'What did you eat?' }).fill('keripik tempe, nasi, sambal, ayam goreng')
     await dialog.getByRole('button', { name: /^Estimate$/ }).click()
@@ -206,7 +206,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
 
   await step(`${tag} audit Log: food search, meal select, Add Calories sheet, food sheet (typing amount), exercise search, quick burn`, async () => {
     await close()
-    await page.goto(BASE + '/log?meal=lunch'); await page.getByTestId('ai-cards').waitFor()
+    await page.goto(BASE + '/log?meal=lunch'); await page.getByRole('searchbox', { name: 'Search foods' }).waitFor()
     await audit('log food', 2)
     await page.getByTestId('qa-btn').click(); await dialog.waitFor(); await audit('add calories sheet', 2); await close()
     await page.getByRole('button', { name: /^Nasi goreng, 1 plate/ }).click(); await dialog.waitFor()
