@@ -1,6 +1,8 @@
 // v1.4: History balance chart with a 7-day average line, press-and-hold scrubbing and
 // swipe paging, modelled on Apple Health's weight chart. Bars keep the v1.3 design.
 // v1.4.2: the same chart draws Protein (variant="protein"): pink bars from zero, solid when the target is hit.
+// v1.18: History custom range. swipe={false} turns paging off (hold still scrubs); unit="week" for weekly bars.
+// Bars are never wider than 7-day bars, so a short range (1 to 6 days) keeps the usual look, centred in each slot.
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { fmt } from '../lib/calc'
 import { haptic } from '../lib/haptics'
@@ -23,11 +25,15 @@ type G = {
  * days: oldest to today, length a multiple of n. page 0 is the latest n days, page 1 the n before, and so on.
  * The plot is one wide strip translated sideways; the y axis and reference lines stay put.
  */
-export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub, height = 232, variant = 'balance' }: {
+export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub, height = 232, variant = 'balance', swipe = true, unit = 'day' }: {
   days: TrendDay[]; n: number; goal: number; page: number; onPage: (p: number) => void
   scrub: number | null; onScrub: (i: number | null) => void; height?: number
   /** balance: goal is the daily balance goal. protein: goal is the protein target in grams. */
   variant?: 'balance' | 'protein'
+  /** v1.18: false for a custom range: no swiping or arrow-key paging. */
+  swipe?: boolean
+  /** v1.18: what one bar is, for the screen-reader label. */
+  unit?: 'day' | 'week'
 }) {
   const isP = variant === 'protein'
   const W = 350, left = 48, labelH = 22, top = 10
@@ -36,7 +42,8 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   const N = days.length
   const slot = plotW / n
   const gap = n > 10 ? 3 : 9 // v1.4.2: 9 (was 10) keeps 7-day bars as wide as before with the wider goal-label gutter
-  const bw = slot - gap
+  const bw = Math.min(slot - gap, plotW / 7 - 9)
+  const inset = (slot - bw) / 2 // gap / 2 for 7 or more bars
   const maxPage = Math.max(0, N / n - 1)
   const tx = (p: number) => -(N - n * (p + 1)) * slot
   const start = N - n * (page + 1), end = start + n - 1
@@ -62,7 +69,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
     .map((r) => `${monotonePath(r)}L${r[r.length - 1][0].toFixed(2)},${zero}L${r[0][0].toFixed(2)},${zero}Z`).join(''), [days, n, S]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const geom = (d: TrendDay, i: number) => {
-    const x = left + i * slot + gap / 2
+    const x = left + i * slot + inset
     const v = d.value ?? 0
     const surplus = v < 0
     const room = surplus ? plotBottom - zero : zero - top // today's open bar may pass the scale: it runs to the plot edge
@@ -191,7 +198,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
       if (!s || s.id !== e.pointerId) return
       const dxPx = e.clientX - s.x0, dyPx = e.clientY - s.y0
       if (s.mode === 'pending') {
-        if (Math.abs(dxPx) > SLOP && Math.abs(dxPx) > Math.abs(dyPx)) { s.mode = 'pan'; clearTimeout(s.timer) }
+        if (Math.abs(dxPx) > SLOP && Math.abs(dxPx) > Math.abs(dyPx)) { if (swipe) { s.mode = 'pan'; clearTimeout(s.timer) } } // no swipe: a hold still scrubs
         else if (Math.abs(dyPx) > SLOP) { s.mode = 'none'; clearTimeout(s.timer) }
       }
       if (s.mode === 'scrub') scrubAt(e.clientX)
@@ -210,6 +217,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
     onPointerUp: end_,
     onPointerCancel: end_,
     onKeyDown: (e: React.KeyboardEvent) => {
+      if (!swipe) return
       if (e.key === 'ArrowLeft' && page < maxPage) { e.preventDefault(); settle(0, plotW, 0) }
       if (e.key === 'ArrowRight' && page > 0) { e.preventDefault(); settle(0, -plotW, 0) }
     },
@@ -222,8 +230,8 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   const tight = gapPx < 12 // keep '0' and the goal label apart when the lines are close
   const sel = scrub != null ? days[scrub] : null
   return (
-    <div {...handlers} tabIndex={0} aria-label={`${isP ? 'Protein' : 'Balance'} chart. Press and hold to see a day. Swipe or use the arrow keys to change period.`}
-      className="relative -mx-1 select-none rounded-xl outline-offset-2 [-webkit-touch-callout:none]" style={{ touchAction: 'pan-y' }} data-testid="trend-chart" data-variant={variant} data-page={page}>
+    <div {...handlers} tabIndex={0} aria-label={`${isP ? 'Protein' : 'Balance'} chart. Press and hold to see a ${unit}.${swipe ? ' Swipe or use the arrow keys to change period.' : ''}`}
+      className="relative -mx-1 select-none rounded-xl outline-offset-2 [-webkit-touch-callout:none]" style={{ touchAction: 'pan-y' }} data-testid="trend-chart" data-variant={variant} data-page={page} data-swipe={swipe ? 'yes' : 'no'} data-unit={unit}>
       <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid={isP ? 'protein-chart' : 'chart'} data-scale={S} data-top={sTop} data-bottom={sBot}
         data-zero={zero.toFixed(2)} data-k={k.toFixed(6)} data-plot-top={top} data-plot-bottom={plotBottom}>
         <defs>
@@ -264,7 +272,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
                       fill={isP ? 'var(--color-protein)' : surplus ? 'var(--color-over)' : 'var(--color-g)'} opacity={(d.open ? 0.5 : 1) * (isP && !d.hit ? 0.4 : 1) * (dim ? 0.32 : 1)}
                       className="bar-grow" style={{ transformOrigin: surplus ? 'top' : 'bottom', animationDelay: vis ? `${(i - start) * (n > 10 ? 12 : 45)}ms` : '0ms', transition: 'opacity .12s' }} />
                   )}
-                  {d.tick && <text x={x + bw / 2} y={height - 4} textAnchor="middle" fontSize="13" fill={scrub === i ? 'var(--color-ink)' : 'var(--color-mute)'} fontWeight={scrub === i ? 700 : 400}>{d.label}</text>}
+                  {d.tick && <text data-tick={d.key} x={x + bw / 2} y={height - 4} textAnchor="middle" fontSize="13" fill={scrub === i ? 'var(--color-ink)' : 'var(--color-mute)'} fontWeight={scrub === i ? 700 : 400}>{d.label}</text>}
                 </g>
               )
             })}
