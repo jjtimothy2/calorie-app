@@ -53,8 +53,8 @@ const FAB = 'fab grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full
  * motion: a plain fade. The menu is a history entry, so back closes it instead of leaving the tab.
  * Take photo and Upload click their file input synchronously inside the tap (iOS only opens a picker from a user
  * gesture), Describe it opens the describe sheet, Manual opens Log (no autofocus). The AI result logs to the meal for
- * the time of day on the picked day, like Log. No key: the AI pills say "Needs AI key" and open the setup sheet.
- * Offline: "Needs internet" and they do nothing. The file inputs, AI flow and sheets live here, portalled into the
+ * the time of day on the picked day, like Log. No key (online or offline): the AI pills say "Need AI key" and open
+ * the setup sheet. Offline with a key: "Needs internet" and they do nothing. The file inputs, AI flow and sheets live here, portalled into the
  * phone frame so they cover the whole screen from any tab.
  */
 export function PlusButton() {
@@ -137,9 +137,10 @@ export function PlusButton() {
       nav('/log', { replace: true })
       return
     }
-    if (!online) return // "Needs internet": does nothing, the menu stays open
+    // No key wins over offline (Jordy: "if no key show Need AI key"): the setup sheet opens either way.
     const ai = readAi()
     if (!ai) { close(); setNoKey(true); return }
+    if (!online) return // "Needs internet" (has a key): does nothing, the menu stays open
     if (id === 'photo') captureRef.current?.click()
     else if (id === 'upload') fileRef.current?.click()
     close()
@@ -197,7 +198,7 @@ export function PlusButton() {
   }
   const day = dayView(state, logDate)
 
-  const sub = (it: Item) => (!it.ai ? null : !online ? 'Needs internet' : !menu?.key ? 'Needs AI key' : null)
+  const sub = (it: Item) => (!it.ai ? null : !menu?.key ? 'Need AI key' : !online ? 'Needs internet' : null)
   const overlay = (
     <>
       {phase !== 'off' && menu && (
@@ -206,7 +207,7 @@ export function PlusButton() {
           <div ref={box} role="menu" aria-label="Log food" data-testid="plus-menu" className="absolute flex -translate-x-1/2 flex-col-reverse items-stretch gap-2.5" style={{ left: menu.cx, bottom: menu.bottom + 60 + 14 }}>
             {ITEMS.map((it, i) => {
               const s = sub(it)
-              const off = !!s && !online
+              const off = s === 'Needs internet'
               return (
                 <button key={it.id} role="menuitem" type="button" onClick={() => run(it.id)} aria-disabled={off || undefined} aria-label={s ? `${it.label}. ${s}` : undefined}
                   data-testid={`plus-${it.id}`} data-muted={s ? '' : undefined} style={{ '--i': i } as CSSProperties}

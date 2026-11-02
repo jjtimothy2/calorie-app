@@ -4,7 +4,7 @@
 // all); x, scrim, Escape or browser back close it in reverse. Reduced motion: fade only. Take photo / Upload click their
 // file input synchronously inside the tap (capture=environment for the camera, none for the library), Describe it opens
 // the describe sheet, the result logs to the meal for the time of day. Manual opens Log with no autofocus. No key: the
-// AI pills say "Needs AI key" and open the setup sheet. Offline: "Needs internet" and do nothing. Manual always works.
+// AI pills say "Need AI key" and open the setup sheet. Offline: "Needs internet" and do nothing. Manual always works.
 // Log: the Snap a photo / Describe your meal tiles are gone (search 98 px higher), the ✦ button stays.
 // 44 px targets, 16 px+ inputs, fits at 375. Schema stays v3; :v2 :v1 :ai :foods byte-identical. Mocked Gemini.
 // WebKit at 390x844 and 375x667. Screenshots: screenshots/v117-*.png.
@@ -322,7 +322,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await page.goBack(); await page.waitForURL('**/history')
   })
 
-  await step(`${tag} no AI key: Take photo, Upload, Describe it muted with "Needs AI key"; tapping one opens the AI setup sheet (no picker); Manual works`, async () => {
+  await step(`${tag} no AI key: Take photo, Upload, Describe it muted with "Need AI key"; tapping one opens the AI setup sheet (no picker); Manual works`, async () => {
     await page.evaluate(() => localStorage.removeItem('calorie-app:ai'))
     await home(); await clicks()
     await openMenu()
@@ -331,8 +331,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
       assert.equal(await p.evaluate((e) => e.hasAttribute('data-muted')), muted, id)
       assert.equal(await p.getAttribute('aria-disabled'), null, `${id} still works`)
       if (muted) {
-        assert.equal(await p.getByTestId('plus-sub').innerText(), 'Needs AI key')
-        assert.match(await p.getAttribute('aria-label'), /\. Needs AI key$/)
+        assert.equal(await p.getByTestId('plus-sub').innerText(), 'Need AI key')
+        assert.match(await p.getAttribute('aria-label'), /\. Need AI key$/)
         assert.equal(await p.evaluate((e) => getComputedStyle(e).backgroundColor), 'rgb(239, 231, 216)')
       }
     }
