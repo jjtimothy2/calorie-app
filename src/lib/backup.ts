@@ -21,7 +21,9 @@ export const META_KEY = 'calorie-app:backup' // { lastExportAt, dismissedAt }; d
 export const AI_SECRET_KEY = 'calorie-app:ai'
 /** Goal-date plan: when the Home "Weighed in lately?" note was last dismissed ({ dismissedAt: 'YYYY-MM-DD' }). Device-only. */
 export const WEIGH_KEY = 'calorie-app:weigh'
-const DEVICE_ONLY = new Set([META_KEY, AI_SECRET_KEY, WEIGH_KEY])
+/** v1.20: today's "Show other ideas" count ({ date, count }). Same value as IDEAS_KEY in ideas.ts. Device-only. */
+export const IDEAS_COUNT_KEY = 'calorie-app:ideas'
+const DEVICE_ONLY = new Set([META_KEY, AI_SECRET_KEY, WEIGH_KEY, IDEAS_COUNT_KEY])
 export const REMIND_DAYS = 7
 const DAY = 86_400_000
 

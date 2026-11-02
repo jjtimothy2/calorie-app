@@ -6,7 +6,8 @@ import { Button, Card, Chip } from './ui'
 
 type Status = { tone: 'ok' | 'err' | 'info'; text: string } | null
 
-export function AiCard({ focus = false }: { focus?: boolean }) {
+/** v1.20: focusInput=false (Meal Ideas, ?kb=0) scrolls to the card without focusing the key field, so no keyboard opens. */
+export function AiCard({ focus = false, focusInput = true }: { focus?: boolean; focusInput?: boolean }) {
   const saved = readAi()
   const [provider, setProvider] = useState<Provider>(saved?.provider ?? DEFAULT_PROVIDER)
   const [key, setKey] = useState(saved?.key ?? '')
@@ -20,7 +21,7 @@ export function AiCard({ focus = false }: { focus?: boolean }) {
   useEffect(() => {
     if (!focus) return
     ref.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    if (!saved) input.current?.focus({ preventScroll: true })
+    if (!saved && focusInput) input.current?.focus({ preventScroll: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus])
 

@@ -138,6 +138,40 @@ export type AiEstimate = { dish: string; scaleRef: string; items: AiItem[] }
 
 const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/[^0-9.]/g, '')) : NaN)
 
+/** v1.20: one item from the model, clamped (name 60, grams 1 to 3000, kcal up to 10,000, macros >= 0). null = unusable. */
+export function clampItem(r: unknown): AiItem | null {
+  if (typeof r !== 'object' || r === null) return null
+  const x = r as Record<string, unknown>
+  const name = typeof x.name === 'string' ? x.name.trim().slice(0, 60) : ''
+  const grams = Math.round(num(x.grams))
+  if (!name || !Number.isFinite(grams) || grams <= 0 || grams > 3000) return null
+  const k = num(x.kcal)
+  const g = (v: unknown) => { const n = num(v); return Number.isFinite(n) && n >= 0 ? n : 0 }
+  const conf = num(x.confidence)
+  return {
+    name,
+    portion: typeof x.portion === 'string' ? x.portion.trim().slice(0, 30) : '',
+    grams,
+    kcal: Number.isFinite(k) && k >= 0 ? Math.min(k, 10000) : 0,
+    protein: g(x.protein_g ?? x.protein),
+    carbs: g(x.carbs_g ?? x.carbs),
+    fat: g(x.fat_g ?? x.fat),
+    confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf > 1 ? conf / 100 : conf)) : 0.5,
+  }
+}
+
+/** v1.20: the JSON object in the model's text, tolerating ```json fences and stray prose. null = unreadable. */
+export function readJson(text: string): unknown {
+  if (typeof text !== 'string') return null
+  let s = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+  try { return JSON.parse(s) } catch {
+    const a = s.indexOf('{'), b = s.lastIndexOf('}')
+    if (a < 0 || b <= a) return null
+    s = s.slice(a, b + 1)
+    try { return JSON.parse(s) } catch { return null }
+  }
+}
+
 /** Reads the model's text into a clean estimate. Tolerates ```json fences and stray prose. null = unreadable. */
 export function parseEstimate(text: string): AiEstimate | null {
   if (typeof text !== 'string') return null
@@ -156,24 +190,8 @@ export function parseEstimate(text: string): AiEstimate | null {
   if (!raw) return null
   const items: AiItem[] = []
   for (const r of raw) {
-    if (typeof r !== 'object' || r === null) continue
-    const x = r as Record<string, unknown>
-    const name = typeof x.name === 'string' ? x.name.trim().slice(0, 60) : ''
-    const grams = Math.round(num(x.grams))
-    if (!name || !Number.isFinite(grams) || grams <= 0 || grams > 3000) continue
-    const k = num(x.kcal)
-    const g = (v: unknown) => { const n = num(v); return Number.isFinite(n) && n >= 0 ? n : 0 }
-    const conf = num(x.confidence)
-    items.push({
-      name,
-      portion: typeof x.portion === 'string' ? x.portion.trim().slice(0, 30) : '',
-      grams,
-      kcal: Number.isFinite(k) && k >= 0 ? Math.min(k, 10000) : 0,
-      protein: g(x.protein_g ?? x.protein),
-      carbs: g(x.carbs_g ?? x.carbs),
-      fat: g(x.fat_g ?? x.fat),
-      confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf > 1 ? conf / 100 : conf)) : 0.5,
-    })
+    const it = clampItem(r)
+    if (it) items.push(it)
   }
   const dish = typeof o.dish === 'string' && o.dish.trim() ? o.dish.trim().slice(0, 40) : ''
   const scaleRef = typeof o.scale_ref === 'string' ? o.scale_ref.trim().slice(0, 80) : ''
@@ -338,17 +356,19 @@ export async function testKey(s: AiSettings, f: Fetch = fetch): Promise<true> {
   return true
 }
 
-/** Sends the downscaled photo (or none) and the text, returns the parsed estimate. Throws AiError. Nothing is stored. */
-export async function estimateMeal(s: AiSettings, dataUrl: string | null, note: string, opts: { signal?: AbortSignal; fetch?: Fetch } = {}): Promise<AiEstimate> {
+/**
+ * v1.20: posts one request body to the chosen provider and returns the model's text. Throws AiError (or the caller's
+ * abort). Shared by the photo estimate and Meal Ideas.
+ */
+export async function askModel(s: AiSettings, body: unknown, opts: { signal?: AbortSignal; fetch?: Fetch } = {}): Promise<string> {
   const f = opts.fetch ?? fetch
-  if (!dataUrl && !note.trim()) throw new AiError('noFood')
   if (!online()) throw new AiError('offline')
-  const req: { url: string; headers: Record<string, string>; body: unknown } = s.provider === 'openai'
-    ? { url: `${OPENAI_BASE}/chat/completions`, headers: { Authorization: `Bearer ${s.key}`, 'Content-Type': 'application/json' }, body: openaiBody(dataUrl, note) }
-    : { url: `${GEMINI_BASE}/models/${MODELS.gemini}:generateContent`, headers: { 'x-goog-api-key': s.key, 'Content-Type': 'application/json' }, body: geminiBody(dataUrl, note) }
+  const req: { url: string; headers: Record<string, string> } = s.provider === 'openai'
+    ? { url: `${OPENAI_BASE}/chat/completions`, headers: { Authorization: `Bearer ${s.key}`, 'Content-Type': 'application/json' } }
+    : { url: `${GEMINI_BASE}/models/${MODELS.gemini}:generateContent`, headers: { 'x-goog-api-key': s.key, 'Content-Type': 'application/json' } }
   let res: Response
   try {
-    res = await send(f, req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) }, opts.signal)
+    res = await send(f, req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(body) }, opts.signal)
   } catch (e) {
     if (opts.signal?.aborted) throw e
     if ((e as Error)?.name === 'AbortError') throw new AiError('failed')
@@ -359,6 +379,15 @@ export async function estimateMeal(s: AiSettings, dataUrl: string | null, note: 
   try { j = await res.json() } catch { throw new AiError('failed') }
   const text = s.provider === 'openai' ? openaiText(j) : geminiText(j)
   if (text == null) throw new AiError('failed')
+  return text
+}
+
+/** Sends the downscaled photo (or none) and the text, returns the parsed estimate. Throws AiError. Nothing is stored. */
+export async function estimateMeal(s: AiSettings, dataUrl: string | null, note: string, opts: { signal?: AbortSignal; fetch?: Fetch } = {}): Promise<AiEstimate> {
+  if (!dataUrl && !note.trim()) throw new AiError('noFood')
+  if (!online()) throw new AiError('offline')
+  const req = s.provider === 'openai' ? openaiBody(dataUrl, note) : geminiBody(dataUrl, note)
+  const text = await askModel(s, req, opts)
   const est = parseEstimate(text)
   if (!est) throw new AiError('failed')
   if (!est.items.length) throw new AiError('noFood')

@@ -63,6 +63,8 @@
   --color-kcal: #8a7f72;        /* calories card bar, warm neutral grey */
   --color-kcal-deep: #574e45;   /* calories past the target (graphics), still grey, never orange */
   --color-ink-soft: #45423c;
+  --color-chip-on: #dcebd9;      /* v1.20 selected History range pill: soft green tint, text g-soft-ink (AA) */
+  --color-chip-on-line: #8cc09f;
 }
 
 html, body, #root { height: 100%; }

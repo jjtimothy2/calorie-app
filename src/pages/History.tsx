@@ -398,7 +398,7 @@ export default function History() {
 }
 
 // v1.19 view switch: a full-width segmented Calories / Protein track with a sliding white thumb, then small outlined
-// date pills (7d, 30d, Custom), left-aligned.
+// date pills (7d, 30d, Custom). v1.20: right-aligned; the selected pill is a soft green tint, so the switch stays the main control.
 type Ctl = { view: 'balance' | 'protein'; setView: (v: 'balance' | 'protein') => void; n: 7 | 30; custom: DateRange | null; setRange: (r: 7 | 30) => void; pick: () => void }
 const customAria = (c: DateRange | null) => (c ? `Custom range, ${spanLabel(c.from, c.to, true)}. Change dates` : 'Custom range')
 const VIEWS = [['balance', 'Calories'], ['protein', 'Protein']] as const
@@ -414,7 +414,7 @@ function ViewControls(p: Ctl) {
             className={`tap relative h-11 flex-1 rounded-full text-[15px] font-semibold ${p.view === v ? 'text-ink' : 'text-mute'}`}>{t}</button>
         ))}
       </div>
-      <div className="flex gap-1.5" role="group" aria-label="Range">
+      <div className="flex justify-end gap-1.5" role="group" aria-label="Range" data-testid="range-row">
         <OutlinePill on={!p.custom && p.n === 7} onClick={() => p.setRange(7)} className="px-3" aria-label="7d (7 days)">7d</OutlinePill>
         <OutlinePill on={!p.custom && p.n === 30} onClick={() => p.setRange(30)} className="px-3" aria-label="30d (30 days)">30d</OutlinePill>
         <OutlinePill on={!!p.custom} onClick={p.pick} className="whitespace-nowrap px-3" aria-label={customAria(p.custom)} aria-haspopup="dialog" data-testid="range-custom">
@@ -425,7 +425,7 @@ function ViewControls(p: Ctl) {
   )
 }
 
-/** Small outlined date pill, ink ring when on. Still 44 px tall. */
+/** Small date pill. On: soft green tint fill (--color-chip-on), green line, g-soft-ink text. Off: card, light line, mute text. 44 px tall. */
 function OutlinePill({ on, className = '', ...rest }: Parameters<typeof Chip>[0]) {
-  return <button type="button" aria-pressed={on} className={`tap h-11 rounded-full border bg-card text-[14px] font-semibold ${on ? 'border-ink text-ink ring-1 ring-ink ring-inset' : 'border-line text-mute'} ${className}`} {...rest} />
+  return <button type="button" aria-pressed={on} className={`tap h-11 rounded-full border text-[14px] font-semibold ${on ? 'border-chip-on-line bg-chip-on text-g-soft-ink' : 'border-line bg-card text-mute'} ${className}`} {...rest} />
 }

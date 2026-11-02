@@ -10,6 +10,8 @@ import { SparkleIcon } from '../components/PhotoSheets'
 import { AiGroupSheet, groupRows, groupTitle } from '../components/AiGroupSheet'
 import { AddItemSheet } from '../components/AddItemSheet'
 import { MealMacros } from '../components/MealMacros'
+import { MealIdeas } from '../components/MealIdeas'
+import { ideasView } from '../lib/ideas'
 import type { EntryGroup } from '../components/FoodSheet'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { DaySwitcher, PastDayNote } from '../components/PastDay'
@@ -67,6 +69,7 @@ export default function Home() {
   const remainingExcl = (e: Entry) => left + entryTotals(e).kcal
   const burned = day.burned
   const [remind, setRemind] = useState(() => shouldRemind(state, readMeta()))
+  const [ideas, setIdeas] = useState(false)
   const title = dayName(date, today)
   const fresh = useNewRows([...entries.map((e) => e.id), ...exercises.map((e) => e.id)])
   const dismiss = () => { writeMeta({ dismissedAt: Date.now() }); setRemind(false) }
@@ -149,6 +152,12 @@ export default function Home() {
           <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} zone={gaugeRead(day.balance, day.goal, closed).zone} />
           <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
+          {/* v1.20 Meal Ideas: today and not closed only. A 44 px target whose negative margins keep the card 20 px taller. */}
+          {!past && !closed && (
+            <button type="button" onClick={() => setIdeas(true)} className="tap mx-auto -mb-3.5 -mt-2.5 flex min-h-11 items-center gap-1 px-3 text-[15px] font-bold text-g-ink" data-testid="ideas-link">
+              <SparkleIcon className="h-4 w-4" />{ideasView(day.balance, day.goal).over ? 'Still hungry? Light ideas' : 'What should I eat?'}
+            </button>
+          )}
           </Card>
         </section>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />
@@ -258,6 +267,7 @@ export default function Home() {
       ) : editingEx ? (
         <ExerciseQuickSheet key={editingEx.id} date={date} initial={editingEx} onDone={() => setEditingEx(null)} onClose={() => setEditingEx(null)} />
       ) : null}
+      {ideas && <MealIdeas onClose={() => setIdeas(false)} />}
     </>
   )
 }

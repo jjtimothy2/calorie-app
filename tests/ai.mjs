@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'node
 import assert from 'node:assert/strict'
 const out = 'node_modules/.tmp/ai'
 rmSync(out, { recursive: true, force: true })
-execSync(`npx tsc --ignoreConfig --outDir ${out} --rootDir src src/lib/ai.ts src/data/foods.ts src/lib/backup.ts --module esnext --target es2022 --skipLibCheck --lib es2022,dom`)
+execSync(`npx tsc --ignoreConfig --outDir ${out} --rootDir src src/lib/ai.ts src/data/foods.ts src/lib/backup.ts src/lib/ideas.ts --module esnext --target es2022 --skipLibCheck --lib es2022,dom`)
 const walk = (d) => readdirSync(d).flatMap((f) => (statSync(`${d}/${f}`).isDirectory() ? walk(`${d}/${f}`) : [`${d}/${f}`]))
 for (const f of walk(out).filter((f) => f.endsWith('.js'))) writeFileSync(f.replace(/\.js$/, '.mjs'), readFileSync(f, 'utf8').replace(/from '(\.\.?\/[^']+)'/g, "from '$1.mjs'"))
 const load = (m) => import(new URL(`../${out}/${m}.mjs`, import.meta.url))
@@ -15,6 +15,7 @@ globalThis.localStorage = { get length() { return store.size }, key: (i) => [...
 const ai = await load('lib/ai')
 const { FOODS } = await load('data/foods')
 const backup = await load('lib/backup')
+const ideas = await load('lib/ideas')
 const results = []
 const t = async (name, fn) => { await fn(); results.push('PASS ' + name) }
 const byName = (n) => FOODS.find((f) => f.name === n)
@@ -201,6 +202,103 @@ await t('AI key: own storage key, never in a backup, never restored, removable',
 await t('service worker never touches API calls (non-GET or cross-origin is passed straight to the network)', () => {
   const sw = readFileSync('scripts/sw-plugin.ts', 'utf8')
   assert.match(sw, /req\.method !== 'GET' \|\| new URL\(req\.url\)\.origin !== self\.location\.origin\) return/)
+})
+
+// ---------- v1.20 Meal Ideas ----------
+await t('v1.20 parseIdeas clamps like the estimate parser (name 60, grams 1 to 3000, kcal 10,000, macros >= 0) and keeps why under 40', () => {
+  const r = ideas.parseIdeas('```json\n' + JSON.stringify({ ideas: [
+    { name: 'x'.repeat(80), why: 'A very long reason that goes on and on past forty chars', portion: '1 plate', grams: 380, kcal: 99999, protein_g: -3, carbs_g: '52 g', fat_g: 12 },
+    { name: 'No grams', why: '', portion: '', grams: 0, kcal: 100, protein_g: 1, carbs_g: 1, fat_g: 1 },
+    { name: '', why: 'x', portion: '', grams: 100, kcal: 100, protein_g: 1, carbs_g: 1, fat_g: 1 },
+  ] }) + '\n```')
+  assert.equal(r.length, 1)
+  assert.equal(r[0].name.length, 60)
+  assert.equal(r[0].kcal, 10000)
+  assert.equal(r[0].protein, 0)
+  assert.equal(r[0].carbs, 52)
+  assert.ok(r[0].why.length < 40, r[0].why)
+  assert.equal(ideas.parseIdeas('nope'), null)
+})
+await t('v1.20 keepIdeas drops over-cap, repeats and already-shown, keeps 3', () => {
+  const mk = (name, kcal) => ({ name, kcal, why: '', portion: '1', grams: 100, protein: 10, carbs: 1, fat: 1, confidence: 0.5 })
+  const k = ideas.keepIdeas([mk('A', 700), mk('B', 400), mk('b', 300), mk('C', 598), mk('Shown', 100), mk('D', 200), mk('E', 100)], 598, ['shown'])
+  assert.deepEqual(k.map((x) => x.name), ['B', 'C', 'D'])
+})
+await t('v1.20 ideasView: Lose under goal, Lose past (orange), Lose surplus (red), Keep band/surplus, Gain above goal', () => {
+  // Lose goal 606, balance 1204 = 598 left.
+  assert.deepEqual(ideas.ideasView(1204, 606), { over: false, cap: 598, head: '598 kcal left', term: null })
+  const past = ideas.ideasView(486, 606)
+  assert.deepEqual([past.over, past.cap, past.head, past.term.text, past.term.ink], [true, 150, '120 kcal over your 606 goal', 'Deficit 486', 'text-over-ink'])
+  const sur = ideas.ideasView(-80, 606)
+  assert.deepEqual([sur.over, sur.term.text, sur.term.ink], [true, 'Surplus 80', 'text-deep-ink'])
+  const even = ideas.ideasView(0, 606)
+  assert.deepEqual([even.over, even.term.text], [true, 'Even 0'])
+  assert.equal(ideas.ideasView(20, 0).over, false) // Keep in band: normal link
+  assert.equal(ideas.ideasView(20, 0).head, 'On target')
+  assert.equal(ideas.ideasView(-300, 0).over, true) // Keep surplus
+  assert.equal(ideas.ideasView(-400, -300).over, false) // Gain above goal: normal link (assumption c)
+  assert.deepEqual(ideas.ideasView(-100, -300), { over: false, cap: 200, head: '200 kcal left', term: null })
+})
+await t('v1.20 ideas request: same provider + model as the estimate, schema fields match the estimate items, only kcal left / protein / foods today / time', () => {
+  const ask = { meal: 'dinner', time: '18:30', cap: 598, over: false, kcalLeft: 598, proteinToGo: 68, eatenToday: ['Kopi susu', 'Nasi uduk'], prefs: [], avoid: [] }
+  const g = ideas.ideasBody('gemini', ask), o = ideas.ideasBody('openai', ask)
+  assert.equal(o.model, ai.MODELS.openai)
+  assert.equal(o.response_format.json_schema.schema, ideas.IDEAS_SCHEMA)
+  assert.equal(g.generationConfig.responseFormat.text.schema, ideas.IDEAS_SCHEMA)
+  assert.deepEqual(ideas.IDEAS_SCHEMA.properties.ideas.items.required, ['name', 'why', 'portion', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g'])
+  const u = ideas.ideasUser(ask)
+  assert.match(u, /18:30/); assert.match(u, /598 kcal/); assert.match(u, /68 g/); assert.match(u, /Kopi susu, Nasi uduk/)
+  assert.doesNotMatch(u + ideas.ideasSystem(), /body weight|\bage\b|\bkg\b|weigh-in|your weight|\bmale\b|female|years old/i)
+  assert.match(ideas.ideasUser({ ...ask, proteinToGo: null }), /already hit/)
+  assert.match(ideas.ideasUser({ ...ask, prefs: ['Indonesian'], avoid: ['Ayam bakar'] }), /Indonesian[\s\S]*Ayam bakar/)
+})
+await t('v1.20 askIdeas posts to the chosen provider and model and keeps 3 under the cap', async () => {
+  const calls = []
+  const reply = { ideas: [1, 2, 3, 4].map((n) => ({ name: `Idea ${n}`, why: 'w', portion: '1 plate', grams: 300, kcal: n * 200, protein_g: 20, carbs_g: 30, fat_g: 10 })) }
+  const f = async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(reply) }] } }] }), { status: 200 }) }
+  const r = await ideas.askIdeas({ provider: 'gemini', key: 'k' }, { meal: 'lunch', time: '12:00', cap: 598, over: false, kcalLeft: 598, proteinToGo: 10, eatenToday: [], prefs: [], avoid: [] }, { fetch: f })
+  assert.deepEqual(r.map((x) => x.name), ['Idea 1', 'Idea 2'])
+  assert.equal(calls[0].url, `${ai.GEMINI_BASE}/models/${ai.MODELS.gemini}:generateContent`)
+  const fo = async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }] }), { status: 200 }) }
+  await ideas.askIdeas({ provider: 'openai', key: 'k' }, { meal: 'lunch', time: '12:00', cap: 598, over: false, kcalLeft: 598, proteinToGo: 10, eatenToday: [], prefs: [], avoid: [] }, { fetch: fo })
+  assert.equal(calls[1].url, `${ai.OPENAI_BASE}/chat/completions`)
+  assert.equal(JSON.parse(calls[1].init.body).model, ai.MODELS.openai)
+  const bad = async () => new Response('{}', { status: 429 })
+  await assert.rejects(ideas.askIdeas({ provider: 'gemini', key: 'k' }, { meal: 'lunch', time: '12:00', cap: 598, over: false, kcalLeft: 598, proteinToGo: 10, eatenToday: [], prefs: [], avoid: [] }, { fetch: bad }), (e) => e.kind === 'busy')
+})
+await t('v1.20 local picks: fit the cap, nothing eaten today, no drinks, one per category and main protein, Favourites then recents then Indonesian', () => {
+  const c = (id, name, kcal, protein, category, extra = {}) => ({ id, name, kcal, protein, category, serving: '1', fav: false, recent: -1, mine: false, ...extra })
+  const cands = [
+    c('a', 'Ayam bakar', 165, 25, 'Indonesian'), c('b', 'Ayam goreng', 260, 20, 'Indonesian'), c('t', 'Tempe goreng', 120, 8, 'Indonesian'),
+    c('f', 'Pepes ikan', 180, 24, 'Protein'), c('g', 'Grilled chicken', 250, 46, 'Protein'), c('e', 'Telur rebus', 78, 6, 'Breakfast'),
+    c('w', 'Whey protein shake', 120, 24, 'Drinks'), c('big', 'Nasi padang', 900, 30, 'Meals'), c('u_x', 'My salad', 300, 10, 'My foods', { fav: true, mine: true }),
+  ]
+  const p = ideas.localPicks(cands, { cap: 598, proteinHit: false, eatenIds: new Set(['b']), eatenNames: new Set(), n: 3 })
+  const opts = { cap: 598, proteinHit: false, eatenIds: new Set(), eatenNames: new Set(), n: 3 }
+  const base = ideas.localPicks(cands, opts).map((x) => x.id)
+  assert.notEqual(base[0], 't')
+  assert.equal(ideas.localPicks(cands.map((x) => ({ ...x, fav: x.id === 't' })), opts)[0].id, 't', 'a favourite is boosted to the top')
+  assert.ok(p.every((x) => x.kcal <= 598 && x.category !== 'Drinks' && x.id !== 'b'))
+  assert.equal(new Set(p.map((x) => x.category)).size, 3)
+  const prots = p.map((x) => ideas.mainProtein(x.name)).filter(Boolean)
+  assert.equal(new Set(prots).size, prots.length)
+  const light = ideas.localPicks(cands, { cap: 150, proteinHit: false, eatenIds: new Set(), eatenNames: new Set(['telur rebus']), n: 3 })
+  assert.ok(light.every((x) => x.kcal <= 150 && x.id !== 'e'))
+  const plain = cands.map((x) => ({ ...x, fav: false }))
+  assert.ok(!ideas.localPicks(plain, opts).some((x) => x.id === 'e'))
+  assert.ok(ideas.localPicks(plain.map((x) => ({ ...x, recent: x.id === 'e' ? 0 : -1 })), opts).some((x) => x.id === 'e'), 'a recent food is boosted in')
+})
+await t('v1.20 "Show other ideas" counter: 5 a day in calorie-app:ideas, resets the next day, never in backups', () => {
+  store.clear()
+  assert.equal(ideas.refreshesUsed('2026-11-02'), 0)
+  for (let i = 0; i < 5; i++) ideas.countRefresh('2026-11-02')
+  assert.equal(ideas.refreshesUsed('2026-11-02'), ideas.MAX_REFRESH)
+  assert.equal(ideas.refreshesUsed('2026-11-03'), 0)
+  store.set('calorie-app:v3', JSON.stringify({ version: 3, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [] }))
+  const text = JSON.stringify(backup.makeBackup())
+  assert.doesNotMatch(text, /calorie-app:ideas/)
+  assert.equal(backup.IDEAS_COUNT_KEY, ideas.IDEAS_KEY)
+  store.clear()
 })
 
 if (process.env.LIVE) await t('LIVE: Gemini accepts our request body (fake key reaches the key check)', async () => {

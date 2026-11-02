@@ -144,7 +144,7 @@ export default function Settings() {
         <Button type="submit" disabled={!ok}>Save changes</Button>
         <p role="status" className="text-center text-[15px] text-g-ink">{msg}</p>
       </form>
-      <AiCard focus={params.get('ai') === '1'} />
+      <AiCard focus={params.get('ai') === '1'} focusInput={params.get('kb') !== '0'} />
       <BackupCard />
       <Card className="flex flex-col gap-3">
         <h2 className="title text-[21px]">Data</h2>

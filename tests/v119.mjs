@@ -133,7 +133,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   const pill = (a, b) => (a.slice(0, 4) === b.slice(0, 4) ? rangeLabel(a, b) : `${dm(a)} ’${a.slice(2, 4)} – ${dm(b)} ’${b.slice(2, 4)}`)
   const noSept = async () => assert.equal(/Sept/.test(await page.evaluate(() => document.body.innerText + [...document.querySelectorAll('[aria-label]')].map((e) => e.getAttribute('aria-label')).join(' '))), false, 'no "Sept"')
 
-  await step(`${tag} switch A: full-width Calories / Protein track, sliding thumb, outlined 7d / 30d / Custom pills below, left-aligned`, async () => {
+  await step(`${tag} switch A: full-width Calories / Protein track, sliding thumb, outlined 7d / 30d / Custom pills below, right-aligned (v1.20)`, async () => {
     await fresh()
     const ctl = page.getByTestId('history-controls')
     const vg = ctl.getByRole('group', { name: 'View' }), rg = ctl.getByRole('group', { name: 'Range' })
@@ -143,9 +143,10 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const v = await box(vg), r = await box(rg), W = await vw()
     assert.ok(Math.abs(v.w - card.w) <= 2 && Math.abs(v.l - card.l) <= 2, `track full width ${JSON.stringify(v)} card ${JSON.stringify(card)}`)
     assert.ok(r.t >= v.b, 'pills below the switch')
-    const first = await box(rg.getByRole('button').first())
-    assert.ok(Math.abs(first.l - v.l) <= 1, 'pills left-aligned')
-    assert.ok((await box(rg.getByRole('button').last())).r < W / 2 + 40, 'pills do not stretch')
+    // v1.20 (Jordy): pills right-aligned, flush with the switch's right edge; still not stretched.
+    const last = await box(rg.getByRole('button').last())
+    assert.ok(Math.abs(last.r - v.r) <= 1, 'pills right-aligned')
+    assert.ok((await box(rg.getByRole('button').first())).l > W / 2 - 40, 'pills do not stretch')
     const bg = (loc) => loc.evaluate((e) => getComputedStyle(e).backgroundColor)
     const cal = vg.getByRole('button', { name: 'Calories' }), pro = vg.getByRole('button', { name: 'Protein' })
     assert.equal(await cal.getAttribute('aria-pressed'), 'true'); assert.equal(await pro.getAttribute('aria-pressed'), 'false')
@@ -154,10 +155,10 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(await bg(thumb), await bg(page.getByTestId('period-range').locator('xpath=ancestor::*[contains(@class,"rounded")][1]')), 'white (card) thumb')
     const t0 = await box(thumb), c0 = await box(cal)
     assert.ok(Math.abs(t0.l - c0.l) <= 2 && Math.abs(t0.w - c0.w) <= 2, 'thumb under Calories')
-    // Selected pill: ink outline. Others: light outline.
-    const ring = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return { b: s.borderTopColor, c: s.color, bw: s.borderTopWidth } })
+    // v1.20: selected pill is filled with a soft green tint (checked in v120.mjs); others keep the light outline.
+    const ring = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return { b: s.borderTopColor, c: s.color, bg: s.backgroundColor } })
     const p7 = await ring(rg.getByRole('button', { name: '7d (7 days)' })), p30 = await ring(rg.getByRole('button', { name: '30d (30 days)' }))
-    assert.equal(p7.b, p7.c, '7d ink outline'); assert.notEqual(p30.b, p7.b, '30d light outline')
+    assert.notEqual(p7.bg, p30.bg, '7d filled'); assert.notEqual(p30.b, p7.b, '30d light outline')
     await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(1200)
     await page.screenshot({ path: `${OUT}v119-switch-${tag}.png` })
     await view('Protein'); await page.waitForTimeout(450)

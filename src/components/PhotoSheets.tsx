@@ -301,7 +301,8 @@ export function AiFlow({ settings, photo, photoError, photoSource = 'camera', on
   )
 }
 
-function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }: { dish: string; scaleRef: string; items: PhotoItem[]; photo: string | null; note: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[], dish: string) => void }) {
+/** v1.20: exported for Meal Ideas, which passes its own source line ("Suggested by Gemini"). */
+export function Results({ dish, scaleRef, items, photo, note, source, onEdit, onClose, onLog }: { dish: string; scaleRef: string; items: PhotoItem[]; photo: string | null; note: string; source?: string; onEdit: () => void; onClose: () => void; onLog: (rows: LogItem[], dish: string) => void }) {
   // v1.14.1: servings instead of grams. 1 serving = the AI's whole portion; -/+ and typing work like the v1.14 Servings row.
   const [rows, setRows] = useState(() => items.map((it) => ({ it, s: 1 })))
   const view = rows.map((r) => ({ ...r, m: servingMacros(r.it, r.s), unit: aiServingLabel(r.it.ai.portion, r.it.ai.grams) }))
@@ -316,7 +317,7 @@ function Results({ dish, scaleRef, items, photo, note, onEdit, onClose, onLog }:
         <Thumb photo={photo} />
         <div className="min-w-0">
           <h2 className="title text-[26px] leading-tight" data-testid="photo-dish">{dish}</h2>
-          <p className="text-[15px] text-mute" data-testid="photo-source">{photo ? 'Estimated from your photo' : 'Estimated from your description'}</p>
+          <p className="text-[15px] text-mute" data-testid="photo-source">{source ?? (photo ? 'Estimated from your photo' : 'Estimated from your description')}</p>
           {/* v1.6.1: how the photo was sized; one line, cut with an ellipsis rather than wrapping. Text only: nothing. */}
           {sized && <p className="truncate text-[13px] text-mute" data-testid="photo-scale" title={sized}>{sized}</p>}
         </div>
