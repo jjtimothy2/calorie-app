@@ -3,14 +3,18 @@
 // the AI result sheet (Edit comes back here) and logs to the meal the sheet opened with. No key, offline or an error:
 // picks from the user's own foods, so it never dead-ends. Chips re-ask with a preference; "Show other ideas" gives 3
 // new ones, 5 times a day. Focus goes to the sheet, never an input.
-import { useEffect, useRef, useState } from 'react'
+// v1.20.1 Custom chip: "+ Custom" (last) opens a field under the chips only when tapped, so the keyboard never opens with
+// the sheet. "Get ideas" sends the cleaned words (60 max) and uses one of the 5 daily refreshes; the chip then shows the
+// words with ✕ to clear. If the AI cannot match within the calories it still gives 3 that fit, with a note.
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { FOODS, FOOD_BY_ID, type Food } from '../data/foods'
 import { aiServingLabel } from '../lib/amount'
 import { AiError, PROVIDER_LABEL, errorText, normName, perServing, readAi, type AiErrorKind } from '../lib/ai'
 import { dayView, defaultMeal, entryTotals, fmt, macroTargets, sumEntries } from '../lib/calc'
 import {
-  MAX_REFRESH, PREFS, askIdeas, clock, countRefresh, ideasView, localPicks, mealTitle, mealWord, refreshesUsed,
+  CUSTOM_MAX, MAX_REFRESH, PREFS, askIdeasFull, cleanCustom, clock, countRefresh, ideasView, localPicks, mealTitle, mealWord, refreshesUsed,
   type AiIdea, type Candidate, type Pref,
 } from '../lib/ideas'
 import { USER_SERVING, type UserFood } from '../lib/myFoods'
@@ -27,7 +31,7 @@ type Phase =
   | { k: 'nokey' }
   | { k: 'offline' }
   | { k: 'loading'; prev: AiIdea[] | null }
-  | { k: 'ideas'; ideas: AiIdea[] }
+  | { k: 'ideas'; ideas: AiIdea[]; closest?: boolean }
   | { k: 'error'; kind: AiErrorKind }
 type Child = null | { k: 'result'; idea: AiIdea } | { k: 'food'; food: Food } | { k: 'mine'; food: UserFood }
 
@@ -54,11 +58,15 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
   const [prefs, setPrefs] = useState<Pref[]>([])
   const [used, setUsed] = useState(() => refreshesUsed(today))
   const [child, setChild] = useState<Child>(null)
+  const [custom, setCustom] = useState('')
+  const [customOpen, setCustomOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const field = useRef<HTMLInputElement>(null)
   const shown = useRef<string[]>([])
   const ctl = useRef<AbortController | null>(null)
   useEffect(() => () => ctl.current?.abort(), [])
 
-  const ask = async (kind: 'first' | 'refresh' | 'pref', p: Pref[] = prefs) => {
+  const ask = async (kind: 'first' | 'refresh' | 'pref' | 'custom', p: Pref[] = prefs, words: string = custom) => {
     if (!ai) return setPhase({ k: 'nokey' })
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return setPhase({ k: 'offline' })
     ctl.current?.abort()
@@ -67,14 +75,17 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
     const prev = phase.k === 'ideas' ? phase.ideas : phase.k === 'loading' ? phase.prev : null
     setPhase({ k: 'loading', prev })
     try {
-      const ideas = await askIdeas(ai, {
+      const { ideas, closest } = await askIdeasFull(ai, {
         meal, time: opened.time, cap: view.cap, over: view.over, kcalLeft, proteinToGo: hit || !proteinTarget ? null : toGo,
         eatenToday: [...new Set(entries.map((e) => e.name))], prefs: p, avoid: kind === 'refresh' ? shown.current : [],
+        ...(words ? { custom: words } : {}),
       }, { signal: c.signal })
       if (c.signal.aborted) return
-      if (kind === 'refresh') setUsed(countRefresh(today))
+      // A refresh and a Custom ask each use one of the 5 a day, only once they load.
+      if (kind === 'refresh' || kind === 'custom') setUsed(countRefresh(today))
+      if (kind === 'custom') { setCustom(words); setCustomOpen(false) }
       shown.current = [...shown.current, ...ideas.map((i) => i.name)]
-      setPhase({ k: 'ideas', ideas })
+      setPhase({ k: 'ideas', ideas, closest })
     } catch (e) {
       if (c.signal.aborted) return
       const kind = e instanceof AiError ? e.kind : 'failed'
@@ -97,6 +108,21 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
     const next = prefs.includes(p) ? prefs.filter((x) => x !== p) : [...prefs, p]
     setPrefs(next)
     void ask('pref', next)
+  }
+  // The field mounts and takes focus inside the tap itself (flushSync), so iOS opens the keyboard for this tap only.
+  const openCustom = () => {
+    if (customOpen) return setCustomOpen(false)
+    flushSync(() => setCustomOpen(true))
+    field.current?.focus()
+  }
+  const clearCustom = () => { setCustom(''); setDraft(''); void ask('pref', prefs, '') }
+  const sendCustom = (e: FormEvent) => {
+    e.preventDefault()
+    const words = cleanCustom(draft)
+    if (!words || used >= MAX_REFRESH || phase.k === 'loading') return
+    setDraft(words)
+    field.current?.blur()
+    void ask('custom', prefs, words)
   }
   const toKeyInMe = () => { onClose(); go('/settings?ai=1&kb=0') }
 
@@ -209,7 +235,23 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
       {showChips && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Preferences">
           {PREFS.map((p) => <Chip key={p} on={prefs.includes(p)} disabled={loading} onClick={() => togglePref(p)}>{p}</Chip>)}
+          {custom ? (
+            <Chip on disabled={loading} onClick={clearCustom} className="max-w-full break-words text-left" aria-label={`Clear custom: ${custom}`} data-testid="custom-chip">{custom} ✕</Chip>
+          ) : (
+            <Chip on={false} disabled={loading || capped} onClick={openCustom} aria-expanded={customOpen} aria-controls="ideas-custom" aria-pressed={undefined} data-testid="custom-chip">+ Custom</Chip>
+          )}
         </div>
+      )}
+      {showChips && customOpen && !custom && (
+        <form id="ideas-custom" className="-mt-1 flex items-center gap-2" onSubmit={sendCustom} data-testid="custom-form">
+          <input
+            ref={field} type="text" enterKeyHint="go" maxLength={CUSTOM_MAX} autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)}
+            placeholder="e.g. noodles, spicy, no rice" aria-label="What would you like?" disabled={loading}
+            className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 text-[16px] font-normal text-ink outline-none focus:border-g"
+            data-testid="custom-input"
+          />
+          <button type="submit" disabled={loading || !cleanCustom(draft)} className="tap min-h-11 shrink-0 rounded-full bg-ink px-4 text-[15px] font-bold text-bg disabled:opacity-50" data-testid="custom-go">Get ideas</button>
+        </form>
       )}
 
       {phase.k === 'nokey' && muted('Need AI key', 'Add a key in Me', toKeyInMe, 'ideas-nokey')}
@@ -246,6 +288,7 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
       {phase.k === 'ideas' && (
         <div className="flex flex-col gap-2.5">
           {view.over && <h3 className="text-[15px] font-bold text-mute">Light ideas under 150 kcal</h3>}
+          {phase.closest && <p className="text-[15px] font-semibold text-mute" data-testid="ideas-closest">Closest fits for your calories left</p>}
           <ul className="flex flex-col gap-2.5" aria-label={view.over ? 'Light ideas' : 'Ideas'} data-testid="ideas-list">
             {aiIdeas.map(ideaCard)}
             {topUp.map(pickCard)}

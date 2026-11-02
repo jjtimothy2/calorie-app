@@ -76,7 +76,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   const tapLoc = async (loc, p = page) => { await loc.scrollIntoViewIfNeeded(); const b = await box(loc); await p.touchscreen.tap(b.l + b.w / 2, b.t + b.h / 2) }
   const home = async (p = page) => { await p.goto(BASE + '/'); await p.getByTestId('balance').waitFor(); await p.waitForTimeout(300) }
   const st = (p = page) => p.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')))
-  const leftNow = async (p = page) => Number((await p.getByTestId('goal-progress').innerText()).match(/^([\d,]+) kcal left/)[1].replace(/,/g, ''))
+  const leftNow = async (p = page) => Number((await p.getByTestId('ring').getAttribute('data-message')).match(/^([\d,]+) kcal left/)[1].replace(/,/g, ''))
   const names = (p = page) => p.getByRole('dialog').getByTestId('ideas-list').getByTestId('idea-name').allInnerTexts()
   const noKeyboard = async (p = page) => {
     const a = await p.evaluate(() => ({ tag: document.activeElement?.tagName, role: document.activeElement?.getAttribute('role'), kb: window.visualViewport.height, ih: window.innerHeight }))
@@ -85,16 +85,22 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     return a
   }
   // Every visible tap target in the sheet is 44 px or more, inputs 16 px+, nothing wider than the screen or clipped.
-  const layout = async (where, p = page, legacy = false) => {
-    const r = await p.getByRole('dialog').evaluate((d, [vw, legacy]) => {
+  const layout = async (where, p = page) => {
+    const r = await p.getByRole('dialog').evaluate((d, [vw]) => {
       const bad = []
       for (const e of d.querySelectorAll('button, a, input, [role=button]')) {
         if (e.closest('[aria-hidden=true]')) continue
         const b = e.getBoundingClientRect()
         if (!b.width) continue
-        // the v1.14 result sheet's own 32 px stepper and remove x are existing elements, not new (criterion 19)
-        if (legacy && e.closest('[aria-label="Estimated items"]')) continue
-        if (b.height < 43.5) bad.push(`small ${e.innerText || e.getAttribute('aria-label')} ${b.height}`)
+        // v1.20.1: the result sheet's compact stepper and remove x keep a 32 px look with a 44 px ::before hit area,
+        // so the tap height is the element box united with its ::before box (no longer skipped).
+        let top = b.top, bot = b.bottom
+        const pb = getComputedStyle(e, '::before'), cs = getComputedStyle(e)
+        if (pb.content !== 'none' && pb.position === 'absolute') {
+          top = Math.min(top, b.top + parseFloat(cs.borderTopWidth) + parseFloat(pb.top))
+          bot = Math.max(bot, b.bottom - parseFloat(cs.borderBottomWidth) - parseFloat(pb.bottom))
+        }
+        if (bot - top < 43.5) bad.push(`small ${e.innerText || e.getAttribute('aria-label')} ${bot - top}`)
         if (e.tagName === 'INPUT' && parseFloat(getComputedStyle(e).fontSize) < 16) bad.push(`input font ${getComputedStyle(e).fontSize}`)
       }
       for (const e of d.querySelectorAll('*')) {
@@ -105,7 +111,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
         if (e.scrollWidth > e.clientWidth + 1) bad.push(`clipped ${e.innerText}`)
       }
       return { bad, oy: getComputedStyle(d).overflowY }
-    }, [w, legacy])
+    }, [w])
     assert.deepEqual(r.bad, [], `${where}: ${r.bad.join(' | ')}`)
     assert.equal(r.oy, 'auto', `${where}: sheet scrolls`)
   }
@@ -113,22 +119,20 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   const waitIdeas = (p = page) => p.getByRole('dialog').getByTestId('ideas-list').waitFor()
   const hold = (m = G) => { let r; m.hold = { p: new Promise((res) => { r = res }) }; return () => { m.hold = null; r() } }
 
-  await step(`${tag} Home: centered green "✦ What should I eat?" under the goal line, 44 px tap, card grows <= 20 px`, async () => {
+  await step(`${tag} Home: green "✦ What should I eat?" row under the divider (v1.20.1: replaces the goal line), 44 px tap, inside the card`, async () => {
     await home()
     const link = page.getByTestId('ideas-link')
-    assert.equal((await link.innerText()).trim(), 'What should I eat?')
+    assert.equal((await page.getByTestId('ideas-text').innerText()).trim(), 'What should I eat?')
+    assert.equal(await link.getAttribute('aria-label'), null)
+    assert.match(await link.evaluate((e) => e.textContent), /What should I eat\?›$/)
     assert.equal(await link.locator('svg').count(), 1, '✦ icon')
-    assert.match(await page.getByTestId('goal-progress').innerText(), /^[\d,]+ kcal left to eat\.$/)
-    const [lb, gp, card] = await Promise.all([box(link), box(page.getByTestId('goal-progress')), box(link.locator('xpath=..'))])
+    assert.equal(await page.getByTestId('goal-progress').count(), 0, 'no repeated goal line on an open day')
+    assert.match(await page.getByTestId('ring').getAttribute('data-message'), /^[\d,]+ kcal left to eat\.$/)
+    const [lb, card] = await Promise.all([box(link), box(link.locator('xpath=..'))])
     assert.ok(lb.h >= 44, `link ${lb.h}`)
-    const ib = await box(link.locator('svg'))
-    assert.ok(ib.t >= gp.b + 2, `under the goal line: icon ${ib.t}, goal line ${gp.b}`)
     assert.ok(lb.b <= card.b + 0.5, 'tap target inside the card')
-    assert.ok(Math.abs((lb.l + lb.r) / 2 - (card.l + card.r) / 2) < 1.5, 'centered')
     const ink = await page.evaluate(() => { const e = document.createElement('span'); e.className = 'text-g-ink'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c })
     assert.equal(await link.evaluate((e) => getComputedStyle(e).color), ink, 'green ink like View ›')
-    const grow = await link.evaluate((e) => { const c = e.parentElement; const a = c.getBoundingClientRect().height; e.style.display = 'none'; const b = c.getBoundingClientRect().height; e.style.display = ''; return a - b })
-    assert.ok(grow <= 21, `card grows ${grow}`)
     await shot('home-link')
   })
 
@@ -169,7 +173,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(await dialog.getByRole('button', { name: /^Log this/ }).count(), 3)
     assert.equal(await dialog.getByTestId('ideas-more').innerText(), 'Show other ideas')
     assert.equal(await dialog.getByTestId('ideas-foot').innerText(), 'Ideas from Gemini. Numbers are rough, check them before logging.')
-    assert.deepEqual(await dialog.getByRole('group', { name: 'Preferences' }).getByRole('button').allInnerTexts(), ['Indonesian', 'Quick', 'Cheap'])
+    assert.deepEqual(await dialog.getByRole('group', { name: 'Preferences' }).getByRole('button').allInnerTexts(), ['Indonesian', 'Quick', 'Cheap', '+ Custom'], 'v1.20.1 adds + Custom last')
     await layout('ideas')
     await shot('ideas')
   })
@@ -204,7 +208,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(await dialog.locator('textarea').count(), 0, 'no note field')
     assert.equal(await dialog.getByTestId('photo-note').count(), 0)
     await noKeyboard()
-    await layout('result', page, true)
+    await layout('result')
     await shot('result')
     await tapLoc(dialog.getByRole('button', { name: 'Edit', exact: true }))
     await waitIdeas()
@@ -452,8 +456,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const f = (n) => n.toLocaleString('en-US')
     await step(`${tag} over the goal (Deficit, orange): "✦ Still hungry? Light ideas"; sheet "You're over today's goal", "120 kcal over your G goal · Deficit G-120", I'm done for today, light ideas under 150`, async () => {
       await setDay(`s.entries.push(${JSON.stringify(q('big', 'Nasi padang', L + 120, 30))})`)
-      assert.equal(await p.getByTestId('goal-progress').innerText(), `120 kcal over your ${f(GO)} goal.`)
-      assert.equal((await p.getByTestId('ideas-link').innerText()).trim(), 'Still hungry? Light ideas')
+      assert.equal(await p.getByTestId('ring').getAttribute('data-message'), `120 kcal over your ${f(GO)} goal.`)
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
       await shot('home-over', p)
       g.reply = LIGHT
       await openIdeas(p); await waitIdeas(p)
@@ -474,7 +478,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     })
     await step(`${tag} over the goal (Surplus, red): header "· Surplus 80" in red`, async () => {
       await setDay(`s.entries.find((e) => e.id === 'big').kcal = ${L + GO + 80}`)
-      assert.equal((await p.getByTestId('ideas-link').innerText()).trim(), 'Still hungry? Light ideas')
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
       await openIdeas(p); await waitIdeas(p)
       assert.equal(await d.getByTestId('ideas-head').innerText(), `${f(GO + 80)} kcal over your ${f(GO)} goal · Surplus 80`)
       assert.match(await d.getByTestId('ideas-term').getAttribute('class'), /text-deep-ink/)
@@ -493,16 +497,16 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
       await setDay(`s.entries = s.entries.filter((e) => e.id !== 'pro'); s.profile.goal = 'keep'`)
       const K = await leftNow(p)
       await setDay(`s.entries.push(${JSON.stringify(q('k', 'Nasi', K - 20, 5))})`)
-      assert.match(await p.getByTestId('goal-progress').innerText(), /^On target/)
-      assert.equal((await p.getByTestId('ideas-link').innerText()).trim(), 'What should I eat?')
+      assert.match(await p.getByTestId('ring').getAttribute('data-message'), /^On target/)
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'What should I eat?')
       await setDay(`s.entries.find((e) => e.id === 'k').kcal = ${K + 300}`)
-      assert.match(await p.getByTestId('goal-progress').innerText(), /over break even/)
-      assert.equal((await p.getByTestId('ideas-link').innerText()).trim(), 'Still hungry? Light ideas')
+      assert.match(await p.getByTestId('ring').getAttribute('data-message'), /over break even/)
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
       await setDay(`s.entries = s.entries.filter((e) => e.id !== 'k'); s.profile.goal = 'gain'; s.profile.goalWeightKg = 96`)
       const G2 = await leftNow(p)
       await setDay(`s.entries.push(${JSON.stringify(q('g', 'Nasi', G2 + 500, 5))})`)
-      assert.match(await p.getByTestId('goal-progress').innerText(), /over your \+[\d,]+ goal/)
-      assert.equal((await p.getByTestId('ideas-link').innerText()).trim(), 'What should I eat?')
+      assert.match(await p.getByTestId('ring').getAttribute('data-message'), /over your \+[\d,]+ goal/)
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'What should I eat?')
     })
     await step(`${tag} closed today and past days: no link`, async () => {
       await setDay(`s.entries = s.entries.filter((e) => e.id !== 'g'); s.profile.goal = 'lose'; s.profile.goalWeightKg = 85`)

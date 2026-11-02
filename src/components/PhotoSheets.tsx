@@ -331,7 +331,8 @@ export function Results({ dish, scaleRef, items, photo, note, source, onEdit, on
               <span className="tile" aria-hidden="true">{foodEmoji(r.it.emojiName)}</span>
               <div className="min-w-0 flex-1 self-center break-words text-[17px] font-semibold leading-tight" data-testid="item-name">{r.it.name}</div>
               <b className="num shrink-0 self-center whitespace-nowrap text-[20px] leading-none" data-testid="item-kcal">{fmt(r.m.kcal)}<span className="ml-1 font-sans text-[13px] font-normal text-mute">kcal</span></b>
-              <button type="button" onClick={() => remove(r.it.key)} aria-label={`Remove ${r.it.name}`} className="tap -mr-1 grid h-8 w-8 shrink-0 place-items-center self-center rounded-full text-[18px] text-mute">✕</button>
+              {/* v1.20.1: same 32 px look, a 44x44 hit area from a ::before reaching 6 px each side (like the stepper's). */}
+              <button type="button" onClick={() => remove(r.it.key)} aria-label={`Remove ${r.it.name}`} className="tap relative -mr-1 grid h-8 w-8 shrink-0 place-items-center self-center rounded-full text-[18px] text-mute before:absolute before:-inset-1.5" data-testid="item-remove">✕</button>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pl-[52px]">
               <div className="min-w-0 flex-1 leading-tight">

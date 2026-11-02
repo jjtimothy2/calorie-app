@@ -151,13 +151,19 @@ export default function Home() {
           <BalanceGauge balance={day.balance} burned={burned} eaten={day.eaten} goal={day.goal} closed={closed} />
           <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} zone={gaugeRead(day.balance, day.goal, closed).zone} />
-          <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
-          {/* v1.20 Meal Ideas: today and not closed only. A 44 px target whose negative margins keep the card 20 px taller. */}
-          {!past && !closed && (
-            <button type="button" onClick={() => setIdeas(true)} className="tap mx-auto -mb-3.5 -mt-2.5 flex min-h-11 items-center gap-1 px-3 text-[15px] font-bold text-g-ink" data-testid="ideas-link">
-              <SparkleIcon className="h-4 w-4" />{ideasView(day.balance, day.goal).over ? 'Still hungry? Light ideas' : 'What should I eat?'}
+          {/* v1.20.1 (Reed's option 1): the goal sentence repeated the gauge, so an open day shows one quiet row under the
+              divider instead: "✦ What should I eat?" on the left and › on the right, like the Protein card's View ›. The
+              whole row is the 44 px target; -mb-3.5 sits it on the card's bottom padding, so the card is shorter than in
+              v1.20. Past open days end at the equation. A closed day keeps the sentence ("Finished with ... Nice work."),
+              the one place it says more than the gauge. */}
+          {!past && !closed ? (
+            <button type="button" onClick={() => setIdeas(true)} className="tap -mb-3.5 mt-2.5 flex min-h-11 w-full items-center justify-between gap-2 border-t border-line text-left text-[15px] font-bold text-g-ink" data-testid="ideas-link">
+              <span className="flex min-w-0 items-center gap-1.5" data-testid="ideas-label"><SparkleIcon className="h-4 w-4 shrink-0" /><span data-testid="ideas-text">{ideasView(day.balance, day.goal).over ? 'Still hungry? Light ideas' : 'What should I eat?'}</span></span>
+              <span aria-hidden="true" data-testid="ideas-chev">›</span>
             </button>
-          )}
+          ) : closed ? (
+            <p className="mt-2.5 border-t border-line pt-2.5 text-center text-[14px] text-mute" data-testid="goal-progress">{goalMessage(day.balance, day.goal, closed)}</p>
+          ) : null}
           </Card>
         </section>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />

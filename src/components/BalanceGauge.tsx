@@ -66,7 +66,7 @@ export function BalanceGauge({ balance, burned, eaten, goal, closed = false }: {
   const ink = ZONE_INK[read.zone]
   const said = read.big == null ? `On target. ${read.label}` : `${fmt(read.big)} ${read.label}`
   return (
-    <div className="relative mx-auto w-full" style={{ maxWidth: W }} data-testid="ring" data-state={read.state} data-zone={read.zone} data-pinned={pinned} data-plan={plan} data-net={net} data-lo={lo} data-hi={hi}>
+    <div className="relative mx-auto w-full" style={{ maxWidth: W }} data-testid="ring" data-message={read.message} data-state={read.state} data-zone={read.zone} data-pinned={pinned} data-plan={plan} data-net={net} data-lo={lo} data-hi={hi}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" aria-hidden="true" className="block overflow-visible" data-testid="gauge">
         {zones.map(([a, b, col], i) => (f(b) > f(a) ? <path key={i} d={arc(f(a), f(b))} fill="none" stroke={col} strokeWidth={SW} data-zone-color={col} /> : null))}
         {showZero && <line x1={d1x} y1={d1y} x2={d2x} y2={d2y} stroke="var(--color-bg)" strokeWidth={2} />}

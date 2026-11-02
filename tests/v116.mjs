@@ -73,7 +73,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     assert.equal((await text('balance')).trim(), big)
     assert.equal(await text('balance-label'), label)
     assert.equal(await text('ring-goal'), sub)
-    assert.equal(await text('goal-progress'), line)
+    assert.equal(await ring('message'), line, 'the gauge sentence (v1.20.1: no longer repeated as a line on open days)')
     assert.equal(await fill('balance'), ink, 'big number takes the zone ink')
     assert.equal(await ring('zone'), zone)
     assert.equal(await ring('state'), state)

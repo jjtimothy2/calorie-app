@@ -301,6 +301,45 @@ await t('v1.20 "Show other ideas" counter: 5 a day in calorie-app:ideas, resets 
   store.clear()
 })
 
+await t('v1.20.1 Custom chip text: trim, collapse whitespace, strip control and invisible characters, 60 max', () => {
+  assert.equal(ideas.CUSTOM_MAX, 60)
+  assert.equal(ideas.cleanCustom('  noodles,\n\t spicy   '), 'noodles, spicy')
+  assert.equal(ideas.cleanCustom('no\u0000rice\u0007\u001b[31m'), 'no rice [31m')
+  assert.equal(ideas.cleanCustom('soto\u200b\u202eayam\u2028\u00a0'), 'soto ayam')
+  assert.equal(ideas.cleanCustom(' \n\t '), '')
+  const long = ideas.cleanCustom('x'.repeat(59) + ' 🍜🍜')
+  assert.equal(Array.from(long).length, 59, 'cut at 60 then trimmed')
+  assert.equal(Array.from(ideas.cleanCustom('a'.repeat(58) + '🍜🍜🍜')).length, 60)
+  assert.ok(!/[\uD800-\uDBFF]$/.test(ideas.cleanCustom('a'.repeat(59) + '🍜🍜')), 'never splits an emoji')
+})
+await t('v1.20.1 Custom ask: words go in the request as quoted data, schema adds closest, plain asks unchanged', () => {
+  const ask = { meal: 'dinner', time: '18:30', cap: 598, over: false, kcalLeft: 598, proteinToGo: 68, eatenToday: [], prefs: ['Cheap'], avoid: [] }
+  assert.doesNotMatch(ideas.ideasUser(ask), /asked for/)
+  const u = ideas.ideasUser({ ...ask, custom: 'noodles, "spicy"' })
+  assert.match(u, /The user asked for: "noodles, \\"spicy\\""\. Match it/)
+  assert.match(u, /cheap[\s\S]*asked for/)
+  assert.deepEqual(ideas.IDEAS_SCHEMA.required, ['ideas', 'closest'])
+  assert.equal(ideas.IDEAS_SCHEMA.properties.closest.type, 'boolean')
+  assert.match(ideas.ideasSystem(), /closest: true only when/)
+  assert.equal(JSON.parse(JSON.stringify(ideas.ideasBody('openai', { ...ask, custom: 'noodles' }))).response_format.json_schema.strict, true)
+})
+await t('v1.20.1 C6 closest fits: 3 that fit the cap, flagged when the model says so or had to go over; never for plain asks', () => {
+  const idea = (n, kcal) => ({ name: `Mie ${n}`, why: 'w', portion: '1 bowl', grams: 300, kcal, protein_g: 15, carbs_g: 50, fat_g: 10 })
+  const a = { meal: 'dinner', time: '18:30', cap: 400, over: false, kcalLeft: 400, proteinToGo: 20, eatenToday: [], prefs: [], avoid: [], custom: 'noodles' }
+  const fit = JSON.stringify({ ideas: [idea(1, 380), idea(2, 350), idea(3, 300), idea(4, 250)], closest: false })
+  const r = ideas.readIdeas(fit, a)
+  assert.deepEqual(r.ideas.map((i) => i.name), ['Mie 1', 'Mie 2', 'Mie 3']); assert.equal(r.closest, false)
+  const said = ideas.readIdeas(JSON.stringify({ ideas: [idea(1, 390), idea(2, 360), idea(3, 320)], closest: true }), a)
+  assert.equal(said.closest, true); assert.equal(said.ideas.length, 3)
+  const over = ideas.readIdeas(JSON.stringify({ ideas: [idea(1, 650), idea(2, 390), idea(3, 360), idea(4, 320)], closest: false }), a)
+  assert.equal(over.closest, true, 'had to drop one over the cap')
+  assert.deepEqual(over.ideas.map((i) => i.kcal), [390, 360, 320])
+  assert.ok(over.ideas.every((i) => i.kcal <= a.cap))
+  const plain = ideas.readIdeas(JSON.stringify({ ideas: [idea(1, 650), idea(2, 390)], closest: true }), { ...a, custom: undefined })
+  assert.equal(plain.closest, false)
+  assert.equal(ideas.readIdeas('nope', a), null)
+})
+
 if (process.env.LIVE) await t('LIVE: Gemini accepts our request body (fake key reaches the key check)', async () => {
   const r = await fetch(`${ai.GEMINI_BASE}/models/${ai.MODELS.gemini}:generateContent`, { method: 'POST', headers: { 'x-goog-api-key': 'AIzaFakeKeyForShapeCheck', 'Content-Type': 'application/json' }, body: JSON.stringify(ai.geminiBody('data:image/jpeg;base64,/9j/4AAQ', 'Shared')) })
   const body = await r.text()

@@ -269,7 +269,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
 
   await step(`${tag} After this reads like Home's goal line, with edit math day total - old + new`, async () => {
     await home()
-    const goalLine = (await page.getByTestId('goal-progress').innerText()).replace(/\.( Nice work\.)?$/, '')
+    const goalLine = (await page.getByTestId('ring').getAttribute('data-message')).replace(/\.( Nice work\.)?$/, '')
     // v1.16: the gauge's words, "N kcal left to eat" before the goal line and "N kcal over your G goal" past it.
     const m = goalLine.match(/^([\d,]+) kcal (left to eat|over your [\d,]+ goal)$/)
     assert.ok(m, `goal line: ${goalLine}`)
@@ -309,7 +309,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     // Exercise: changing a burn adds budget back on Home (no preview line in the exercise sheets).
     await page.getByRole('button', { name: /^Edit Watch workout/ }).click(); await dialog.waitFor()
     await dialog.locator('input[name=burn]').fill('450'); await dialog.getByRole('button', { name: 'Save' }).click(); await dialog.waitFor({ state: 'detached' })
-    assert.equal((await page.getByTestId('goal-progress').innerText()).replace(/\.( Nice work\.)?$/, ''), say(bal + 200))
+    assert.equal((await page.getByTestId('ring').getAttribute('data-message')).replace(/\.( Nice work\.)?$/, ''), say(bal + 200))
     await page.getByRole('button', { name: /^Edit Kopi susu/ }).click(); await dialog.waitFor()
     assert.equal(await after(), say(bal + 200))
     await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' })

@@ -216,7 +216,7 @@ try {
     assert.equal(await fillOf(page.getByTestId('balance')), GREEN)
     assert.equal(await page.getByTestId('eq-balance').innerText(), '400')
     // v1.13: balance 400 = goal 400 (target 1200 + 300 exercise - 1500 eaten = 0 left).
-    assert.equal(await page.getByTestId('goal-progress').innerText(), 'Right on your 400 goal.')
+    assert.equal(await page.getByTestId('ring').getAttribute('data-message'), 'Right on your 400 goal.')
   })
   await step('log exercise: Food/Exercise switch, search, duration, intensity', async () => {
     await page.getByRole('button', { name: 'Log food' }).click(); await page.getByTestId('plus-manual').click() // v1.17: + opens the Quick Log Menu
@@ -786,7 +786,7 @@ try {
     assert.equal(await np.getByTestId('eq-balance').innerText(), '101'); assert.equal(await np.locator('[data-testid=equation] [data-term]').last().getAttribute('data-term'), 'Surplus') // v1.19.1
     assert.match(await np.getByTestId('ring-goal').textContent(), /goal 550/) // v1.13: the goal gap is the same with movement off
     assert.doesNotMatch(await np.locator('main').innerText(), /Base burn|× 1\.2/)
-    assert.equal(await np.getByTestId('goal-progress').innerText(), '651 kcal over your 550 goal.') // 550 - (-101)
+    assert.equal(await np.getByTestId('ring').getAttribute('data-message'), '651 kcal over your 550 goal.') // 550 - (-101)
     await top(np)
     await np.screenshot({ path: OUT + 'v131-e2e-home-movement-off.png' })
     // Older closed days keep what they were closed with: one from v1.2 (BMR only, goal 64) and one from v1.3 (base burn 1920, goal 384).
@@ -867,7 +867,7 @@ try {
     await seedProfile({ sex: 'male', bmr: 1600, ...PLAN })
     assert.match(await fp.getByTestId('ring-goal').textContent(), /· goal 550$/)
     assert.equal(await fp.getByTestId('minimum-hint').count(), 0)
-    assert.doesNotMatch(await fp.getByTestId('goal-progress').innerText(), /minimum intake/)
+    assert.doesNotMatch(await fp.getByTestId('ring').getAttribute('data-message'), /minimum intake/)
     await fp.goto(BASE + '/settings')
     assert.equal(await fp.getByTestId('settings-target').innerText(), '1,050 kcal')
     assert.equal(await fp.getByTestId('target-sum').innerText(), 'BMR 1,600 − 550 deficit')
