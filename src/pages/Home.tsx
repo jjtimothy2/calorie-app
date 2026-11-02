@@ -138,7 +138,7 @@ export default function Home() {
         )}
         {!past && <SaferDateCard />}
         {!past && <WeighInNudge />}
-        <section aria-label="Balance" className="flex flex-col gap-2.5">
+        <section aria-label="Calories" className="flex flex-col gap-2.5">
           {closed && (
             <div className="mb-1 flex items-center justify-between">
               <span className="rounded-full bg-g-soft px-3 py-1.5 text-[13px] font-bold text-g-soft-ink" data-testid="closed-pill">{past ? 'Closed · updates as you edit' : 'Day closed'}</span>

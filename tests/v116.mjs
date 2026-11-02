@@ -185,7 +185,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     const bal = await colour('eq-balance')
     assert.equal(bal, C.gInk, 'on-target Gain Balance is green')
     assert.ok(![C.red, C.lightInk].includes(bal))
-    assert.equal(await text('eq-balance'), `−${fmt(S)}`)
+    assert.equal(await text('eq-balance'), fmt(S)) // v1.19.1: the term label says Surplus, no minus
     await fits(); await shot('gain')
     await load(state('gain', { eaten: [BB + S + 150] }))
     await reads('On target', `150 kcal above your +${fmt(S)} goal`, `Surplus so far ${fmt(S + 150)} · goal +${fmt(S)}`, `On target. 150 kcal above your +${fmt(S)} goal.`, C.gInk, 'green', 'band')

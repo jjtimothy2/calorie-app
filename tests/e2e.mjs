@@ -144,7 +144,7 @@ try {
     assert.equal(await num(page.getByTestId('eq-bmr')), 1600) // v1.3.1: plain BMR
     assert.equal(await page.getByTestId('eq-base').count(), 0)
     assert.equal(await page.getByTestId('eq-movement').count(), 0) // hidden only because the toggle is off
-    assert.deepEqual(await terms(), ['BMR', 'Exercise', 'Eaten', 'Balance'])
+    assert.deepEqual(await terms(), ['BMR', 'Exercise', 'Eaten', 'Deficit']) // v1.19.1: Deficit / Surplus / Even, never Balance
     assert.match(await page.getByTestId('ring-goal').textContent(), /goal 550/) // 1600 - 1050 = the plan deficit (v1.13 no floor)
   })
   // v1.13: the goal is edited in Me's weight card (Edit goal sheet), not with the Lose / Keep / Gain buttons.
@@ -275,7 +275,7 @@ try {
     assert.equal(await page.getByTestId('balance-label').textContent(), 'kcal over your goal')
     assert.equal(await page.getByTestId('ring').getAttribute('data-state'), 'surplus')
     assert.equal(await fillOf(page.getByTestId('balance')), DEEP)
-    assert.equal(await page.getByTestId('eq-balance').innerText(), '−500')
+    assert.equal(await page.getByTestId('eq-balance').innerText(), '500'); assert.equal(await page.locator('[data-testid=equation] [data-term]').last().getAttribute('data-term'), 'Surplus') // v1.19.1
     assert.equal(await page.getByTestId('close-preview').innerText(), 'Surplus 500 kcal')
     await page.getByRole('button', { name: /^Edit Martabak/ }).click()
     await page.getByRole('button', { name: 'Delete entry' }).click()
@@ -294,13 +294,13 @@ try {
     await goHome()
     await setGoal('lose', 58, 140) // back to the 550 a day the rest of the run was written for (10 kg in 140 days)
     assert.equal(await num(page.getByTestId('eq-movement')), 600) // 1600 x 0.375
-    assert.deepEqual(await terms(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Balance'])
+    assert.deepEqual(await terms(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Deficit'])
     await page.getByRole('button', { name: /^Edit Big lunch/ }).click()
     await page.fill('input[name=kcal]', '1981')
     await page.getByRole('button', { name: 'Save' }).click()
     // 1600 + 600 + 281 - 1981 = 500
     assert.equal(await num(page.getByTestId('eq-balance')), 500)
-    assert.match(await page.getByTestId('equation').getAttribute('aria-label'), /BMR 1,600 plus movement 600 plus exercise 281 minus eaten 1,981 equals balance 500 deficit/)
+    assert.match(await page.getByTestId('equation').getAttribute('aria-label'), /BMR 1,600 plus movement 600 plus exercise 281 minus eaten 1,981 equals 500 deficit/)
     await top(page)
     await page.screenshot({ path: OUT + 'v1-mobile-home.png' })
   })
@@ -779,11 +779,11 @@ try {
     await np.goto(BASE + '/')
     const eq = np.getByTestId('equation')
     const termsOf = () => eq.locator('[data-term]').evaluateAll((els) => els.map((e) => e.getAttribute('data-term')))
-    assert.deepEqual(await termsOf(), ['BMR', 'Exercise', 'Eaten', 'Balance'])
+    assert.deepEqual(await termsOf(), ['BMR', 'Exercise', 'Eaten', 'Surplus'])
     assert.equal(await num(np.getByTestId('eq-bmr')), 1600)
     assert.equal(await np.getByTestId('eq-base').count(), 0)
     assert.equal(await num(np.getByTestId('eq-balance')), 101)
-    assert.equal(await np.getByTestId('eq-balance').innerText(), '−101')
+    assert.equal(await np.getByTestId('eq-balance').innerText(), '101'); assert.equal(await np.locator('[data-testid=equation] [data-term]').last().getAttribute('data-term'), 'Surplus') // v1.19.1
     assert.match(await np.getByTestId('ring-goal').textContent(), /goal 550/) // v1.13: the goal gap is the same with movement off
     assert.doesNotMatch(await np.locator('main').innerText(), /Base burn|× 1\.2/)
     assert.equal(await np.getByTestId('goal-progress').innerText(), '651 kcal over your 550 goal.') // 550 - (-101)
@@ -833,9 +833,9 @@ try {
     assert.equal(await num(np.getByTestId('verdict-bmr')), 1600)
     assert.match(await np.getByTestId('verdict-message').innerText(), /550/)
     await np.goto(BASE + '/')
-    assert.deepEqual(await termsOf(), ['BMR', 'Exercise', 'Eaten', 'Balance']) // closed day, frozen (movement 0)
+    assert.deepEqual(await termsOf(), ['BMR', 'Exercise', 'Eaten', 'Surplus']) // closed day, frozen (movement 0)
     await np.getByRole('button', { name: 'Reopen day' }).click()
-    assert.deepEqual(await termsOf(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Balance'])
+    assert.deepEqual(await termsOf(), ['BMR', 'Movement', 'Exercise', 'Eaten', 'Deficit'])
     assert.equal(await num(np.getByTestId('eq-balance')), 499) // 1600 + 600 + 300 - 2001, unchanged v1.1 maths
     assert.match(await np.getByTestId('ring-goal').textContent(), /goal 550/)
   })

@@ -82,7 +82,7 @@ export default function Verdict() {
         {d.baseBurn == null && d.movement > 0 && <div className={row}><span>Daily movement</span><b className="num font-semibold">+ {fmt(d.movement)}</b></div>}
         <div className={row}><span>Exercise burned</span><b className="num font-semibold text-ex-ink">+ {fmt(d.burned)}</b></div>
         <div className={row}><span>Food eaten</span><b className="num font-semibold">− {fmt(d.eaten)}</b></div>
-        <div className={row}><b>Balance</b><b className={`num ${tone}`} data-testid="verdict-balance">{b === 0 ? 'even' : `${fmt(Math.abs(b))} ${surplus ? 'surplus' : 'deficit'}`}</b></div>
+        <div className={row}><b>Calories</b><b className={`num ${tone}`} data-testid="verdict-balance">{b === 0 ? 'even' : `${fmt(Math.abs(b))} ${surplus ? 'surplus' : 'deficit'}`}</b></div>
       </Card>
     </Screen>
   )

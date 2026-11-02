@@ -1,6 +1,6 @@
 // v1.19 History bars and view switch. Bars by range length: 1-31 days daily, 32-182 weekly (Monday to Sunday, cut to
 // the range), 183+ monthly (calendar months, cut to the range; a rolling year is 13 bars). A monthly bar is the month's
-// daily average (closed days), ticks are 3-letter months, hint "Hold to see a month". Part weeks / months are lighter
+// daily average (closed days), ticks are month initials (v1.19.1), hint "Hold to see a month". Part weeks / months are lighter
 // with a dashed outline, a legend key and "part week" / "part month" on hold. Gaps: "3 of 7 days logged" on hold and
 // "Averages use logged days only · N days with no logs" under the chart. Top control: segmented Calories / Protein
 // switch, outlined 7d / 30d / Custom pills below. Renames (Calories chart, Daily calories), cross-year pill
@@ -238,7 +238,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(b.filter((x) => x.part === 'yes').length, ms.filter((m) => m.length < dim(m[0])).length)
     const ticks = await page.locator('[data-testid=trend-chart] text[data-tick]').evaluateAll((e) => e.map((t) => t.textContent))
     assert.ok(ticks.length >= 4, `ticks ${ticks}`)
-    for (const t of ticks) assert.ok(MON.includes(t), `tick ${t}`)
+    // v1.19.1: monthly ticks are single month initials (N D J F …); tests/v1191.mjs covers them in full.
+    for (const t of ticks) assert.ok(MON.some((m) => m[0] === t), `tick ${t}`)
     // Ticks do not overlap each other or leave the chart.
     const tb = await page.locator('[data-testid=trend-chart] text[data-tick]').evaluateAll((e) => e.map((t) => { const r = t.getBoundingClientRect(); return [r.left, r.right] }))
     const cr = await box(page.getByTestId('trend-chart'))

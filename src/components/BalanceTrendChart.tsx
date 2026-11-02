@@ -9,7 +9,7 @@ import { haptic } from '../lib/haptics'
 import { barLabel, monotonePath, proteinTrendScale, runs, trendScale } from '../lib/trend'
 import { reducedMotion } from './motion'
 
-export type TrendDay = { key: string; label: string; tick: boolean; value: number | null; open?: boolean; avg: number | null; hit?: boolean; part?: boolean; anchor?: 'end' }
+export type TrendDay = { key: string; label: string; tick: boolean; value: number | null; open?: boolean; avg: number | null; hit?: boolean; part?: boolean; anchor?: 'end'; full?: string }
 
 // Rough bold-digit width (Inter-like): digits ~0.6em, commas and dots ~0.3em.
 const textW = (t: string, fs: number) => [...t].reduce((w, c) => w + (/[,.]/.test(c) ? 0.3 : 0.6), 0) * fs
@@ -55,7 +55,19 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   const closedVals = days.flatMap((d) => (d.value == null || d.open ? [] : [d.value]))
   const { top: sTop, bottom: sBot } = isP ? proteinTrendScale(days.flatMap((d) => (d.value == null ? [] : [d.value])), goal) : trendScale(closedVals, goal)
   const S = sTop
-  const padT = compact ? 26 : 18, padB = sBot > 0 ? (compact ? 26 : 18) : isP ? 2 : compact ? 22 : 16
+  const labelsOn = n <= 14 // v1.19: value labels only with 14 bars or fewer
+  // v1.19.1: label room above the bars (26 / 18) only when a value label would sit above a bar. Labels hidden, or every
+  // deficit / protein label inside its bar (checked at the tighter scale), leave 8 units of breathing space. Surplus
+  // labels sit below their bars, in the bottom padding, which is unchanged. Chart height is unchanged.
+  const padB = sBot > 0 ? (compact ? 26 : 18) : isP ? 2 : compact ? 22 : 16
+  const tightT = 8, k0 = (plotH - tightT - padB) / (sTop + sBot), fs0 = compact ? 8.5 : 11
+  const labelAbove = labelsOn && days.some((d) => {
+    if (d.value == null || Math.round(d.value) <= 0) return false
+    const lab = barLabel(d.value, compact), h = Math.max(4, d.value * k0)
+    const need = compact ? lab.length * fs0 * 0.62 + 8 : 22
+    return !(h >= need && (compact || bw >= textW(lab, fs0) + 4))
+  })
+  const padT = labelAbove ? (compact ? 26 : 18) : tightT
   const k = (plotH - padT - padB) / (sTop + sBot)
   const zero = top + padT + sTop * k
   const plotBottom = top + plotH
@@ -232,7 +244,7 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
   return (
     <div {...handlers} tabIndex={0} aria-label={`${isP ? 'Protein' : 'Calories'} chart. Press and hold to see a ${unit}.${swipe ? ' Swipe or use the arrow keys to change period.' : ''}`}
       className="relative -mx-1 select-none rounded-xl outline-offset-2 [-webkit-touch-callout:none]" style={{ touchAction: 'pan-y' }} data-testid="trend-chart" data-variant={variant} data-page={page} data-swipe={swipe ? 'yes' : 'no'} data-unit={unit}>
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid={isP ? 'protein-chart' : 'chart'} data-scale={S} data-top={sTop} data-bottom={sBot}
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} className="block w-full overflow-visible" aria-hidden="true" data-testid={isP ? 'protein-chart' : 'chart'} data-scale={S} data-top={sTop} data-bottom={sBot} data-pad-top={padT}
         data-zero={zero.toFixed(2)} data-k={k.toFixed(6)} data-plot-top={top} data-plot-bottom={plotBottom}>
         <defs>
           <clipPath id={`trend-clip-${variant}`}><rect x={left} y={0} width={plotW} height={height} /></clipPath>
@@ -273,13 +285,13 @@ export function BalanceTrendChart({ days, n, goal, page, onPage, scrub, onScrub,
                       stroke={d.part ? (isP ? 'var(--color-protein)' : surplus ? 'var(--color-over)' : 'var(--color-g)') : undefined} strokeWidth={d.part ? 1.25 : undefined} strokeDasharray={d.part ? '3 2' : undefined}
                       className="bar-grow" style={{ transformOrigin: surplus ? 'top' : 'bottom', animationDelay: vis ? `${(i - start) * (n > 10 ? 12 : 45)}ms` : '0ms', transition: 'opacity .12s' }} />
                   )}
-                  {d.tick && <text data-tick={d.key} x={d.anchor === 'end' ? x + bw : x + bw / 2} y={height - 4} textAnchor={d.anchor === 'end' ? 'end' : 'middle'} fontSize={unit === 'month' && slot < 26 ? 11.5 : 13} fill={scrub === i ? 'var(--color-ink)' : 'var(--color-mute)'} fontWeight={scrub === i ? 700 : 400}>{d.label}</text>}
+                  {d.tick && <text data-tick={d.key} aria-label={d.full} data-full={d.full} x={d.anchor === 'end' ? x + bw : x + bw / 2} y={height - 4} textAnchor={d.anchor === 'end' ? 'end' : 'middle'} fontSize={unit === 'month' && slot < 26 ? 11.5 : 13} fill={scrub === i ? 'var(--color-ink)' : 'var(--color-mute)'} fontWeight={scrub === i ? 700 : 400}>{d.label}</text>}
                 </g>
               )
             })}
             <path ref={lineRef} d={linePath} fill="none" stroke="var(--color-ink)" strokeOpacity=".82" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" data-testid="trend-line" />
-            <g data-testid="bar-labels" pointerEvents="none" data-shown={n <= 14 ? 'yes' : 'no'}>
-              {n <= 14 && days.map((d, i) => {
+            <g data-testid="bar-labels" pointerEvents="none" data-shown={labelsOn ? 'yes' : 'no'}>
+              {labelsOn && days.map((d, i) => {
                 const { surplus, vis, dim, label, fs, inside, lx, ly } = geom(d, i)
                 if (label == null) return null
                 const anchor = compact ? (inside !== surplus ? 'end' : 'start') : 'middle'

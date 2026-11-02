@@ -159,7 +159,8 @@ export default function History() {
       const part = w.length < fullLen(w)
       const t = unit === 'week'
         ? { key: w[0].key, label: dayMonth(w[0].key), tick: tickAt(i, W, 22), part }
-        : { key: w[0].key, label: monthName(w[0].key), tick: tickAt(i, W, 10, 2), part }
+        // v1.19.1: month ticks are single initials (N D J F …) from the fixed list; the full name stays on the tick's label.
+        : { key: w[0].key, label: monthName(w[0].key)[0], full: monthName(w[0].key, true), tick: tickAt(i, W, 5, 2), part }
       const cl = w.filter((d) => d.closed), lg = w.filter((d) => d.closed || d.logged)
       const bDays = cl.length ? cl : lg
       bal.push({ ...t, open: !cl.length, value: bDays.length ? Math.round(bDays.reduce((a, d) => a + d.balance, 0) / bDays.length) : null, avg: null })
