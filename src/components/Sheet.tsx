@@ -1,4 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react'
+import { holdCounts, reducedMotion } from './motion'
+
+const CLOSE_MS = 250
 
 const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select'
 
@@ -18,12 +21,23 @@ const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]), te
  * height or with a flick closes it, anything less springs back. Content scrolled down scrolls first and the drag picks
  * up once it reaches the top. Fields, the meal pills and picker, steppers and swipe rows ([data-no-drag]) never start
  * a drag. Touch moves the sheet owns are cancelled, so nothing behind it moves. Reduced motion: no slides.
+ * v1.21: every close slides down with the scrim fading (250 ms, ease-in), the same as a swipe close, whatever closed it
+ * (x, scrim, Escape, logging, a parent unmounting it). Parents unmount a sheet as soon as it closes, so the last frame
+ * is copied when it unmounts and that inert copy (closeGhost) plays the slide. A sheet replaced by another sheet in the
+ * same update (Ideas to the AI result, a group to its item) hands over without one. Reduced motion: a 150 ms fade.
  */
 export function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const shade = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
+  const wrap = useRef<HTMLDivElement>(null)
+  const swiped = useRef(false)
+  // Layout cleanup: the DOM is still whole here, so copy it before React removes it.
+  useLayoutEffect(() => {
+    const el = wrap.current
+    return () => { if (el && !swiped.current) closeGhost(el) }
+  }, [])
   useLayoutEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current
@@ -127,11 +141,13 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
       if (off > h * 0.3 || (v > 0.5 && off > 24)) {
         closing = true
         if (reduced()) { close.current(); return }
+        swiped.current = true
+        el.dataset.closing = ''
         set(h)
         let done = false
         const fin = () => { if (!done) { done = true; close.current() } }
         el.addEventListener('transitionend', fin, { once: true })
-        setTimeout(fin, 260)
+        setTimeout(fin, CLOSE_MS + 20)
       } else set(0)
     }
     el.addEventListener('touchstart', start, { passive: true })
@@ -150,7 +166,7 @@ export function Sheet({ label, onClose, children }: { label: string; onClose: ()
     if (el.matches(FIELD)) setTimeout(() => { if (document.activeElement === el) el.scrollIntoView({ block: 'nearest' }) }, 300)
   }
   return (
-    <div className="absolute inset-0 z-30">
+    <div ref={wrap} className="absolute inset-0 z-30">
       <div ref={shade} className="anim-fade sheet-shade absolute inset-0 bg-[rgba(42,36,32,.42)]" onClick={() => close.current()} aria-hidden="true" />
       <div
         ref={ref}
@@ -278,4 +294,44 @@ export function Stepper({ value, onChange, label, unit, min = 0.5, title, compac
       {err('px-2 text-[14px]')}
     </div>
   )
+}
+
+/**
+ * v1.21: play the close on a copy of the sheet's last frame. Runs in the sheet's layout cleanup; the copy goes in after
+ * the update only if the sheet really left (StrictMode re-runs effects on a live sheet) and no other sheet took its
+ * place. The copy is inert and hidden from assistive tech, has no ids or test ids, and removes itself when done.
+ */
+function closeGhost(wrap: HTMLElement) {
+  const reduce = reducedMotion()
+  const parent = wrap.parentNode, next = wrap.nextSibling
+  const sheet = wrap.querySelector<HTMLElement>('[role="dialog"]')
+  const scroll = sheet?.scrollTop ?? 0
+  const g = wrap.cloneNode(true) as HTMLElement
+  // Copy what cloneNode leaves out: typed field values.
+  const src = wrap.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')
+  g.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea').forEach((f, i) => { if (src[i]) f.value = src[i].value })
+  for (const n of [g, ...g.querySelectorAll<HTMLElement>('*')]) {
+    for (const a of ['id', 'data-testid', 'role', 'aria-modal', 'aria-label', 'name', 'data-autofocus', 'tabindex']) n.removeAttribute(a)
+  }
+  g.setAttribute('aria-hidden', 'true')
+  g.setAttribute('inert', '')
+  g.dataset.sheetGhost = ''
+  g.style.pointerEvents = 'none'
+  g.classList.add(reduce ? 'sheet-ghost-fade' : 'sheet-ghost')
+  const shade = g.firstElementChild as HTMLElement | null, panel = shade?.nextElementSibling as HTMLElement | null
+  shade?.classList.remove('anim-fade')
+  panel?.classList.remove('anim-sheet')
+  delete panel?.dataset.drag
+  if (!reduce) holdCounts(CLOSE_MS)
+  queueMicrotask(() => {
+    if (wrap.isConnected || document.querySelector('[data-testid="sheet"]')) { if (!reduce) holdCounts(0); return }
+    const live = parent?.isConnected ? parent : document.getElementById('app-frame')
+    if (!live) return
+    live.insertBefore(g, next && next.parentNode === live ? next : null)
+    if (panel) panel.scrollTop = scroll
+    let done = false
+    const end = () => { if (!done) { done = true; g.remove() } }
+    g.addEventListener('animationend', (e) => { if (e.target === (reduce ? g : panel)) end() })
+    window.setTimeout(end, (reduce ? 150 : CLOSE_MS) + 120)
+  })
 }

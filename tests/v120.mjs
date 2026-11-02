@@ -171,7 +171,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.deepEqual(await dialog.getByTestId('idea-protein').allInnerTexts(), ['38 g protein', '32 g protein', '18 g protein'])
     assert.deepEqual(await dialog.getByTestId('idea-serving').allInnerTexts(), ['1 plate (380 g)', '1 plate (380 g)', '1 bowl (350 g)'])
     assert.equal(await dialog.getByRole('button', { name: /^Log this/ }).count(), 3)
-    assert.equal(await dialog.getByTestId('ideas-more').innerText(), 'Show other ideas')
+    assert.equal(await dialog.getByTestId('ideas-more').innerText(), 'Show other ideas · 7 left today') // v1.21 counter
     assert.equal(await dialog.getByTestId('ideas-foot').innerText(), 'Ideas from Gemini. Numbers are rough, check them before logging.')
     assert.deepEqual(await dialog.getByRole('group', { name: 'Preferences' }).getByRole('button').allInnerTexts(), ['Indonesian', 'Quick', 'Cheap', '+ Custom'], 'v1.20.1 adds + Custom last')
     await layout('ideas')
@@ -228,7 +228,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const e = s.entries.find((x) => x.name === 'Ayam bakar, nasi merah, lalapan')
     assert.deepEqual([e.meal, e.date, e.source, e.kcal, e.protein, e.servingLabel, e.qty], ['dinner', TODAY, 'photo', 480, 38, '1 plate (380 g)', 1])
     const row = page.locator(`[data-ids~="${e.id}"]`)
-    assert.match(await row.getAttribute('class'), /row-flash/)
+    // v1.21: the highlight starts once the gauge has counted (about 600 ms after landing).
+    await page.waitForFunction((id) => document.querySelector(`[data-ids~="${id}"]`)?.classList.contains('row-flash'), e.id, { timeout: 2500 })
     const rt = await row.innerText(); assert.match(rt, /AI/, rt)
     assert.equal(await page.getByTestId('meal-dinner').locator(`[data-ids~="${e.id}"]`).count(), 1)
     await page.waitForTimeout(700) // smooth scroll settles
@@ -242,13 +243,14 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await page.clock.setFixedTime(at('18:30'))
   })
 
-  await step(`${tag} "Show other ideas": 3 new ones, never a repeat, 5 a day, then "That's all the ideas for today" + local picks; calorie-app:ideas counts`, async () => {
+  await step(`${tag} "Show other ideas": 3 new ones, never a repeat, 7 a day (v1.21), then "No more new ideas today. Resets tomorrow." + local picks; calorie-app:ideas counts`, async () => {
     await page.evaluate(() => window.scrollTo(0, 0))
     G.reply = SET1
     await openIdeas(); await waitIdeas()
     assert.equal(await page.evaluate(() => localStorage.getItem('calorie-app:ideas')), null, 'no new key before a refresh')
     const seen = new Set(await names())
-    for (let n = 1; n <= 5; n++) {
+    for (let n = 1; n <= 7; n++) {
+      assert.equal(await dialog.getByTestId('ideas-more').innerText(), `Show other ideas · ${8 - n} left today`)
       G.reply = refreshSet(n)
       await tapLoc(dialog.getByTestId('ideas-more'))
       await dialog.getByText(`Idea ${n}a`).waitFor()
@@ -259,7 +261,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
       assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('calorie-app:ideas'))), { date: TODAY, count: n })
     }
     assert.equal(await dialog.getByTestId('ideas-more').count(), 0)
-    assert.equal(await dialog.getByTestId('ideas-capped').innerText(), "That's all the ideas for today")
+    assert.equal(await dialog.getByTestId('ideas-capped').innerText(), 'No more new ideas today. Resets tomorrow.')
     await dialog.getByTestId('ideas-picks').waitFor()
     assert.equal(await dialog.getByTestId('ideas-picks').getByTestId('idea').count(), 3)
     await layout('capped')

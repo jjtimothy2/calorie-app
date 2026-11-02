@@ -1,5 +1,6 @@
 import { fmt, GAIN_BAND, gaugeRead, KEEP_BAND, type GaugeZone } from '../lib/calc'
-import { Ticker } from './motion'
+import { useContext } from 'react'
+import { COUNT_MS, CountHold, Ticker, useCountUp } from './motion'
 
 /**
  * v1.16 Home speedometer (Reed's spec). Net = eaten - burn, where burn = the day's base (BMR + movement, or BMR alone
@@ -61,7 +62,13 @@ export function BalanceGauge({ balance, burned, eaten, goal, closed = false }: {
   const [d1x, d1y] = pt(f0, R - SW / 2), [d2x, d2y] = pt(f0, R + SW / 2)
 
   // Rider: a group rotated about the centre with the dot at the top, so it travels along the arc when it moves.
+  // v1.21: the rider is driven by the same count as the big number (same 600 ms, easing, start and hold), so it sweeps
+  // in step with the count instead of jumping ahead. A CSS transition did nothing on a fresh mount, which is every
+  // return to Home. data-deg / data-f stay the target; data-shown-deg is where it is drawn this frame.
   const deg = -90 + fv * 180
+  const hold = useContext(CountHold)
+  const fShown = useCountUp(fv, 'gauge-f', COUNT_MS, 0, hold)
+  const shownDeg = -90 + fShown * 180
   const nY = CY - 32
   const ink = ZONE_INK[read.zone]
   const said = read.big == null ? `On target. ${read.label}` : `${fmt(read.big)} ${read.label}`
@@ -78,7 +85,7 @@ export function BalanceGauge({ balance, burned, eaten, goal, closed = false }: {
         <text x={CX + R} y={END_Y} textAnchor="middle" className="num" fontSize={17} fontWeight={pinned ? 800 : 600} fill={pinned ? C.deep : 'var(--color-mute)'} data-testid="gauge-end">{pinned ? `${fmt(hi)}+` : signed(hi)}</text>
         {pinned && <path d={`M ${CX + R + SW / 2 + 5} ${CY - 7} l 7 7 l -7 7`} fill="none" stroke={C.deep} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" data-testid="gauge-overflow" />}
         <text x={CX + R} y={END_Y + 16} textAnchor="middle" fontSize={12} fill={pinned ? C.deep : 'var(--color-mute)'} data-testid="gauge-end-label">{pinned ? 'off the scale' : 'surplus'}</text>
-        <g data-testid="gauge-needle" data-deg={deg.toFixed(1)} data-f={fv.toFixed(4)} className="gauge-rider" style={{ transform: `rotate(${deg.toFixed(2)}deg)`, transformOrigin: `${CX}px ${CY}px` }}>
+        <g data-testid="gauge-needle" data-deg={deg.toFixed(1)} data-f={fv.toFixed(4)} data-shown-deg={shownDeg.toFixed(1)} className="gauge-rider" style={{ transform: `rotate(${shownDeg.toFixed(2)}deg)`, transformOrigin: `${CX}px ${CY}px` }}>
           <circle cx={CX} cy={CY - R} r={13} fill="var(--color-ink)" stroke="var(--color-card)" strokeWidth={4} />
         </g>
         <text x={CX} y={read.big == null ? nY - 4 : nY} textAnchor="middle" className="num" fontSize={read.big == null ? 34 : 46} fill={ink} data-testid="balance">

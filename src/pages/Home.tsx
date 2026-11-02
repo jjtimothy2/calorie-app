@@ -15,7 +15,7 @@ import { ideasView } from '../lib/ideas'
 import type { EntryGroup } from '../components/FoodSheet'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { DaySwitcher, PastDayNote } from '../components/PastDay'
-import { reducedMotion, useNewRows } from '../components/motion'
+import { COUNT_MS, CountHold, countsHeldFor, reducedMotion, useInView, useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
 import { dayName, dayView, keyDate, entryTotals, fmt, gaugeRead, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
@@ -87,16 +87,33 @@ export default function Home() {
     land(null)
     present(l)
   }, [landing, date, land, setLogDate])
-  function present(l: Landing & { prev?: Record<string, Meal> }) {
+  // v1.21: the gauge and the equation numbers count only while the gauge is on screen (CountHold), so a value that
+  // changed while Home was scrolled away or covered still counts in view.
+  const calories = useRef<HTMLElement>(null)
+  const seen = useInView(calories, (el) => el.querySelector('[data-testid="ring"]'), 0.5)
+  // v1.21: after a log the toast shows at once, but Home first lets the gauge count in view (scrolling up to it if
+  // needed), then scrolls to the new row(s) and highlights them. A meal move changes no totals, so it scrolls at once.
+  // Reduced motion: values are already final, so it scrolls straight away as before.
+  function present(l: Landing & { prev?: Record<string, Meal> }, counts = true) {
     const reduce = reducedMotion()
     timers.current.forEach((t) => window.clearTimeout(t))
     setSnack(l)
-    setFlash(new Set(l.ids))
-    timers.current = [
-      window.setTimeout(() => setFlash(new Set()), reduce ? 1000 : 1500),
-      window.setTimeout(() => setSnack(null), 5000),
-    ]
-    requestAnimationFrame(() => requestAnimationFrame(() => scrollToRows(l.ids, reduce)))
+    setFlash(new Set())
+    const show = () => {
+      setFlash(new Set(l.ids))
+      timers.current.push(window.setTimeout(() => setFlash(new Set()), reduce ? 1000 : 1500))
+      requestAnimationFrame(() => requestAnimationFrame(() => scrollToRows(l.ids, reduce)))
+    }
+    timers.current = [window.setTimeout(() => setSnack(null), 5000)]
+    if (reduce || !counts) return show()
+    let wait = countsHeldFor() + COUNT_MS + 80
+    const sec = calories.current, main = sec?.closest('main'), ring = sec?.querySelector('[data-testid="ring"]')
+    if (main && ring) {
+      const m = main.getBoundingClientRect(), r = ring.getBoundingClientRect()
+      const visible = Math.min(r.bottom, m.bottom) - Math.max(r.top, m.top)
+      if (visible < r.height * 0.5) { main.scrollTo({ top: 0, behavior: 'smooth' }); wait += 420 }
+    }
+    timers.current.push(window.setTimeout(show, wait))
   }
   // v1.13.3: the group sheet's meal pill. Every item of the group moves in one update (setMeals); the sheet closes so
   // Home shows the group under its new meal, highlighted and scrolled to, with "Moved to X" and Undo for 5 s.
@@ -106,7 +123,7 @@ export default function Home() {
     const prev = Object.fromEntries(items.map((e) => [e.id, e.meal]))
     dispatch({ type: 'setMeals', meals: Object.fromEntries(items.map((e) => [e.id, meal])) })
     setGroup(null)
-    present({ key: Date.now() + Math.random(), kind: 'food', date, ids: items.map((e) => e.id), text: `Moved to ${MEAL_LABEL[meal]}`, prev })
+    present({ key: Date.now() + Math.random(), kind: 'food', date, ids: items.map((e) => e.id), text: `Moved to ${MEAL_LABEL[meal]}`, prev }, false)
   }
   const undo = () => {
     if (!snack) return
@@ -141,7 +158,8 @@ export default function Home() {
         )}
         {!past && <SaferDateCard />}
         {!past && <WeighInNudge />}
-        <section aria-label="Calories" className="flex flex-col gap-2.5">
+        <CountHold.Provider value={seen !== true}>
+        <section ref={calories} aria-label="Calories" className="flex flex-col gap-2.5">
           {closed && (
             <div className="mb-1 flex items-center justify-between">
               <span className="rounded-full bg-g-soft px-3 py-1.5 text-[13px] font-bold text-g-soft-ink" data-testid="closed-pill">{past ? 'Closed · updates as you edit' : 'Day closed'}</span>
@@ -166,6 +184,7 @@ export default function Home() {
           ) : null}
           </Card>
         </section>
+        </CountHold.Provider>
         <ProteinCard totals={totals} targets={macroTargets(profile)} />
         <Card>
           <section aria-label="Exercise" data-testid="exercise-card">

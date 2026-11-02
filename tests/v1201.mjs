@@ -327,11 +327,14 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' })
   })
 
-  await step(`${tag} C4 cap + C5: at 5 used "+ Custom" is disabled; hidden with no key, offline and over the goal`, async () => {
+  await step(`${tag} C4 cap + C5: at 7 used (v1.21) "+ Custom" is muted and does not open the field; hidden with no key, offline and over the goal`, async () => {
     const before = await raw()
-    await page.evaluate((t) => localStorage.setItem('calorie-app:ideas', JSON.stringify({ date: t, count: 5 })), TODAY)
+    await page.evaluate((t) => localStorage.setItem('calorie-app:ideas', JSON.stringify({ date: t, count: 7 })), TODAY)
     await openIdeas()
-    assert.equal(await chip().isDisabled(), true)
+    assert.equal(await chip().getAttribute('aria-disabled'), 'true')
+    await tapLoc(chip())
+    assert.equal(await dialog.getByTestId('custom-input').count(), 0)
+    assert.equal(await dialog.getByTestId('custom-capped').innerText(), 'No more new ideas today. Resets tomorrow.')
     await page.evaluate((v) => localStorage.setItem('calorie-app:ideas', v), before.ideas)
     // offline
     await home(); await ctx.setOffline(true); await page.waitForTimeout(200)

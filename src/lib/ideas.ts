@@ -6,7 +6,11 @@ import { AiError, MODELS, askModel, clampItem, normName, readJson, type AiItem, 
 import type { Meal } from './types'
 
 export const IDEAS_KEY = 'calorie-app:ideas'
-export const MAX_REFRESH = 5
+// v1.21: 7 a day (was 5), shared by "Show other ideas" and Custom. The store keeps the count used, so a v1.20.x day
+// with 5 used reads as 2 left. It resets with the local date key (device midnight).
+export const MAX_REFRESH = 7
+export const CAP_TEXT = 'No more new ideas today. Resets tomorrow.'
+export const refreshesLeft = (used: number) => Math.max(0, MAX_REFRESH - used)
 export const LIGHT_KCAL = 150
 export const PREFS = ['Indonesian', 'Quick', 'Cheap'] as const
 export type Pref = (typeof PREFS)[number]

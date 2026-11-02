@@ -288,11 +288,13 @@ await t('v1.20 local picks: fit the cap, nothing eaten today, no drinks, one per
   assert.ok(!ideas.localPicks(plain, opts).some((x) => x.id === 'e'))
   assert.ok(ideas.localPicks(plain.map((x) => ({ ...x, recent: x.id === 'e' ? 0 : -1 })), opts).some((x) => x.id === 'e'), 'a recent food is boosted in')
 })
-await t('v1.20 "Show other ideas" counter: 5 a day in calorie-app:ideas, resets the next day, never in backups', () => {
+await t('v1.20 "Show other ideas" counter (v1.21: 7 a day) in calorie-app:ideas, resets the next day, never in backups', () => {
   store.clear()
   assert.equal(ideas.refreshesUsed('2026-11-02'), 0)
-  for (let i = 0; i < 5; i++) ideas.countRefresh('2026-11-02')
+  assert.equal(ideas.MAX_REFRESH, 7)
+  for (let i = 0; i < 7; i++) ideas.countRefresh('2026-11-02')
   assert.equal(ideas.refreshesUsed('2026-11-02'), ideas.MAX_REFRESH)
+  assert.equal(ideas.refreshesLeft(ideas.refreshesUsed('2026-11-02')), 0)
   assert.equal(ideas.refreshesUsed('2026-11-03'), 0)
   store.set('calorie-app:v3', JSON.stringify({ version: 3, profile: null, entries: [], exercises: [], closedDays: {}, favourites: [] }))
   const text = JSON.stringify(backup.makeBackup())

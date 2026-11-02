@@ -80,7 +80,8 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   }
   const meal = (m) => page.getByTestId(`meal-${m}`)
   const subtotal = async (m) => { const t = await meal(m).locator('h2').innerText(); const x = t.match(/·\s*([\d,]+) kcal/i); return x ? Number(x[1].replace(',', '')) : 0 }
-  const eaten = async () => (await page.getByTestId('eaten').innerText()).replace(/\D/g, '')
+  // v1.21: Eaten counts on screen; read the settled total from the equation's label.
+  const eaten = async () => (await page.getByTestId('equation').getAttribute('aria-label')).match(/minus eaten ([\d,]+)/)[1].replace(/\D/g, '')
 
   await step(`${tag} edit sheets open with no field focused (the sheet has focus; Escape closes): quick add, catalogue food, My food entry and Edit food, AI item, exercise, quick burn`, async () => {
     await home()

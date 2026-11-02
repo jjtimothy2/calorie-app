@@ -2,10 +2,13 @@
 // (Gemini or OpenAI, same model as the estimate) for 3 ideas that fit the kcal left and protein to go; "Log this" opens
 // the AI result sheet (Edit comes back here) and logs to the meal the sheet opened with. No key, offline or an error:
 // picks from the user's own foods, so it never dead-ends. Chips re-ask with a preference; "Show other ideas" gives 3
-// new ones, 5 times a day. Focus goes to the sheet, never an input.
+// new ones, 7 times a day (v1.21; was 5). Focus goes to the sheet, never an input.
 // v1.20.1 Custom chip: "+ Custom" (last) opens a field under the chips only when tapped, so the keyboard never opens with
-// the sheet. "Get ideas" sends the cleaned words (60 max) and uses one of the 5 daily refreshes; the chip then shows the
-// words with ✕ to clear. If the AI cannot match within the calories it still gives 3 that fit, with a note.
+// the sheet. "Get ideas" sends the cleaned words (60 max) and uses one of the daily refreshes (7 from v1.21); the chip then shows the
+// words with ✕ to clear.
+// v1.21 counter: the button reads "Show other ideas · N left today" (N muted). At 0 it becomes the muted line "No more
+// new ideas today. Resets tomorrow."; ideas on screen and the local picks stay. "+ Custom" looks muted at 0 but still
+// takes a tap, which shows that same line under the chips instead of opening the field. If the AI cannot match within the calories it still gives 3 that fit, with a note.
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -14,7 +17,7 @@ import { aiServingLabel } from '../lib/amount'
 import { AiError, PROVIDER_LABEL, errorText, normName, perServing, readAi, type AiErrorKind } from '../lib/ai'
 import { dayView, defaultMeal, entryTotals, fmt, macroTargets, sumEntries } from '../lib/calc'
 import {
-  CUSTOM_MAX, MAX_REFRESH, PREFS, askIdeasFull, cleanCustom, clock, countRefresh, ideasView, localPicks, mealTitle, mealWord, refreshesUsed,
+  CAP_TEXT, CUSTOM_MAX, MAX_REFRESH, PREFS, askIdeasFull, cleanCustom, clock, countRefresh, ideasView, localPicks, mealTitle, mealWord, refreshesLeft, refreshesUsed,
   type AiIdea, type Candidate, type Pref,
 } from '../lib/ideas'
 import { USER_SERVING, type UserFood } from '../lib/myFoods'
@@ -57,6 +60,9 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
   const [phase, setPhase] = useState<Phase>(() => (!ai ? { k: 'nokey' } : !online ? { k: 'offline' } : { k: 'loading', prev: null }))
   const [prefs, setPrefs] = useState<Pref[]>([])
   const [used, setUsed] = useState(() => refreshesUsed(today))
+  // A sheet left open past local midnight gets the new day's 7.
+  useEffect(() => { setUsed(refreshesUsed(today)) }, [today])
+  const [capNote, setCapNote] = useState(false)
   const [child, setChild] = useState<Child>(null)
   const [custom, setCustom] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
@@ -81,7 +87,7 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
         ...(words ? { custom: words } : {}),
       }, { signal: c.signal })
       if (c.signal.aborted) return
-      // A refresh and a Custom ask each use one of the 5 a day, only once they load.
+      // A refresh and a Custom ask each use one of the 7 a day, only once they load.
       if (kind === 'refresh' || kind === 'custom') setUsed(countRefresh(today))
       if (kind === 'custom') { setCustom(words); setCustomOpen(false) }
       shown.current = [...shown.current, ...ideas.map((i) => i.name)]
@@ -111,6 +117,7 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
   }
   // The field mounts and takes focus inside the tap itself (flushSync), so iOS opens the keyboard for this tap only.
   const openCustom = () => {
+    if (used >= MAX_REFRESH) { setCustomOpen(false); return setCapNote(true) }
     if (customOpen) return setCustomOpen(false)
     flushSync(() => setCustomOpen(true))
     field.current?.focus()
@@ -238,11 +245,12 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
           {custom ? (
             <Chip on disabled={loading} onClick={clearCustom} className="max-w-full break-words text-left" aria-label={`Clear custom: ${custom}`} data-testid="custom-chip">{custom} ✕</Chip>
           ) : (
-            <Chip on={false} disabled={loading || capped} onClick={openCustom} aria-expanded={customOpen} aria-controls="ideas-custom" aria-pressed={undefined} data-testid="custom-chip">+ Custom</Chip>
+            <Chip on={false} disabled={loading} onClick={openCustom} aria-expanded={capped ? undefined : customOpen} aria-controls={capped ? undefined : 'ideas-custom'} aria-disabled={capped || undefined} aria-pressed={undefined} className={capped ? '!text-mute opacity-60' : ''} data-capped={capped || undefined} data-testid="custom-chip">+ Custom</Chip>
           )}
         </div>
       )}
-      {showChips && customOpen && !custom && (
+      {showChips && capped && capNote && !custom && <p className="-mt-1 text-[15px] text-mute" role="status" data-testid="custom-capped">{CAP_TEXT}</p>}
+      {showChips && customOpen && !custom && !capped && (
         <form id="ideas-custom" className="-mt-1 flex items-center gap-2" onSubmit={sendCustom} data-testid="custom-form">
           <input
             ref={field} type="text" enterKeyHint="go" maxLength={CUSTOM_MAX} autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)}
@@ -295,8 +303,12 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
           </ul>
           {!aiIdeas.length && !topUp.length && <p className="text-center text-[15px] text-mute">Nothing fits what's left today.</p>}
           {capped
-            ? <p className="py-2 text-center text-[15px] text-mute" data-testid="ideas-capped">That's all the ideas for today</p>
-            : <button type="button" className="tap mx-auto min-h-11 px-4 text-[16px] font-bold text-g-ink" onClick={() => void ask('refresh')} data-testid="ideas-more">Show other ideas</button>}
+            ? <p className="py-2 text-center text-[15px] text-mute" data-testid="ideas-capped">{CAP_TEXT}</p>
+            : (
+              <button type="button" className="tap mx-auto min-h-11 px-4 text-[16px] font-bold text-g-ink" onClick={() => void ask('refresh')} data-testid="ideas-more" data-left={refreshesLeft(used)}>
+                Show other ideas<span className="font-normal text-mute" data-testid="ideas-left"> · {refreshesLeft(used)} left today</span>
+              </button>
+            )}
           <p className="text-center text-[13px] leading-snug text-mute" data-testid="ideas-foot">Ideas from {label}. Numbers are rough, check them before logging.</p>
         </div>
       )}

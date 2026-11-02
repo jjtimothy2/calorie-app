@@ -123,7 +123,7 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 .stagger > :nth-child(7) { animation-delay: 360ms; }
 .stagger > :nth-child(n + 8) { animation-delay: 420ms; }
 .row-in { animation: row-in .45s cubic-bezier(.2, .7, .2, 1); border-radius: 12px; }
-.gauge-rider { transform-box: view-box; transition: transform .6s cubic-bezier(.2, .7, .2, 1); }
+.gauge-rider { transform-box: view-box; } /* v1.21: no transition; the needle is drawn each frame by the shared counter, in step with the number */
 .ring-arc { animation: ring-in .8s cubic-bezier(.2, .7, .2, 1) backwards; transition: stroke-dashoffset .6s cubic-bezier(.2, .7, .2, 1), stroke .2s; }
 .grow-x { animation: reveal-x .7s cubic-bezier(.2, .7, .2, 1) .1s both; }
 .bar-fill { transition: width .5s cubic-bezier(.2, .7, .2, 1); }
@@ -141,6 +141,13 @@ main:not(:has(~ nav)) { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)
 /* v1.13.4: swipe to close. While the finger drives the sheet nothing animates; on release it springs back or slides out. */
 .sheet-kb[data-drag] { transition: translate .25s cubic-bezier(.2, .8, .2, 1); }
 .sheet-shade { transition: opacity .24s cubic-bezier(.2, .8, .2, 1); }
+/* v1.21: every sheet close is one motion: slide down with the scrim fading, 250 ms, ease-in. A swipe that lets go past
+   the line uses it too (data-closing); other closes play it on an inert copy of the sheet (.sheet-ghost). */
+@keyframes sheet-down { from { transform: var(--from, none); } to { transform: translateY(100%); } }
+.sheet-kb[data-closing] { transition: translate .25s cubic-bezier(.4, 0, 1, 1), transform .25s cubic-bezier(.4, 0, 1, 1); }
+.sheet-kb[data-closing] ~ .sheet-shade, .sheet-shade:has(~ .sheet-kb[data-closing]) { transition: opacity .25s cubic-bezier(.4, 0, 1, 1); }
+.sheet-ghost > .sheet-kb { animation: sheet-down .25s cubic-bezier(.4, 0, 1, 1) forwards; }
+.sheet-ghost > .sheet-shade { animation: fade-out .25s cubic-bezier(.4, 0, 1, 1) forwards; }
 .sheet-kb[data-drag] ~ .sheet-shade, .sheet-shade:has(~ .sheet-kb[data-drag]) { transition: none; }
 /* The app never scrolls as a page; stop iOS bouncing the whole document when a pan reaches it. */
 html, body { overscroll-behavior: none; }
@@ -224,5 +231,7 @@ html, body { overscroll-behavior: none; }
   /* !important to win over the global reduced-motion reset above: the spec asks for a fade here, not nothing. */
   .plus-scrim, .plus-pill, .plus-x { animation: fade-in .15s ease-out backwards !important; }
   .plus-out .plus-scrim, .plus-out .plus-pill, .plus-out .plus-x { animation: fade-out .15s ease-in forwards !important; }
+  /* v1.21: a closing sheet fades out quickly instead of sliding. */
+  .sheet-ghost-fade { animation: fade-out .15s ease-in forwards !important; }
   .plus-x svg, .plus-out .plus-x svg { animation: none !important; }
 }

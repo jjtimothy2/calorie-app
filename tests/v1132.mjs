@@ -80,6 +80,8 @@ for (const [w, h, motion] of [[390, 844, 'no-preference'], [375, 667, 'reduce']]
     assert.equal(await page.getByRole('button', { name: 'Done' }).count(), 0, 'no Done button')
     assert.equal(await page.locator('#day-title').innerText(), title)
     // Highlight: every new id sits in a highlighted row (an AI group is one row holding all of its ids).
+    // v1.21: the scroll and highlight start once the gauge has counted (about 600 ms in, at once with reduced motion).
+    await page.waitForSelector('.row-flash', { timeout: 2500 })
     const lit = await page.locator('.row-flash').evaluateAll((els) => els.map((el) => [el.dataset.ids, getComputedStyle(el).animationName, getComputedStyle(el).backgroundColor]))
     assert.ok(lit.length >= 1, 'a row is highlighted')
     for (const id of fresh) assert.ok(lit.some(([d]) => d.split(' ').includes(id)), `row for ${id} highlighted`)
