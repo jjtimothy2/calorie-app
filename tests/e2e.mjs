@@ -550,7 +550,7 @@ try {
     assert.ok(Math.abs(Number((await page.getByTestId('protein-avg').innerText()).replace(/\D/g, '')) - avg) <= 1)
     assert.equal(await color(page.getByTestId('protein-hit')), PINK)
     await page.screenshot({ path: OUT + 'v2-mobile-history-protein.png' })
-    await page.getByRole('button', { name: 'Balance' }).click()
+    await page.getByRole('button', { name: 'Calories' }).click()
     await page.getByTestId('chart').waitFor()
   })
   await step('v2: orange only means surplus (no orange outside surplus)', async () => {

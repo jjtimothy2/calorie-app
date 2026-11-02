@@ -64,7 +64,8 @@ export async function v142Checks(p, ctx, BASE) {
   const line = await p.getByTestId('trend-line').evaluate((l) => ({ d: l.getAttribute('d').length, area: l.parentElement.querySelector('.trend-area').getAttribute('fill') }))
   assert.ok(line.d > 30, 'protein average line drawn'); assert.equal(line.area, 'url(#trend-fill-protein)')
   const hit = bars.filter((b) => b.hit === 'yes').length
-  assert.equal(await p.getByTestId('protein-hit').innerText(), `${hit} / 7`)
+  // v1.19: Days hit counts logged days only (this week has 3: Sat, Sun and today).
+  assert.equal(await p.getByTestId('protein-hit').innerText(), `${hit} / ${bars.filter((b) => b.v != null).length}`)
   const range0 = await p.getByTestId('period-range').innerText()
   assert.match(range0, /^Week · \d+ (\w+ )?– \d+ \w+$/)
 
@@ -99,7 +100,7 @@ export async function v142Checks(p, ctx, BASE) {
   await swipe(+1); assert.equal(await pageNo(), 1, 'oldest page is the end')
 
   // ---- Shared period: switching tabs keeps the same week (both ways), headers name that week.
-  await p.getByRole('button', { name: 'Balance' }).click(); await wait(400)
+  await p.getByRole('button', { name: 'Calories' }).click(); await wait(400)
   assert.equal(await pageNo(), 1, 'Balance opens on the same week')
   assert.equal(await p.getByTestId('period-range').innerText(), range1)
   d = await visibleDays(); assert.deepEqual([d[0], d[6]], [daysAgo(7), daysAgo(13)])
@@ -110,14 +111,14 @@ export async function v142Checks(p, ctx, BASE) {
   await swipe(-1); assert.equal(await pageNo(), 0, "can't swipe past today")
   out.sharedPeriod = `${range1} <-> ${range0}`
 
-  // ---- 30 days: compact labels on every logged bar, nothing clipped.
+  // ---- 30 days: v1.19 drops value labels past 14 bars (hold shows the value); nothing clipped.
   await p.getByRole('button', { name: /30d/ }).click(); await wait(1200)
-  g = await geometry(p, { compact: true, id: 'protein-chart' })
+  g = await geometry(p, { id: 'protein-chart', labels: false })
   out.labels30 = g.bars.filter((b) => b.label).length
-  assert.equal(out.labels30, Object.keys(P).length + 1)
+  assert.equal(out.labels30, 0)
   assert.equal(await p.locator('[data-pbar][data-visible=yes]').count(), 30)
   await p.getByRole('button', { name: /7d/ }).click(); await wait(300)
-  await p.getByRole('button', { name: 'Balance' }).click(); await wait(300)
+  await p.getByRole('button', { name: 'Calories' }).click(); await wait(300)
   return out
 }
 

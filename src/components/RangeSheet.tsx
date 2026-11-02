@@ -11,7 +11,8 @@ export type DateRange = { from: string; to: string }
 const pad = (n: number) => String(n).padStart(2, '0')
 const parse = (k: string) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
 const key = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-const short = (k: string) => parse(k).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] // v1.19: never 'Sept'
+const short = (k: string) => { const d = parse(k); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` }
 
 /** Quick picks, clamped to the first logged day. A pick that ends before it is off. */
 export function quickPicks(today: string, first: string): (DateRange & { id: string; label: string; off: boolean })[] {

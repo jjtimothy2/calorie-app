@@ -61,7 +61,7 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
     await pg.getByRole('button', { name: 'Protein', exact: true }).click(); await pg.waitForTimeout(900)
     assert.ok(await pg.getByTestId('protein-list').locator(`li[data-day="${TODAY}"]`).isVisible(), 'protein view lists today')
     await pg.getByRole('button', { name: '30d (30 days)' }).click(); await pg.waitForTimeout(900)
-    await pg.getByRole('button', { name: 'Balance', exact: true }).click(); await pg.getByRole('button', { name: '7d (7 days)' }).click(); await pg.waitForTimeout(900)
+    await pg.getByRole('button', { name: 'Calories', exact: true }).click(); await pg.getByRole('button', { name: '7d (7 days)' }).click(); await pg.waitForTimeout(900)
     assert.equal(await pg.getByTestId('error-boundary').count(), 0, 'no crash after switching views')
     // Nutrition: Today and This week.
     await link(pg, 'Nutrition').click(); await pg.getByRole('heading', { name: 'Nutrition' }).waitFor({ timeout: 5000 })
@@ -131,8 +131,8 @@ for (const [width, height] of [[390, 844], [375, 667]]) {
 
   await step(`${tag} a render crash shows "Something went wrong" with a 44 px Reload, Reload brings the screen back`, async () => {
     const ctx = await newCtx(TODAY_ONLY)
-    // Make History's render throw once (a stand-in for any render bug), only after the flag is set.
-    await ctx.addInitScript(() => { const o = Date.prototype.toLocaleDateString; Date.prototype.toLocaleDateString = function (...a) { if (window.__boom) throw new Error('test crash'); return o.apply(this, a) } })
+    // Make History's render throw once (v1.19: History uses fixed month names, so the hook is getDay, not toLocaleDateString) (a stand-in for any render bug), only after the flag is set.
+    await ctx.addInitScript(() => { const o = Date.prototype.getDay; Date.prototype.getDay = function (...a) { if (window.__boom) throw new Error('test crash'); return o.apply(this, a) } })
     const pg = await ctx.newPage(); const crashLog = []; watchErrors(pg, crashLog)
     await pg.goto(BASE + '/'); await pg.getByTestId('eaten').waitFor()
     await pg.evaluate(() => { window.__boom = true })

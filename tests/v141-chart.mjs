@@ -37,7 +37,7 @@ const label = (v, compact) => { const a = Math.abs(v); return compact && a >= 10
 
 /** Reads the chart geometry and checks: a label on every non-zero visible bar, inside or just outside, within the svg;
  *  no bar past the plot; heights proportional; no cap mark; ref lines at 0 / goal; the average line unclamped. */
-export async function geometry(p, { compact = false, id = 'chart' } = {}) {
+export async function geometry(p, { compact = false, id = 'chart', labels = true } = {}) {
   const svg = p.getByTestId(id)
   const g = await svg.evaluate((s) => {
     const n = (a) => Number(s.getAttribute(a))
@@ -66,6 +66,7 @@ export async function geometry(p, { compact = false, id = 'chart' } = {}) {
     if (b.v == null) continue
     assert.ok(b.y0 >= g.pt - 0.01 && b.y1 <= g.pb + 0.01, `bar ${b.key} ${b.v} inside the plot: ${b.y0}..${b.y1} vs ${g.pt}..${g.pb}`)
     if (b.v === 0) continue
+    if (!labels) { assert.equal(b.label, null, `v1.19: no value label on bar ${b.key} past 14 bars`); continue }
     assert.equal(b.label, label(b.v, compact), `label on bar ${b.key} (${b.v})`)
     assert.ok(b.inSvg, `label of ${b.v} readable inside the chart`)
     if (b.open === 'no') assert.equal(b.over, 'no', `closed day ${b.v} never cut off`)
@@ -108,11 +109,11 @@ export async function v141Checks(p, ctx, BASE) {
   assert.ok(tiny.bb[0] + tiny.bb[1] <= tiny.y0 + 1, 'tiny deficit label above its bar')
   assert.ok(tinyS.bb[0] >= tinyS.y1 - 1, 'tiny surplus label below its bar')
   assert.deepEqual([g.top, g.bottom], [3600, 950], 'same scale on every page')
-  // 30 days: every non-zero bar still labelled (compact).
+  // 30 days: v1.19 shows value labels only with 14 bars or fewer, so the 30 bars carry none (hold shows the value).
   await p.getByRole('button', { name: /30d/ }).click(); await wait(1200)
-  g = await geometry(p, { compact: true })
+  g = await geometry(p, { labels: false })
   out.labels30 = g.bars.filter((b) => b.label).length
-  assert.equal(out.labels30, 10)
+  assert.equal(out.labels30, 0)
   await p.getByRole('button', { name: /7d/ }).click(); await wait(300)
   // Today's open bar can pass the scale (it starts near full BMR): it runs to the top edge, keeps its number, no cap.
   await seedJordy(p, BASE, 1820)

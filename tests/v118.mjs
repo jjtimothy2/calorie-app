@@ -24,8 +24,9 @@ const parse = (k) => { const [y, m, d] = k.split('-').map(Number); return new Da
 const ago = (n) => { const d = new Date(); d.setHours(12); d.setDate(d.getDate() - n); return key(d) }
 const add = (k, n) => { const d = parse(k); d.setDate(d.getDate() + n); return key(d) }
 const span = (a, b) => { const out = []; for (let k = a; k <= b; k = add(k, 1)) out.push(k); return out }
-const dm = (k) => parse(k).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-const dmy = (k) => parse(k).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] // v1.19: fixed 3-letter months
+const dm = (k) => `${parse(k).getDate()} ${MON[parse(k).getMonth()]}`
+const dmy = (k) => `${dm(k)} ${k.slice(0, 4)}`
 const rangeLabel = (a, b) => { const A = parse(a), B = parse(b); return A.getMonth() === B.getMonth() && A.getFullYear() === B.getFullYear() ? `${A.getDate()} – ${dm(b)}` : `${dm(a)} – ${dm(b)}` }
 const TODAY = ago(0)
 const FIRST_AGO = 400
@@ -221,13 +222,13 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     })
     // Protein view uses the range too.
     await view('Protein')
-    const target = Number((await page.getByText(/^.*Hit protein \d+ of \d+ days\./).innerText()).match(/target ([\d,]+) grams/)[1].replace(',', ''))
+    const target = Number((await page.getByText(/^.*Hit protein \d+ of \d+ logged days\./).innerText()).match(/target ([\d,]+) grams/)[1].replace(',', ''))
     const hit = dKeys.filter((k) => closedDays[k].protein >= target).length
     assert.equal(await page.getByTestId('protein-hit').innerText(), `${hit} / ${dKeys.length}`)
-    assert.ok(await page.getByText(`Hit protein ${hit} of ${dKeys.length} days.`, { exact: false }).count() === 1)
+    assert.ok(await page.getByText(`Hit protein ${hit} of ${dKeys.length} logged days.`, { exact: false }).count() === 1)
     assert.equal(await page.getByTestId('protein-list').locator('li').count(), dKeys.length)
     assert.equal(await page.locator('[data-testid=trend-chart] [data-bar]').count(), dKeys.length)
-    await view('Balance')
+    await view('Calories')
     await fitsRow()
     await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(1200) // bar labels and the line animate in
     await page.screenshot({ path: `${OUT}v118-daily-${tag}.png` })
@@ -279,7 +280,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(Number(await page.getByTestId('week-total').getAttribute('data-value')), total)
     // Tick labels are week starts ("3 Oct"), none clipped by the chart.
     const ticks = await page.locator('[data-testid=trend-chart] text[data-tick]').evaluateAll((e) => e.map((t) => t.textContent))
-    if (ticks.length) for (const t of ticks) assert.match(t, /^\d{1,2} \w{3,4}$/)
+    if (ticks.length) for (const t of ticks) assert.match(t, /^\d{1,2} \w{3}$/)
     const W = weeks[4]
     const cl = W.filter((k) => closedDays[k]), wTotal = cl.reduce((a, k) => a + closedDays[k].balance, 0)
     await hold(W[0], async () => {
@@ -300,15 +301,15 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
       const t = await page.getByTestId('scrub-header').innerText()
       assert.ok(t.includes('Days hit') && t.includes(`/ ${W.length}`), t)
     })
-    await view('Balance')
+    await view('Calories')
   })
 
-  await step(`${tag} range across years: label has years, chip does not`, async () => {
+  await step(`${tag} range across years: label and pill have years`, async () => {
     const y = parse(TODAY).getFullYear() - 1
     const f = `${y}-12-20`, t = `${y + 1}-01-10`
     await apply(f, t)
     assert.equal(await label(), `Custom · ${dmy(f)} – ${dmy(t)}`)
-    assert.equal(await custom.innerText(), `${dm(f)} – ${dm(t)}`)
+    assert.equal(await custom.innerText(), `${dm(f)} ’${f.slice(2, 4)} – ${dm(t)} ’${t.slice(2, 4)}`) // v1.19: pill keeps both years
     assert.equal(await page.getByTestId('trend-chart').getAttribute('data-unit'), 'day')
     assert.equal(await page.locator('[data-testid=trend-chart] [data-bar]').count(), span(f, t).length)
     await fitsRow()
