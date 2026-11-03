@@ -147,7 +147,7 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
   const eatenNames = new Set(entries.map((e) => normName(e.name)))
   const aiIdeas = phase.k === 'ideas' ? phase.ideas : phase.k === 'loading' && phase.prev ? phase.prev : []
   for (const i of aiIdeas) eatenNames.add(normName(i.name))
-  const picks = localPicks(cands, { cap: view.cap, proteinHit: hit, eatenIds, eatenNames, n: 6 })
+  const picks = localPicks(cands, { cap: view.cap, proteinHit: hit, eatenIds, eatenNames, n: 6, indonesian: prefs.includes('Indonesian') })
   const topUp = phase.k === 'ideas' ? picks.slice(0, Math.max(0, 3 - aiIdeas.length)) : []
   const capped = used >= MAX_REFRESH
   const lower = phase.k === 'ideas' ? (capped ? picks.slice(topUp.length, topUp.length + 3) : []) : phase.k === 'loading' ? [] : picks.slice(0, 3)

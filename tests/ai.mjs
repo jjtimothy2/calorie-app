@@ -279,7 +279,7 @@ await t('v1.20 askIdeas posts to the chosen provider and model and keeps 3 under
   const bad = async () => new Response('{}', { status: 429 })
   await assert.rejects(ideas.askIdeas({ provider: 'gemini', key: 'k' }, { meal: 'lunch', time: '12:00', cap: 598, over: false, kcalLeft: 598, proteinToGo: 10, eatenToday: [], prefs: [], avoid: [] }, { fetch: bad }), (e) => e.kind === 'busy')
 })
-await t('v1.20 local picks: fit the cap, nothing eaten today, no drinks, one per category and main protein, Favourites then recents then Indonesian', () => {
+await t('v1.20 local picks: fit the cap, nothing eaten today, no drinks, one per category and main protein, Favourites then recents (Indonesian only with the chip)', () => {
   const c = (id, name, kcal, protein, category, extra = {}) => ({ id, name, kcal, protein, category, serving: '1', fav: false, recent: -1, mine: false, ...extra })
   const cands = [
     c('a', 'Ayam bakar', 165, 25, 'Indonesian'), c('b', 'Ayam goreng', 260, 20, 'Indonesian'), c('t', 'Tempe goreng', 120, 8, 'Indonesian'),
@@ -290,7 +290,10 @@ await t('v1.20 local picks: fit the cap, nothing eaten today, no drinks, one per
   const opts = { cap: 598, proteinHit: false, eatenIds: new Set(), eatenNames: new Set(), n: 3 }
   const base = ideas.localPicks(cands, opts).map((x) => x.id)
   assert.notEqual(base[0], 't')
-  assert.equal(ideas.localPicks(cands.map((x) => ({ ...x, fav: x.id === 't' })), opts)[0].id, 't', 'a favourite is boosted to the top')
+  // v1.21.2: the Indonesian +0.2 only with the Indonesian chip on; the favourite boost always
+  const favT = cands.map((x) => ({ ...x, fav: x.id === 't' }))
+  assert.ok(ideas.localPicks(favT, opts).findIndex((x) => x.id === 't') < base.indexOf('t'), 'a favourite is boosted up')
+  assert.equal(ideas.localPicks(favT, { ...opts, indonesian: true })[0].id, 't', 'with the Indonesian chip a favourite Indonesian food is on top')
   assert.ok(p.every((x) => x.kcal <= 598 && x.category !== 'Drinks' && x.id !== 'b'))
   assert.equal(new Set(p.map((x) => x.category)).size, 3)
   const prots = p.map((x) => ideas.mainProtein(x.name)).filter(Boolean)

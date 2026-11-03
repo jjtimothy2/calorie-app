@@ -110,9 +110,9 @@ export const IDEAS_SCHEMA = {
 
 export function ideasSystem() {
   return [
-    'You suggest what to eat next for a calorie counting app used in Indonesia.',
+    'You suggest what to eat next for a calorie counting app.',
     'Reply with JSON only: {"ideas":[{"name","why","portion","grams","kcal","protein_g","carbs_g","fat_g"}],"closest":false}.',
-    'Give 4 different, realistic, easy to get dishes or snacks, common in Indonesia (warung, home cooking, minimarket) unless told otherwise.',
+    'Give 4 different, realistic, easy to get dishes or snacks.',
     'name: short dish name, max 40 characters. why: one short reason it fits, max 40 characters, e.g. "High protein, fits your dinner".',
     'portion: a short serving label, max 24 characters, like "1 plate", "2 pieces" or "2 eggs, 2 toast"; no grams in it. grams: total weight of that portion. kcal and macros for that whole portion, honest typical values.',
     'Every idea must be at or under the kcal limit given. Prefer high protein when protein is still to go.',
@@ -130,7 +130,7 @@ export function ideasUser(a: IdeasAsk) {
     a.proteinToGo != null ? `Protein still to go today: ${a.proteinToGo} g.` : 'Protein target already hit today; focus on fitting the calories.',
     `Already eaten today: ${a.eatenToday.length ? a.eatenToday.join(', ') : 'nothing yet'}. Suggest something different.`,
   ]
-  if (a.prefs.length) lines.push(`Preference: ${a.prefs.map((p) => (p === 'Quick' ? 'quick, under 15 minutes or ready to buy' : p === 'Cheap' ? 'cheap, under Rp 25.000' : 'Indonesian food')).join('; ')}.`)
+  if (a.prefs.length) lines.push(`Preference: ${a.prefs.map((p) => (p === 'Quick' ? 'quick, under 15 minutes or ready to buy' : p === 'Cheap' ? 'cheap, under Rp 25.000' : 'Indonesian food only')).join('; ')}.`)
   if (a.custom) lines.push(`The user asked for: ${JSON.stringify(a.custom)}. Match it as closely as you can. If nothing that matches fits the kcal limit, give the 4 closest fits under the limit and set closest to true.`)
   if (a.avoid.length) lines.push(`Do not suggest these again: ${a.avoid.join(', ')}.`)
   return lines.join('\n')
@@ -251,17 +251,17 @@ export const mainProtein = (name: string) => PROTEINS.find(([, re]) => re.test(n
 
 /**
  * Up to 3 of the user's foods that fit: at or under the cap, not already eaten today, no drinks. Ranked on protein per
- * kcal and closeness to 70% of the cap (calorie fit only once protein is hit), Favourites first, then recents, then
- * Indonesian. One per category and one per main protein, relaxed only if that leaves fewer than 3.
+ * kcal and closeness to 70% of the cap (calorie fit only once protein is hit), Favourites first, then recents
+ * (v1.21.2: the Indonesian boost applies only with the Indonesian chip on). One per category and one per main protein, relaxed only if that leaves fewer than 3.
  */
-export function localPicks(cands: Candidate[], o: { cap: number; proteinHit: boolean; eatenIds: Set<string>; eatenNames: Set<string>; n?: number }): Candidate[] {
+export function localPicks(cands: Candidate[], o: { cap: number; proteinHit: boolean; eatenIds: Set<string>; eatenNames: Set<string>; n?: number; indonesian?: boolean }): Candidate[] {
   const n = o.n ?? 3
   const aim = Math.max(1, o.cap * 0.7)
   const fit = cands.filter((c) => c.kcal > 0 && c.kcal <= o.cap && c.category !== 'Drinks' && !o.eatenIds.has(c.id) && !o.eatenNames.has(normName(c.name)))
   const score = (c: Candidate) => {
     const closeness = Math.max(0, 1 - Math.abs(c.kcal - aim) / aim)
     const protein = Math.min(1, (c.protein * 4) / c.kcal / 0.5)
-    const boost = (c.fav ? 0.6 : 0) + (c.recent >= 0 ? 0.4 - c.recent * 0.02 : 0) + (c.category === 'Indonesian' ? 0.2 : 0)
+    const boost = (c.fav ? 0.6 : 0) + (c.recent >= 0 ? 0.4 - c.recent * 0.02 : 0) + (o.indonesian && c.category === 'Indonesian' ? 0.2 : 0)
     return (o.proteinHit ? closeness * 2 : closeness + protein) + boost
   }
   const ranked = fit.map((c) => ({ c, s: score(c) })).sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name)).map((x) => x.c)
