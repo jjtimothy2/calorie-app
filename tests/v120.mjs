@@ -169,7 +169,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     for (const why of await dialog.getByTestId('idea-why').allInnerTexts()) assert.ok(why.length < 40, why)
     assert.deepEqual(await dialog.getByTestId('idea-kcal').allInnerTexts(), ['480 kcal', '420 kcal', '450 kcal'])
     assert.deepEqual(await dialog.getByTestId('idea-protein').allInnerTexts(), ['38 g protein', '32 g protein', '18 g protein'])
-    assert.deepEqual(await dialog.getByTestId('idea-serving').allInnerTexts(), ['1 plate (380 g)', '1 plate (380 g)', '1 bowl (350 g)'])
+    assert.deepEqual((await dialog.getByTestId('idea-serving').allInnerTexts()).map((x) => x.replace(/\u00a0/g, ' ')), ['1 plate (380 g)', '1 plate (380 g)', '1 bowl (350 g)'])
     assert.equal(await dialog.getByRole('button', { name: /^Log this/ }).count(), 3)
     assert.equal(await dialog.getByTestId('ideas-more').innerText(), 'Show other ideas · 7 left today') // v1.21 counter
     assert.equal(await dialog.getByTestId('ideas-foot').innerText(), 'Ideas from Gemini. Numbers are rough, check them before logging.')

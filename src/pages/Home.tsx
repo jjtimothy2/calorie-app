@@ -91,20 +91,22 @@ export default function Home() {
   // changed while Home was scrolled away or covered still counts in view.
   const calories = useRef<HTMLElement>(null)
   const seen = useInView(calories, (el) => el.querySelector('[data-testid="ring"]'), 0.5)
-  // v1.21: after a log the toast shows at once, but Home first lets the gauge count in view (scrolling up to it if
-  // needed), then scrolls to the new row(s) and highlights them. A meal move changes no totals, so it scrolls at once.
-  // Reduced motion: values are already final, so it scrolls straight away as before.
+  // v1.21: after a log Home first lets the gauge count in view (scrolling up to it if needed), then scrolls to the
+  // new row(s) and highlights them. A meal move changes no totals, so it scrolls at once.
+  // v1.21.1: the toast waits for the count too and shows with the scroll and highlight, so it never covers the
+  // equation card while it counts. Its 5 s and Undo start from then. Reduced motion: everything at once, as before.
   function present(l: Landing & { prev?: Record<string, Meal> }, counts = true) {
     const reduce = reducedMotion()
     timers.current.forEach((t) => window.clearTimeout(t))
-    setSnack(l)
+    setSnack(null)
     setFlash(new Set())
+    timers.current = []
     const show = () => {
+      setSnack(l)
       setFlash(new Set(l.ids))
-      timers.current.push(window.setTimeout(() => setFlash(new Set()), reduce ? 1000 : 1500))
+      timers.current.push(window.setTimeout(() => setFlash(new Set()), reduce ? 1000 : 1500), window.setTimeout(() => setSnack(null), 5000))
       requestAnimationFrame(() => requestAnimationFrame(() => scrollToRows(l.ids, reduce)))
     }
-    timers.current = [window.setTimeout(() => setSnack(null), 5000)]
     if (reduce || !counts) return show()
     let wait = countsHeldFor() + COUNT_MS + 80
     const sec = calories.current, main = sec?.closest('main'), ring = sec?.querySelector('[data-testid="ring"]')

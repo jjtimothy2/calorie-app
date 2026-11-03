@@ -214,7 +214,8 @@ for (const reduce of [false, true]) for (const [w, h] of [[390, 844], [375, 667]
     await tapLoc(chip); await page.waitForTimeout(250)
     assert.equal(await dialog.getByTestId('custom-input').count(), 0, 'no field')
     assert.equal(await dialog.getByTestId('custom-capped').innerText(), MUTE_LINE)
-    await fits(chip, '+ Custom'); await fits(dialog.getByTestId('custom-capped'), 'custom line', 0); await fits(dialog.getByTestId('ideas-capped'), 'capped line', 0)
+    await fits(chip, '+ Custom'); await fits(dialog.getByTestId('custom-capped'), 'custom line', 0)
+    assert.equal(await dialog.getByTestId('ideas-capped').count(), 0, 'v1.21.1: the line shows once, under the chips')
     assert.equal(nSet, asked, 'no AI call'); assert.equal(JSON.parse((await raw()).ideas).count, 7)
     await dialog.evaluate((d) => { d.scrollTop = 0 }); await page.waitForTimeout(100)
     await shot('custom-capped')
@@ -282,7 +283,7 @@ for (const reduce of [false, true]) for (const [w, h] of [[390, 844], [375, 667]
     await page.waitForTimeout(5000)
   })
 
-  await step(`${tag} 1) + 3) + 4) log from a sheet: closing slide, toast at once, gauge needle + big number + Eaten + Deficit count in view and in step, then scroll + highlight`, async () => {
+  await step(`${tag} 1) + 3) + 4) log from a sheet: closing slide, gauge needle + big number + Eaten + Deficit count in view and in step, then scroll + highlight`, async () => {
     await home()
     const old = { big: num(await page.getByTestId('balance').textContent()), deg: Number(await page.getByTestId('gauge-needle').getAttribute('data-deg')), eaten: num(await page.getByTestId('eaten').textContent()), bal: num(await page.getByTestId('eq-balance').textContent()) }
     await nav('/log'); await page.getByTestId('qa-btn').waitFor()
@@ -302,7 +303,10 @@ for (const reduce of [false, true]) for (const [w, h] of [[390, 844], [375, 667]
     const nw = { big: num(last.big), deg: last.td, eaten: num(last.eaten), bal: num(last.bal) }
     assert.deepEqual([nw.big, nw.eaten, nw.bal], [old.big - 300, old.eaten + 300, old.bal - 300], 'final values')
     assert.ok(Math.abs(last.sd - last.td) < 0.11, 'needle ends on its target')
-    assert.ok(S.find((s) => s.toast)?.t - S[0].t < 150, 'toast shows at once')
+    // v1.21.1: the toast waits for the count and shows with the highlight (reduced motion: at once)
+    const toastAt = S.find((s) => s.toast)?.t, litAt = S.find((s) => s.flash > 0)?.t
+    assert.ok(toastAt != null && litAt != null && Math.abs(toastAt - litAt) < 50, `toast with the highlight (${toastAt} vs ${litAt})`)
+    if (reduce) assert.ok(toastAt - S[0].t < 200, 'reduced: toast at once')
     const row = () => page.evaluate((id) => { const r = document.querySelector(`[data-ids~="${id}"]`).getBoundingClientRect(), m = document.querySelector('main').getBoundingClientRect(); return { t: r.top - m.top, b: m.bottom - r.bottom, cls: document.querySelector(`[data-ids~="${id}"]`).className } }, e.id)
     if (reduce) {
       for (const s of S) assert.deepEqual([num(s.big), num(s.eaten), num(s.bal), s.sd], [nw.big, nw.eaten, nw.bal, s.td], 'reduced: values final on the first frame')
@@ -328,7 +332,7 @@ for (const reduce of [false, true]) for (const [w, h] of [[390, 844], [375, 667]
       assert.ok(done.t - start.t >= 450 && done.t - start.t < 900, `count ${done.t - start.t} ms`)
       // the gauge stays in view (Home at the top) until the count is done; then scroll + highlight
       const st0 = S[0].st
-      for (const s of S.filter((s) => s.t < done.t - 30)) { assert.equal(s.st, st0, `no scroll during the count (${s.t.toFixed(0)})`); assert.equal(s.flash, 0, 'no highlight yet') }
+      for (const s of S.filter((s) => s.t < done.t - 30)) { assert.equal(s.st, st0, `no scroll during the count (${s.t.toFixed(0)})`); assert.equal(s.flash, 0, 'no highlight yet'); assert.equal(s.toast, false, 'v1.21.1: no toast over the counting equation') }
       const lit = S.find((s) => s.flash > 0)
       assert.ok(lit && lit.t >= done.t - 50 && lit.t < done.t + 300, `highlight after the count (${lit?.t} vs ${done.t})`)
     }

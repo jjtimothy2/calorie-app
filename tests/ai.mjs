@@ -205,7 +205,7 @@ await t('service worker never touches API calls (non-GET or cross-origin is pass
 })
 
 // ---------- v1.20 Meal Ideas ----------
-await t('v1.20 parseIdeas clamps like the estimate parser (name 60, grams 1 to 3000, kcal 10,000, macros >= 0) and keeps why under 40', () => {
+await t('v1.20 parseIdeas clamps like the estimate parser (name 60, grams 1 to 3000, kcal 10,000, macros >= 0) ; v1.21.1: the why is kept whole', () => {
   const r = ideas.parseIdeas('```json\n' + JSON.stringify({ ideas: [
     { name: 'x'.repeat(80), why: 'A very long reason that goes on and on past forty chars', portion: '1 plate', grams: 380, kcal: 99999, protein_g: -3, carbs_g: '52 g', fat_g: 12 },
     { name: 'No grams', why: '', portion: '', grams: 0, kcal: 100, protein_g: 1, carbs_g: 1, fat_g: 1 },
@@ -216,8 +216,21 @@ await t('v1.20 parseIdeas clamps like the estimate parser (name 60, grams 1 to 3
   assert.equal(r[0].kcal, 10000)
   assert.equal(r[0].protein, 0)
   assert.equal(r[0].carbs, 52)
-  assert.ok(r[0].why.length < 40, r[0].why)
+  assert.equal(r[0].why, 'A very long reason that goes on and on past forty chars', 'v1.21.1: never trimmed')
   assert.equal(ideas.parseIdeas('nope'), null)
+})
+await t('v1.21.1 cleanWhy: whole up to 120, runaway text cut at a word boundary without an ellipsis or a dangling connector; prompt asks for short why and portion', () => {
+  assert.equal(ideas.cleanWhy('  Light western   breakfast, rich in protein '), 'Light western breakfast, rich in protein')
+  const long = 'Packed with protein and fibre to keep you full until lunch, ' + 'with eggs and toast and plenty of fresh fruit and yogurt for the morning and more'
+  const c = ideas.cleanWhy(long)
+  assert.ok(c.length <= ideas.WHY_MAX, c)
+  assert.ok(long.startsWith(c), 'a prefix of the text')
+  assert.ok(long[c.length] === ' ' || long[c.length] === ',', `cut at a word boundary: "${c}"`)
+  assert.ok(!/[\s,;:.…-]$/.test(c) && !/\b(and|or|with|for|to|of|the|a|an)$/i.test(c), `no trailing connector: "${c}"`)
+  assert.ok(!c.includes('…'))
+  const sys = ideas.ideasSystem()
+  assert.match(sys, /why: one short reason it fits, max 40 characters/)
+  assert.match(sys, /portion: a short serving label, max 24 characters, like .*"2 eggs, 2 toast"/)
 })
 await t('v1.20 keepIdeas drops over-cap, repeats and already-shown, keeps 3', () => {
   const mk = (name, kcal) => ({ name, kcal, why: '', portion: '1', grams: 100, protein: 10, carbs: 1, fat: 1, confidence: 0.5 })

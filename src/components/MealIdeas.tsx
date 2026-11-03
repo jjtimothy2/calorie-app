@@ -8,7 +8,8 @@
 // words with ✕ to clear.
 // v1.21 counter: the button reads "Show other ideas · N left today" (N muted). At 0 it becomes the muted line "No more
 // new ideas today. Resets tomorrow."; ideas on screen and the local picks stay. "+ Custom" looks muted at 0 but still
-// takes a tap, which shows that same line under the chips instead of opening the field. If the AI cannot match within the calories it still gives 3 that fit, with a note.
+// takes a tap, which shows that same line under the chips instead of opening the field (v1.21.1: then only there).
+// v1.21.1: the why and the serving label are never cut; both wrap (the serving beside the protein pill). If the AI cannot match within the calories it still gives 3 that fit, with a note.
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -38,6 +39,8 @@ type Phase =
   | { k: 'error'; kind: AiErrorKind }
 type Child = null | { k: 'result'; idea: AiIdea } | { k: 'food'; food: Food } | { k: 'mine'; food: UserFood }
 
+// v1.21.1: a wrapping serving label never splits its weight: "(200 g)" stays on one line.
+const keepGrams = (s: string) => s.replace(/(\d) (k?g|ml)\b/g, '$1\u00a0$2')
 const pill = 'whitespace-nowrap rounded-full bg-g-soft px-2.5 py-0.5 text-[13px] font-semibold text-g-soft-ink'
 const logBtn = 'tap min-h-11 shrink-0 rounded-full border border-g bg-card px-4 text-[15px] font-bold text-g-ink'
 
@@ -193,8 +196,8 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
         <b className="num shrink-0 whitespace-nowrap text-[17px] leading-tight" data-testid="idea-kcal">{fmt(c.kcal)} <span className="font-sans text-[13px] font-normal text-mute">kcal</span></b>
       </div>
       <div className="flex items-center gap-2">
-        <span className={pill} data-testid="idea-protein">{fmt(c.protein)} g protein</span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-mute" data-testid="idea-serving">{c.serving}</span>
+        <span className={`${pill} shrink-0`} data-testid="idea-protein">{fmt(c.protein)} g protein</span>
+        <span className="min-w-0 flex-1 break-words text-[13px] leading-snug text-mute" data-testid="idea-serving">{keepGrams(c.serving)}</span>
         <button type="button" className={logBtn} onClick={() => openPick(c)} aria-label={`Log this: ${c.name}`}>Log this</button>
       </div>
     </li>
@@ -207,8 +210,8 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
       </div>
       {i.why && <p className="text-[14px] leading-snug text-mute" data-testid="idea-why">{i.why}</p>}
       <div className="mt-0.5 flex items-center gap-2">
-        <span className={pill} data-testid="idea-protein">{fmt(i.protein)} g protein</span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-mute" data-testid="idea-serving">{aiServingLabel(i.portion, i.grams)}</span>
+        <span className={`${pill} shrink-0`} data-testid="idea-protein">{fmt(i.protein)} g protein</span>
+        <span className="min-w-0 flex-1 break-words text-[13px] leading-snug text-mute" data-testid="idea-serving">{keepGrams(aiServingLabel(i.portion, i.grams))}</span>
         <button type="button" className={logBtn} onClick={() => setChild({ k: 'result', idea: i })} aria-label={`Log this: ${i.name}`}>Log this</button>
       </div>
     </li>
@@ -302,8 +305,9 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
             {topUp.map(pickCard)}
           </ul>
           {!aiIdeas.length && !topUp.length && <p className="text-center text-[15px] text-mute">Nothing fits what's left today.</p>}
+          {/* v1.21.1: once a tap on the muted "+ Custom" shows the line under the chips, it is not repeated here. */}
           {capped
-            ? <p className="py-2 text-center text-[15px] text-mute" data-testid="ideas-capped">{CAP_TEXT}</p>
+            ? (capNote && showChips && !custom ? null : <p className="py-2 text-center text-[15px] text-mute" data-testid="ideas-capped">{CAP_TEXT}</p>)
             : (
               <button type="button" className="tap mx-auto min-h-11 px-4 text-[16px] font-bold text-g-ink" onClick={() => void ask('refresh')} data-testid="ideas-more" data-left={refreshesLeft(used)}>
                 Show other ideas<span className="font-normal text-mute" data-testid="ideas-left"> · {refreshesLeft(used)} left today</span>
