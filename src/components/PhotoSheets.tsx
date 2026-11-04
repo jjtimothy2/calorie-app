@@ -11,6 +11,7 @@ import {
 } from '../lib/ai'
 import { aiAmount, aiServingLabel } from '../lib/amount'
 import { fmt } from '../lib/calc'
+import { useStore } from '../lib/store'
 import { Sheet, Stepper } from './Sheet'
 import { Button, Chip } from './ui'
 
@@ -311,6 +312,34 @@ export function Results({ dish, scaleRef, items, photo, note, source, onEdit, on
   const remove = (key: string) => setRows((x) => x.filter((r) => r.it.key !== key))
   const n = rows.length
   const sized = scaleLine(scaleRef, !!photo)
+  // v1.22 (Reed's spec): "☆ Save to favourites" saves the whole result as ONE food in My foods and Favourites: the dish
+  // name (a single item saves under its own name), the total at the servings set now. It is a snapshot: changing
+  // servings brings the row back, and saving again updates the food this sheet saved (same name, no duplicate). A food
+  // of the same name that was already in My foods is only starred. Snackbar above the footer for 4 s with Undo.
+  const { saveFavourite } = useStore()
+  const sig = JSON.stringify(rows.map((r) => [r.it.key, r.s]))
+  const [saved, setSaved] = useState<string | null>(null)
+  const [mine, setMine] = useState<string | null>(null)
+  const [snack, setSnack] = useState<{ key: number; text: string; undo: () => void } | null>(null)
+  const snackTimer = useRef(0)
+  const saveBtn = useRef<HTMLButtonElement>(null)
+  useEffect(() => () => window.clearTimeout(snackTimer.current), [])
+  const saveName = n === 1 ? rows[0].it.name : dish
+  const r1 = (x: number) => Math.round(x * 10) / 10
+  const save = () => {
+    const r = saveFavourite({ name: saveName, kcal: total.kcal, protein: r1(total.protein), carbs: r1(total.carbs), fat: r1(total.fat) }, mine)
+    const prevMine = mine
+    if (r.kind !== 'starred') setMine(r.food.id)
+    setSaved(sig)
+    window.clearTimeout(snackTimer.current)
+    setSnack({
+      key: Date.now(),
+      text: r.kind === 'starred' ? `Added ${r.food.name} to Favourites` : `Saved ${r.food.name} to My foods and Favourites`,
+      undo: () => { r.undo(); setMine(r.kind === 'updated' ? r.food.id : prevMine); setSaved(null); setSnack(null); window.clearTimeout(snackTimer.current); saveBtn.current?.focus({ preventScroll: true }) },
+    })
+    snackTimer.current = window.setTimeout(() => setSnack(null), 4000)
+  }
+  const isSaved = saved === sig
   return (
     <Sheet label="AI estimate" onClose={onClose}>
       <div className="flex items-center gap-3">
@@ -367,9 +396,26 @@ export function Results({ dish, scaleRef, items, photo, note, source, onEdit, on
         </div>
       </div>
       <p className="-mt-2 text-center text-[14px] text-mute">Estimates are rough. Adjust before logging.</p>
-      <div className="flex gap-2.5">
-        <Button variant="ghost" className={ghost} onClick={onEdit}>Edit</Button>
-        <Button className="flex-1" disabled={!n} onClick={() => onLog(rows.map((r) => ({ item: r.it, servings: r.s })), dish)}>Log {n} {n === 1 ? 'item' : 'items'}{n > 0 && ` · ${fmt(total.kcal)} kcal`}</Button>
+      {/* The snackbar sits over the content just above the save row and the footer, so both stay in view. */}
+      <div className="relative flex flex-col gap-2.5">
+        {snack && (
+          <div role="status" key={snack.key} className="anim-fade absolute inset-x-0 bottom-full z-20 mb-2 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg" data-testid="fav-toast">
+            <span className="min-w-0">{snack.text}</span>
+            <button type="button" className="tap -my-2 min-h-11 shrink-0 px-1 font-bold underline" onClick={snack.undo} data-testid="fav-undo">Undo</button>
+          </div>
+        )}
+        {n > 0 && (
+          <button type="button" ref={saveBtn} onClick={isSaved ? undefined : save} aria-disabled={isSaved || undefined}
+            aria-label={isSaved ? 'Saved to favourites' : 'Save to favourites'}
+            className={`tap -mt-1.5 flex min-h-11 items-center justify-center gap-1.5 self-center rounded-full px-4 text-[15px] font-bold ${isSaved ? 'text-over-ink' : 'text-g-ink'}`}
+            data-testid="save-fav" data-saved={isSaved || undefined}>
+            <span aria-hidden="true" className="text-[18px] leading-none">{isSaved ? '★' : '☆'}</span>{isSaved ? 'Saved' : 'Save to favourites'}
+          </button>
+        )}
+        <div className="flex gap-2.5">
+          <Button variant="ghost" className={ghost} onClick={onEdit}>Edit</Button>
+          <Button className="flex-1" disabled={!n} onClick={() => onLog(rows.map((r) => ({ item: r.it, servings: r.s })), dish)}>Log {n} {n === 1 ? 'item' : 'items'}{n > 0 && ` · ${fmt(total.kcal)} kcal`}</Button>
+        </div>
       </div>
     </Sheet>
   )

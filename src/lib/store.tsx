@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { STATE_VERSION, type Entry, type ExerciseEntry, type Intensity, type Macros, type Meal, type Profile, type State, type WeightEntry } from './types'
-import { editFood, FOODS_KEY, foodsFile, readFoods, upsertFood, USER_SERVING, type UserFood } from './myFoods'
+import { editFood, findByName, FOODS_KEY, foodsFile, readFoods, upsertFood, USER_SERVING, type UserFood } from './myFoods'
 import { FOOD_BY_ID, FOODS } from '../data/foods'
 import { exerciseKcal, ACTIVITY_BY_ID } from '../data/activities'
 import { addDays, dateKey, dayBase, liveDay, summarise } from './calc'
@@ -338,6 +338,13 @@ type Ctx = {
   updateMyFood: (id: string, f: FoodInput) => boolean
   /** Past entries are kept; they stay in the log as they were. */
   deleteMyFood: (id: string) => void
+  /**
+   * v1.22: save a food to My foods and star it (AI result "Save to favourites"). A food with the same name that is not
+   * `mine` (the one this sheet saved) is only starred, never duplicated or changed ('starred'). `mine` with the same name
+   * takes the new numbers ('updated'). undo() puts calorie-app:foods back byte for byte and removes the star only if
+   * this save added it. Uses the existing shapes: a u_ food in calorie-app:foods and its id in state.favourites.
+   */
+  saveFavourite: (f: FoodInput, mine?: string | null) => { food: UserFood; kind: 'new' | 'updated' | 'starred'; undo: () => void }
   /** v1.12: the day Home and Log show and write to. Today unless a past day was picked; never saved, so the app opens on today. */
   logDate: string
   /** Pick a day to view and edit (clamped to today). */
@@ -366,7 +373,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [myFoods, setMyFoods] = useState<UserFood[]>(readFoods)
   const foodsRef = useRef(myFoods)
   const setFoods = useCallback((f: UserFood[]) => { foodsRef.current = f; setMyFoods(f) }, [])
+  // v1.22: an Undo hands back the exact earlier calorie-app:foods text (null = the key was not there) for the next write.
+  const pendingRaw = useRef<string | null | undefined>(undefined)
+  const stateRef = useRef(state)
+  stateRef.current = state
   useEffect(() => {
+    if (pendingRaw.current !== undefined) {
+      const raw = pendingRaw.current
+      pendingRaw.current = undefined
+      if (raw === null) localStorage.removeItem(FOODS_KEY)
+      else localStorage.setItem(FOODS_KEY, raw)
+      return
+    }
     if (myFoods.length || localStorage.getItem(FOODS_KEY) !== null) localStorage.setItem(FOODS_KEY, JSON.stringify(foodsFile(myFoods)))
   }, [myFoods])
   const dispatch = useCallback((a: Action) => {
@@ -390,6 +408,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteMyFood = useCallback((id: string) => {
     setFoods(foodsRef.current.filter((f) => f.id !== id))
     rawDispatch({ type: 'removeFav', foodId: id })
+  }, [setFoods])
+  const saveFavourite = useCallback((f: FoodInput, mine?: string | null) => {
+    const prevFoods = foodsRef.current
+    const prevRaw = localStorage.getItem(FOODS_KEY)
+    const cur = findByName(prevFoods, f.name)
+    let food: UserFood
+    let kind: 'new' | 'updated' | 'starred'
+    if (cur && cur.id !== mine) { food = cur; kind = 'starred' }
+    else {
+      const r = upsertFood(prevFoods, f, newId)
+      setFoods(r.foods)
+      food = r.food
+      kind = cur ? 'updated' : 'new'
+    }
+    const wasFav = stateRef.current.favourites.includes(food.id)
+    if (!wasFav) rawDispatch({ type: 'toggleFav', foodId: food.id })
+    const undo = () => {
+      if (kind !== 'starred') { pendingRaw.current = prevRaw; setFoods(prevFoods) }
+      if (!wasFav) rawDispatch({ type: 'removeFav', foodId: food.id })
+    }
+    return { food, kind, undo }
   }, [setFoods])
   const myFoodById = useMemo(() => new Map(myFoods.map((f) => [f.id, f])), [myFoods])
   // Track the calendar day so an open app rolls over (and auto-closes yesterday) at midnight.
@@ -431,8 +470,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return out
   }, [state.entries, myFoodById])
   const value = useMemo(
-    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate, landing, land }),
-    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, logDate, setLogDate, landing, land],
+    () => ({ state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, saveFavourite, logDate, setLogDate, landing, land }),
+    [state, dispatch, recentFoodIds, today, myFoods, myFoodById, saveMyFood, updateMyFood, deleteMyFood, saveFavourite, logDate, setLogDate, landing, land],
   )
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }
