@@ -138,10 +138,10 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.match(await page.getByTestId('deficit').getAttribute('class'), /text-mute-soft/)
     if (ask.eat <= 0) assert.equal(await page.getByTestId('eat-line').innerText(), `More than you burn in a day (${fmt(D_BASE)} kcal)`)
     const card = await page.getByTestId('unsafe-card').innerText()
-    assert.match(card, /This date isn't safe/)
+    assert.match(card, /Not safe on food alone/) // v1.21.3: Reed's onboarding card
     assert.match(card, ask.eat <= 0 ? /leave nothing to eat\. The safe minimum is 1,500 kcal a day/ : /leave about/)
     const sd = safeDays(D_BASE, 10, D_CAP), safeDate = addDaysKey(TODAY, sd), safe = plan(D_BASE, 10, sd)
-    assert.match(card, new RegExp(`a ${fmt(safe.deficit)} kcal deficit, eating about ${fmt(safe.eat)} kcal a day, 78 kg by ${longDay(safeDate)}`))
+    assert.match(card, new RegExp(`keep eating at least 1,500 and burn about ${fmt(1500 - ask.eat)} kcal a day in exercise`)) // v1.21.3: the safer plan is on the button
     assert.equal(await page.getByTestId('ob-safer').innerText(), `Use safer date (${longDay(safeDate)})`)
     assert.equal(await page.getByTestId('ob-change-goal').innerText(), 'Change goal')
     assert.equal(await page.getByTestId('ob-next').count(), 0)
@@ -214,7 +214,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.ok(ask.eat > 0 && ask.eat < 1200, String(ask.eat))
     assert.equal(await num(page.getByTestId('deficit')), ask.deficit)
     assert.equal(await page.getByTestId('eat-line').innerText(), `You'd eat about ${fmt(ask.eat)} kcal a day`) // not raised
-    assert.match(await page.getByTestId('unsafe-card').innerText(), new RegExp(`leave about ${fmt(ask.eat)} kcal a day to eat, under the safe minimum of 1,200`))
+    assert.match(await page.getByTestId('unsafe-card').innerText(), new RegExp(`You'd eat about ${fmt(ask.eat)} kcal a day, under the safe minimum of 1,200`))
     const sd = safeDays(S_BASE, 6, S_CAP), safe = plan(S_BASE, 6, sd)
     assert.ok(safe.eat >= 1200 && safe.eat <= 1201, String(safe.eat))
     await page.getByTestId('ob-safer').click()
@@ -233,7 +233,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const cap = capOf('male', 88, D_BMR)
     assert.equal(cap, 295)
     assert.equal(await page.getByTestId('ob-target').getAttribute('data-state'), 'unsafe')
-    assert.match(await page.getByTestId('unsafe-card').innerText(), /nothing to eat|leave about/)
+    assert.match(await page.getByTestId('unsafe-card').innerText(), /nothing to eat|You'd eat about/)
     const sd = safeDays(D_BMR, 10, cap), safe = plan(D_BMR, 10, sd)
     await page.getByTestId('ob-safer').click()
     assert.equal(await num(page.getByTestId('deficit')), safe.deficit)

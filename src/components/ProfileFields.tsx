@@ -87,7 +87,7 @@ export function validBody(d: Body) {
   return d.age >= 14 && d.age <= 100 && d.heightCm >= 120 && d.heightCm <= 230 && d.weightKg >= 30 && d.weightKg <= 300
 }
 
-type PlanSum = { bmr: number; movement: number; planDeficit: number; weeklyKg: number; kgToGo: number; days: number }
+type PlanSum = { bmr: number; movement: number; planDeficit: number; topUp?: number; weeklyKg: number; kgToGo: number; days: number }
 
 /**
  * The visible sum under the Daily target, e.g. "BMR 1,900 + 713 movement − 523 deficit". Keep has no deficit term and
@@ -98,6 +98,8 @@ export function targetSum(goal: Goal, plan: PlanSum, includeMovement: boolean) {
   if (includeMovement) s += ` + ${fmt(plan.movement)} movement`
   if (goal === 'lose' && plan.planDeficit > 0) s += ` − ${fmt(plan.planDeficit)} deficit`
   if (goal === 'gain' && plan.planDeficit < 0) s += ` + ${fmt(-plan.planDeficit)} surplus`
+  // v1.21.3: a kept plan under the safe minimum eats the minimum and burns the rest in exercise.
+  if (plan.topUp) s += ` + ${fmt(plan.topUp)} exercise`
   return s
 }
 

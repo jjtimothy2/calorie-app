@@ -142,7 +142,7 @@ export function splitMacros(maintenance: number, weightKg: number, o: MacroOverr
   return { protein, carbs, fat }
 }
 
-export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'weightKg' | 'macros' | 'goalWeightKg' | 'goalDate' | 'planFrom'>
+export type PlanInput = Pick<Profile, 'sex' | 'bmr' | 'activity' | 'includeMovement' | 'goal' | 'weightKg' | 'macros' | 'goalWeightKg' | 'goalDate' | 'planFrom' | 'exerciseTopUp'>
 export type GoalInput = Pick<Profile, 'goal' | 'weightKg' | 'goalWeightKg' | 'goalDate' | 'planFrom'>
 
 /** Shortest plan the maths uses: a goal date under a week away (or already gone) is planned as 7 days. */
@@ -206,9 +206,14 @@ export function dailyPlan(p: PlanInput) {
   if (p.goal === 'lose') target = Math.max(0, Math.round(planBase - gap))
   if (p.goal === 'gain') target = Math.round(planBase + gap)
   const planDeficit = planBase - target
+  // v1.21.3: a kept Lose plan under the safe minimum (exerciseTopUp) holds the food target at the minimum, so Home never
+  // shows less than it to eat. dailyGoal (what Home measures) follows the food target as always (base - target).
+  // planDeficit stays the plan's; topUp is the kcal a day of exercise (not eaten back) the goal date needs on top.
+  const topUp = p.goal === 'lose' && p.exerciseTopUp === true ? Math.max(0, targetFloor(p.sex) - target) : 0
+  target += topUp
   const m = macroPlan(planBase, p.weightKg, p.macros)
   return {
-    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, target, dailyGoal: planDeficit,
+    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, target, dailyGoal: planBase - target, topUp,
     gap, days: planDays(p), kgToGo: kgToGo(p), weeklyKg: (gap * 7) / KCAL_PER_KG,
     protein: m.protein, carbs: m.carbs, fat: m.fat, macroKcal: m.kcal, adjusted: m.adjusted,
   }

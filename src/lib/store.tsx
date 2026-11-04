@@ -66,7 +66,7 @@ function load(): State {
 }
 
 type Action =
-  | { type: 'setProfile'; profile: Profile }
+  | { type: 'setProfile'; profile: Profile; keepTopUp?: true }
   | { type: 'logWeight'; date: string; kg: number }
   | { type: 'deleteWeight'; date: string }
   /** Undo for deleteWeight: puts the weight log and profile back exactly as they were. */
@@ -237,7 +237,15 @@ function reducer(state: State, a: Action): State {
 function apply(state: State, a: Action): State {
   switch (a.type) {
     case 'setProfile': {
-      const profile = normaliseProfile(a.profile)
+      // v1.21.3: exerciseTopUp belongs to the goal it was kept on. A new goal, goal weight or date (Use safer date, Push,
+      // a goal edit, Keep my weight) drops it. keepTopUp: onboarding and Undo, which set the goal they mean.
+      const prev = state.profile
+      let pin = a.profile
+      if (pin.exerciseTopUp && prev && !a.keepTopUp && (pin.goal !== prev.goal || pin.goalDate !== prev.goalDate || pin.goalWeightKg !== prev.goalWeightKg)) {
+        pin = { ...pin }
+        delete pin.exerciseTopUp
+      }
+      const profile = normaliseProfile(pin)
       // Onboarding (or a reset) starts the weight log with the weight just entered. A log emptied by Delete stays empty.
       return { ...state, profile, weights: state.profile || state.weights.length ? state.weights : [{ date: profile.planFrom.date, kg: profile.weightKg }] }
     }

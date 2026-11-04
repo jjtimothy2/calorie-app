@@ -52,7 +52,7 @@ export function SaferDateCard() {
     return (
       <div role="status" className="flex items-center gap-3 rounded-2xl bg-g-soft py-3 pl-4 pr-2 text-[15px] leading-snug text-g-soft-ink" data-testid="cap-applied">
         <span className="flex-1">Goal date is now {p.goalDate ? longDay(p.goalDate) : ''}. Your daily deficit is {fmt(p.dailyGoal)} kcal, so you'd eat about {fmt(p.target)} kcal a day.</span>
-        <button type="button" onClick={() => { dispatch({ type: 'setProfile', profile: undo }); dispatch({ type: 'dismissCapCard', date: null }); setUndo(null) }} className="tap min-h-11 shrink-0 rounded-full bg-card px-4 text-[15px] font-bold text-g-soft-ink" data-testid="cap-undo">Undo</button>
+        <button type="button" onClick={() => { dispatch({ type: 'setProfile', profile: undo, keepTopUp: true }); dispatch({ type: 'dismissCapCard', date: null }); setUndo(null) }} className="tap min-h-11 shrink-0 rounded-full bg-card px-4 text-[15px] font-bold text-g-soft-ink" data-testid="cap-undo">Undo</button>
         <button type="button" onClick={() => setUndo(null)} aria-label="Close" className="grid h-11 w-9 shrink-0 place-items-center rounded-full text-xl font-bold" data-testid="cap-close">×</button>
       </div>
     )

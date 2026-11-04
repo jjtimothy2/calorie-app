@@ -217,7 +217,7 @@ await step('goal-date plans (male 32, 92 kg, 175 cm, light): 10 kg in 140 days =
   await pg.getByTestId('ob-target').waitFor()
   // v1.15: that needs more than the safe cap, so no Continue, the safer date or Change goal.
   assert.equal(await pg.getByTestId('ob-target').getAttribute('data-state'), 'unsafe')
-  assert.match(await pg.getByTestId('unsafe-card').innerText(), /isn't safe/)
+  assert.match(await pg.getByTestId('unsafe-card').innerText(), /Not safe on food alone|This pace is fast/)
   assert.equal(await pg.getByTestId('ob-next').count(), 0)
   await pg.getByTestId('ob-safer').waitFor()
   await pg.getByTestId('ob-change-goal').click()
@@ -233,7 +233,7 @@ await step('a burn under the 1,200 line (80-year-old woman, 40 kg) has no safe d
   assert.equal(await num(pg.getByTestId('deficit')), 220)
   assert.equal(await pg.getByTestId('eat-line').innerText(), "You'd eat about 712 kcal a day")
   assert.match(await pg.getByTestId('unsafe-card').innerText(), /1,200/)
-  await pg.getByTestId('safer-none').waitFor()
+  await pg.getByTestId('ob-keep').waitFor() // v1.21.3: no safer date, so Keep my date is the main button
   assert.equal(await pg.getByTestId('ob-safer').count() + await pg.getByTestId('ob-next').count(), 0)
   await ctx.close()
 })

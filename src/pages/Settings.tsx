@@ -114,7 +114,7 @@ export default function Settings() {
                 <Info title="Daily target" id="target">
                   <p data-testid="budget-line">
                     BMR {fmt(bmr)}{includeMovement ? ` + movement ${fmt(movement)}` : ''}
-                    {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} surplus` : ''} = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.
+                    {plan.planDeficit > 0 ? ` − ${fmt(plan.planDeficit)} deficit` : plan.planDeficit < 0 ? ` + ${fmt(-plan.planDeficit)} surplus` : ''} {plan.topUp > 0 ? <>{` + ${fmt(plan.topUp)} burned in exercise`} = <b>{fmt(plan.target)} kcal</b>, the safe minimum. You kept your date, so burn about {fmt(plan.topUp)} kcal a day in exercise.</> : <> = <b>{fmt(plan.target)} kcal</b> on a rest day, plus whatever you burn exercising.</>}
                   </p>
                   <p data-testid="plan-line">{d.goal === 'keep' || !p.goalDate ? 'Keep weight: no deficit.' : `Goal: ${goalBlurb(d.goal, plan, p.goalDate)}. ${plan.kgToGo > 0 ? gapLine(plan) : ''}`} {includeMovement ? '' : 'With movement off the plan starts from your BMR.'}</p>
                   <p>Each time you log your weight, the plan is worked out again from the kg left over the days left. When losing, the daily deficit has a safe limit. It's no more than 1% of your weight a week, and it leaves at least 1,500 kcal to eat for men or 1,200 for women. If a date needs more, you'll be offered the earliest safe date. When gaining, a pace over 1% a week gets a note suggesting a later date.</p>

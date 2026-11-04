@@ -75,6 +75,8 @@ export function normaliseProfile(p: ProfileIn, today = dateKey()): Profile {
     macros: { protein: null, carbs: null, fat: null, ...(p.macros ?? {}) },
   }
   if (!base.goalAssumed) { delete base.goalAssumed; delete base.goalAssumedV }
+  // v1.21.3: only a literal true counts; anything else (or a non-Lose goal) is taken out, so no other profile changes.
+  if (base.exerciseTopUp !== true || base.goal !== 'lose') delete base.exerciseTopUp
   const plan = dailyPlan(base)
   return { ...base, target: plan.target, dailyGoal: plan.dailyGoal }
 }
