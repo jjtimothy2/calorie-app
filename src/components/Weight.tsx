@@ -70,7 +70,12 @@ export function SaferDateCard() {
   }
   return (
     <div role="note" className="flex flex-col gap-2 rounded-2xl bg-carbs-soft px-4 py-3 text-[15px] leading-snug text-carbs-ink" data-testid="cap-card">
+      {/* v1.21.4 (Reed): a date kept under the safe minimum (exerciseTopUp) gets the kept-date copy; the gap is dailyPlan's topUp. */}
+      {p.exerciseTopUp ? (
+        <p data-testid="cap-kept"><b className="block">You kept your date.</b>Eat at least {fmt(s.floor)} a day and burn about {fmt(plan.topUp)} kcal a day with Quick add burn to stay on track.</p>
+      ) : (
       <p><b className="block">Your daily deficit is over the safe limit.</b>Your plan takes {fmt(s.deficit)} kcal a day off your {p.includeMovement ? 'daily burn' : 'resting burn'} and leaves about {fmt(Math.max(0, s.eat))} kcal to eat. The safe limit for you is {fmt(s.cap)} kcal a day. It keeps you eating at least {fmt(s.floor)} kcal and losing no more than 1% of your weight a week.</p>
+      )}
       <p data-testid="cap-safer">A safer plan: a {fmt(safer.deficit)} kcal deficit, eating about {fmt(safer.eat)} kcal a day, {round1(p.goalWeightKg)} kg by {longDay(safer.date)}. Nothing changes unless you tap.</p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <button type="button" onClick={use} className="tap min-h-11 rounded-full bg-ink px-4 text-[15px] font-bold text-bg" data-testid="cap-use">Use safer date ({longDay(safer.date)})</button>

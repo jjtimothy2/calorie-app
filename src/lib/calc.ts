@@ -389,7 +389,21 @@ export function homeBase(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovement'
  * baseBurn (BMR x 1.2) is only on days closed with Movement off by v1.2.1 to v1.3; it replaces BMR + movement in
  * their balance. Those closed days keep the numbers they were closed with. v1.3.1 never sets it (Movement off = BMR).
  */
-export type DayBalance = { bmr: number; movement: number; baseBurn?: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean }
+/**
+ * burnGap (v1.21.4, live days only, never stored): with profile.exerciseTopUp, the kcal of exercise a day the kept date
+ * needs on top of eating the safe minimum. The day's goal is dailyGoal plus the burn so far, up to burnGap, so that
+ * exercise closes the gap first and only what is past it adds to "left to eat".
+ */
+export type DayBalance = { bmr: number; movement: number; baseBurn?: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean; burnGap?: number }
+
+/** v1.21.4: the exercise gap of a profile with exerciseTopUp (safe minimum - uncapped food target), else 0. */
+export const burnGapOf = (p: Profile): number => (p.exerciseTopUp === true ? dailyPlan(p).topUp : 0)
+/** v1.21.4: the deficit a kept-date day is on track at once the gap is burned (dailyGoal + gap). Equals dailyGoal without the flag. */
+export const onTrackGoal = (p: Profile): number => p.dailyGoal + burnGapOf(p)
+/** v1.21.4: exercise that adds to what you can eat: all of it, or with a gap only the part past it. */
+export const creditedBurn = (burned: number, gap: number): number => Math.max(0, burned - gap)
+/** v1.21.4: kcal still to burn today to close the gap, or null when the day has no gap. */
+export const burnLeft = (d: Pick<DayBalance, 'burned' | 'burnGap'>): number | null => (d.burnGap ? Math.max(0, Math.round(d.burnGap - d.burned)) : null)
 
 /** Burn before exercise for a day: the base burn when set, else BMR + movement. */
 export const dayBase = (d: Pick<DayBalance, 'bmr' | 'movement' | 'baseBurn'>) => d.baseBurn ?? d.bmr + d.movement
@@ -406,10 +420,14 @@ export function liveDay(state: Pick<State, 'entries' | 'exercises'>, profile: Pr
   const burned = sumExercise(ex)
   const movement = movementKcal(profile)
   const base = homeBase(profile)
+  // v1.21.4: a kept date under the safe minimum: exercise first closes the gap (it raises the day's deficit goal toward
+  // the plan's), so left to eat (balance - goal) only grows with burn past the gap.
+  const gap = burnGapOf(profile)
   return {
     bmr: profile.bmr, movement, burned, eaten: m.kcal, protein: m.protein,
-    balance: base + burned - m.kcal, goal: profile.dailyGoal,
+    balance: base + burned - m.kcal, goal: profile.dailyGoal + Math.min(burned, gap),
     logged: entries.length + ex.length > 0,
+    ...(gap > 0 ? { burnGap: gap } : {}),
   }
 }
 

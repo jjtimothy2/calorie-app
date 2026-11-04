@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
 import { formatAmount } from '../lib/amount'
-import { entryTotals, fmt, lastNDays, dailyPlan, macroSplit, overBy, pctOf, sumEntries, sumExercise } from '../lib/calc'
+import { creditedBurn, entryTotals, fmt, lastNDays, dailyPlan, macroSplit, overBy, pctOf, sumEntries, sumExercise } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { Ticker, useRingFrom } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
@@ -207,7 +207,8 @@ export default function Nutrition() {
   const pOver = overBy(p, t.protein)
   const sources = topSources(entries)
   // Same food target Today works to: the plan target plus exercise logged that day (Today's "left" = target + burned - eaten).
-  const burned = sumExercise(state.exercises.filter((x) => days.includes(x.date))) / (range === 'today' ? 1 : loggedDays)
+  // v1.21.4: with a kept-date exercise gap, only burn past each day's gap adds to the target (as Today's left to eat).
+  const burned = days.reduce((s, d) => s + creditedBurn(sumExercise(state.exercises.filter((x) => x.date === d)), t.topUp), 0) / (range === 'today' ? 1 : loggedDays)
   const pctP = pctOf(p, t.protein)
 
   return (

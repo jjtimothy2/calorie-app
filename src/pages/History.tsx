@@ -4,7 +4,7 @@ import { BalanceTrendChart, type TrendDay } from '../components/BalanceTrendChar
 import { Screen, TabBar } from '../components/Layout'
 import { RangeSheet, type DateRange } from '../components/RangeSheet'
 import { Card, Chip, Illustrative } from '../components/ui'
-import { addDays, dayView, fmt, KCAL_PER_KG, lastNDays, macroTargets, round1, streak } from '../lib/calc'
+import { addDays, dayView, onTrackGoal, fmt, KCAL_PER_KG, lastNDays, macroTargets, round1, streak } from '../lib/calc'
 import { rolling } from '../lib/trend'
 import { useStore } from '../lib/store'
 
@@ -89,7 +89,8 @@ export default function History() {
   const setRange = (r: 7 | 30) => { setN(r); setPage(0); setScrub(null); setCustom(null); remembered = null }
   const apply = (r: DateRange) => { setCustom(r); remembered = r; setScrub(null); setPicking(false) }
   const pTarget = macroTargets(state.profile!).protein
-  const goal = state.profile!.dailyGoal
+  // v1.21.4: with a kept-date exercise gap the line is the deficit a day is on track at once the gap is burned.
+  const goal = onTrackGoal(state.profile!)
   // Whole history (rounded up to full periods) so the chart can swipe back; the cards below show the settled period.
   const first = useMemo(() => [...state.entries.map((e) => e.date), ...state.exercises.map((e) => e.date), ...Object.keys(state.closedDays)].sort()[0] ?? today, [state, today])
   const span = Math.round((parse(today).getTime() - parse(first).getTime()) / 864e5) + 1

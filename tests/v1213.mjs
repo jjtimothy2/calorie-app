@@ -188,7 +188,7 @@ await step('4+5 keep (keyboard): onboarding finishes with the entered date, the 
   await untouched(page, ['exerciseTopUp'])
   const cap = page.getByTestId('cap-card')
   await cap.waitFor()
-  assert.match(await cap.innerText(), /over the safe limit/)
+  assert.match(await cap.innerText(), /^You kept your date\./) // v1.21.4: the kept-date copy
   assert.match(await page.getByTestId('cap-use').innerText(), /^Use safer date \(\d+ \w+ \d{4}\)$/)
   assert.equal(await page.getByTestId('ring').getAttribute('data-message'), '1,200 kcal left to eat.', 'Home: never under the minimum to eat')
   await shot(page, 'home-cap', '390x844')
