@@ -62,7 +62,9 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/service worker/i.test(m.text())) errors.push(`${tag}: ${m.type()}: ${m.text()}`) })
   page.on('pageerror', (er) => errors.push(`${tag}: pageerror: ${er.message}`))
   const dialog = page.getByRole('dialog')
-  const shot = async (name) => { await logBtn().scrollIntoViewIfNeeded(); await page.waitForTimeout(300); await page.screenshot({ path: `${OUT}v122-${name}-${tag}.png` }) }
+  const shot = async (name, v = 'v122') => { await logBtn().scrollIntoViewIfNeeded(); await page.waitForTimeout(300); await page.screenshot({ path: `${OUT}${v}-${name}-${tag}.png` }) }
+  const totalBox = () => dialog.getByTestId('photo-total').locator('xpath=../..').boundingBox()
+  const overlaps = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
   const raw = (k) => page.evaluate((k) => localStorage.getItem(k), k)
   const st = async () => JSON.parse(await raw('calorie-app:v3'))
   const foods = async () => { const r = await raw('calorie-app:foods'); return r === null ? null : JSON.parse(r).foods }
@@ -81,7 +83,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await item(e.items[e.items.length - 1].name).waitFor(); await page.waitForTimeout(450)
   }
 
-  let base = ''
+  let base = '', slot = null
   await step(`${tag} 1: a quiet 44px '☆ Save to favourites' row sits above Edit / Log N items`, async () => {
     await describe(MULTI)
     assert.equal(await raw('calorie-app:foods'), null, 'no :foods yet')
@@ -92,25 +94,30 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.ok(b.height >= 44, `44px tap target (${b.height})`)
     assert.ok(b.y + b.height <= Math.min(l.y, e.y) + 1, 'above the footer buttons')
     assert.equal(await toast().count(), 0)
-    await shot('before-save')
+    slot = { ...b, gap: l.y - (b.y + b.height) }
+    await shot('before-save'); await shot('snack-before', 'v1221')
   })
 
-  await step(`${tag} 2+3: tapping saves ONE food (dish name, totals) to My foods and Favourites; sheet stays open; '★ Saved' in orange; snackbar above the footer with Undo`, async () => {
+  await step(`${tag} 2+3 (v1.22.1): tapping saves ONE food (dish name, totals) to My foods and Favourites; sheet stays open; the snackbar with Undo takes the save row's slot, never over Total; focus moves to Undo`, async () => {
     const before = await st()
     await row().click()
     assert.ok(await dialog.isVisible(), 'sheet stays open')
-    assert.equal(await rowText(), '★ Saved')
-    assert.equal(await row().evaluate((el) => getComputedStyle(el).color), ORANGE)
-    assert.equal(await row().evaluate((el) => el === document.activeElement), true, 'focus stays on the row')
-    assert.equal(await row().getAttribute('aria-label'), 'Saved to favourites')
     await toast().waitFor()
+    assert.equal(await row().count(), 0, 'the snackbar replaces the save row')
     assert.equal((await toast().innerText()).replace(/\s+/g, ' ').trim(), `Saved ${DISH} to My foods and Favourites Undo`)
     assert.equal(await toast().getAttribute('role'), 'status')
-    const t = await toast().boundingBox(), l = await logBtn().boundingBox(), d = await dialog.boundingBox()
-    assert.ok(t.y + t.height <= l.y + 1, 'snackbar above the footer')
-    assert.ok(t.y + t.height <= (await row().boundingBox()).y + 1, 'the ★ Saved row stays in view under the snackbar')
+    const t = await toast().boundingBox(), l = await logBtn().boundingBox(), d = await dialog.boundingBox(), tot = await totalBox()
+    const note = await dialog.getByText('Estimates are rough. Adjust before logging.').boundingBox()
+    // In the row's slot: right under the "Estimates are rough" line and the same gap above the footer the row had.
+    assert.ok(Math.abs(l.y - (t.y + t.height) - slot.gap) <= 7, `row's gap to the footer (${l.y - (t.y + t.height)} vs ${slot.gap})`)
+    assert.ok(t.y >= note.y + note.height && t.y - (note.y + note.height) <= 16, `right under the estimate note (${t.y - (note.y + note.height)})`)
+    assert.ok(t.y + t.height <= l.y + 1, 'above the footer')
+    assert.ok(!overlaps(t, tot), 'does not overlap Total')
+    assert.ok(t.y >= tot.y + tot.height, 'below Total')
     assert.ok(t.x >= d.x && t.x + t.width <= d.x + d.width + 1, 'inside the sheet')
+    assert.ok(t.height >= 44, `44px tall (${t.height})`)
     assert.ok((await toast().getByRole('button', { name: 'Undo' }).boundingBox()).height >= 44, 'Undo 44px')
+    assert.equal(await toast().getByRole('button', { name: 'Undo' }).evaluate((el) => el === document.activeElement), true, 'focus on Undo')
     const f = await foods()
     assert.equal(f.length, 1, 'one food for the whole result')
     assert.deepEqual({ ...f[0], id: undefined, createdAt: undefined, updatedAt: undefined }, { id: undefined, name: DISH, kcal: 650, protein: 32.5, carbs: 66, fat: 28.9, createdAt: undefined, updatedAt: undefined })
@@ -122,7 +129,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.deepEqual(s.favourites, ['nasi-goreng', f[0].id])
     assert.deepEqual(s.entries, [], 'nothing logged')
     await untouched()
-    await shot('after-save')
+    await shot('after-save'); await shot('snack-after', 'v1221')
   })
 
   await step(`${tag} 4: Undo removes it from My foods and Favourites, exactly as before; the row comes back with focus`, async () => {
@@ -140,7 +147,12 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await row().click(); await toast().waitFor()
     await page.waitForTimeout(3000); assert.equal(await toast().count(), 1, 'still there at 3 s')
     await page.waitForTimeout(1400); assert.equal(await toast().count(), 0, 'gone after 4 s')
-    assert.equal(await rowText(), '★ Saved')
+    assert.equal(await rowText(), '★ Saved', "the row is back as '★ Saved'")
+    assert.equal(await row().evaluate((el) => getComputedStyle(el).color), ORANGE)
+    assert.equal(await row().getAttribute('aria-label'), 'Saved to favourites')
+    assert.equal(await row().evaluate((el) => el === document.activeElement), true, 'focus back on the row')
+    const b = await row().boundingBox(), l = await logBtn().boundingBox(); assert.ok(Math.abs(l.y - (b.y + b.height) - slot.gap) <= 1 && b.height >= 44, 'same slot, 44px')
+    await shot('snack-gone', 'v1221')
     assert.equal((await foods()).length, 1)
   })
 
@@ -188,7 +200,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     assert.equal(await rowText(), '☆ Save to favourites')
     await row().click(); await toast().waitFor()
     assert.equal((await toast().innerText()).replace(/\s+/g, ' ').trim(), 'Added nasi AYAM goreng to Favourites Undo')
-    assert.equal(await rowText(), '★ Saved')
+    assert.equal(await row().count(), 0, 'snackbar in the row slot')
     assert.equal(await raw('calorie-app:foods'), mine, ':foods byte-identical (no duplicate, no update)')
     assert.deepEqual((await st()).favourites, ['nasi-goreng', 'u_mine'])
     await toast().getByRole('button', { name: 'Undo' }).click()

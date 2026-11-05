@@ -315,7 +315,9 @@ export function Results({ dish, scaleRef, items, photo, note, source, onEdit, on
   // v1.22 (Reed's spec): "☆ Save to favourites" saves the whole result as ONE food in My foods and Favourites: the dish
   // name (a single item saves under its own name), the total at the servings set now. It is a snapshot: changing
   // servings brings the row back, and saving again updates the food this sheet saved (same name, no duplicate). A food
-  // of the same name that was already in My foods is only starred. Snackbar above the footer for 4 s with Undo.
+  // of the same name that was already in My foods is only starred. v1.22.1 (Reed): the 4 s snackbar with Undo takes the
+  // save row's slot (it no longer floats above it, so it can never cover Total); when it goes the row is back as
+  // "★ Saved", or "☆ Save to favourites" after Undo. Focus follows: row → Undo → row.
   const { saveFavourite } = useStore()
   const sig = JSON.stringify(rows.map((r) => [r.it.key, r.s]))
   const [saved, setSaved] = useState<string | null>(null)
@@ -323,21 +325,35 @@ export function Results({ dish, scaleRef, items, photo, note, source, onEdit, on
   const [snack, setSnack] = useState<{ key: number; text: string; undo: () => void } | null>(null)
   const snackTimer = useRef(0)
   const saveBtn = useRef<HTMLButtonElement>(null)
+  const undoBtn = useRef<HTMLButtonElement>(null)
+  // Focus moves with the slot: the save row → Undo when the snackbar replaces it, Undo → the row when it goes.
+  const focusNext = useRef<'undo' | 'row' | null>(null)
   useEffect(() => () => window.clearTimeout(snackTimer.current), [])
+  useEffect(() => {
+    if (focusNext.current === 'undo' && snack) undoBtn.current?.focus({ preventScroll: true })
+    if (focusNext.current === 'row' && !snack) saveBtn.current?.focus({ preventScroll: true })
+    focusNext.current = null
+  }, [snack])
+  const dismiss = () => {
+    window.clearTimeout(snackTimer.current)
+    if (undoBtn.current && document.activeElement === undoBtn.current) focusNext.current = 'row'
+    setSnack(null)
+  }
   const saveName = n === 1 ? rows[0].it.name : dish
   const r1 = (x: number) => Math.round(x * 10) / 10
   const save = () => {
     const r = saveFavourite({ name: saveName, kcal: total.kcal, protein: r1(total.protein), carbs: r1(total.carbs), fat: r1(total.fat) }, mine)
     const prevMine = mine
+    if (saveBtn.current && document.activeElement === saveBtn.current) focusNext.current = 'undo'
     if (r.kind !== 'starred') setMine(r.food.id)
     setSaved(sig)
     window.clearTimeout(snackTimer.current)
     setSnack({
       key: Date.now(),
       text: r.kind === 'starred' ? `Added ${r.food.name} to Favourites` : `Saved ${r.food.name} to My foods and Favourites`,
-      undo: () => { r.undo(); setMine(r.kind === 'updated' ? r.food.id : prevMine); setSaved(null); setSnack(null); window.clearTimeout(snackTimer.current); saveBtn.current?.focus({ preventScroll: true }) },
+      undo: () => { r.undo(); setMine(r.kind === 'updated' ? r.food.id : prevMine); setSaved(null); dismiss(); focusNext.current = 'row' },
     })
-    snackTimer.current = window.setTimeout(() => setSnack(null), 4000)
+    snackTimer.current = window.setTimeout(dismiss, 4000)
   }
   const isSaved = saved === sig
   return (
@@ -396,15 +412,14 @@ export function Results({ dish, scaleRef, items, photo, note, source, onEdit, on
         </div>
       </div>
       <p className="-mt-2 text-center text-[14px] text-mute">Estimates are rough. Adjust before logging.</p>
-      {/* The snackbar sits over the content just above the save row and the footer, so both stay in view. */}
-      <div className="relative flex flex-col gap-2.5">
-        {snack && (
-          <div role="status" key={snack.key} className="anim-fade absolute inset-x-0 bottom-full z-20 mb-2 flex items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-3 text-[15px] text-bg shadow-lg" data-testid="fav-toast">
+      {/* v1.22.1: the snackbar takes the save row's slot, in the flow, so nothing above it (Total) is ever covered. */}
+      <div className="flex flex-col gap-2.5">
+        {snack ? (
+          <div role="status" key={snack.key} className="anim-fade flex min-h-11 items-center justify-between gap-3 rounded-[18px] bg-ink px-4 py-1.5 text-[15px] text-bg shadow-lg" data-testid="fav-toast">
             <span className="min-w-0">{snack.text}</span>
-            <button type="button" className="tap -my-2 min-h-11 shrink-0 px-1 font-bold underline" onClick={snack.undo} data-testid="fav-undo">Undo</button>
+            <button type="button" ref={undoBtn} className="tap min-h-11 shrink-0 px-1 font-bold underline" onClick={snack.undo} data-testid="fav-undo">Undo</button>
           </div>
-        )}
-        {n > 0 && (
+        ) : n > 0 && (
           <button type="button" ref={saveBtn} onClick={isSaved ? undefined : save} aria-disabled={isSaved || undefined}
             aria-label={isSaved ? 'Saved to favourites' : 'Save to favourites'}
             className={`tap -mt-1.5 flex min-h-11 items-center justify-center gap-1.5 self-center rounded-full px-4 text-[15px] font-bold ${isSaved ? 'text-over-ink' : 'text-g-ink'}`}
