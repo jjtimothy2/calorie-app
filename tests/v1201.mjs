@@ -1,7 +1,7 @@
 // v1.20.1 (approved by Jordy 2 Nov 2026). 1) Home equation card (Reed's option 1): the goal sentence under the divider
 // is gone on open days (the gauge says the same); one quiet full-width row takes its place: "✦ What should I eat?" left
 // and › right, same size, weight and green ink as the Protein card's View ›, the whole row a 44 px target, and the
-// card no taller than v1.20. "✦ Still hungry? Light ideas" over the goal. Past open days end at the equation; a closed
+// card no taller than v1.20. "✦ Lighter ideas for later" over the goal. Past open days end at the equation; a closed
 // day keeps its "Finished ... Nice work." sentence. 2) AI result sheet: the portion stepper (−, number, +) and the
 // remove ✕ are 44x44 tap targets (32 px look kept, ::before hit areas), proven by geometry and elementFromPoint hit
 // testing, solid and non-overlapping, row fits at 375 and 390 with nothing clipped. 3) Custom chip C1-C6: "+ Custom"
@@ -159,12 +159,12 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     }
   })
 
-  await step(`${tag} Home over goal: "✦ Still hungry? Light ideas  ›" in the same row`, async () => {
+  await step(`${tag} Home over goal: "✦ Lighter ideas for later  ›" in the same row`, async () => {
     const before = await raw()
     await page.evaluate((e) => { const s = JSON.parse(localStorage.getItem('calorie-app:v3')); s.entries.push(e); localStorage.setItem('calorie-app:v3', JSON.stringify(s)) }, q('big', 'Nasi padang', 1600, 30))
     await home()
     assert.match(await page.getByTestId('ring').getAttribute('data-message'), /to be on track|kcal over your/)
-    const m = await row('over', 'Still hungry? Light ideas'); console.log(`  ${tag} over ${JSON.stringify(m)}`)
+    const m = await row('over', 'Lighter ideas for later'); console.log(`  ${tag} over ${JSON.stringify(m)}`)
     await page.screenshot({ path: `${OUT}v1201-home-over-${tag}.png` })
     await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('calorie-app:v3')); s.entries = s.entries.filter((e) => e.id !== 'big'); localStorage.setItem('calorie-app:v3', JSON.stringify(s)) })
     assert.deepEqual(await raw(), before)

@@ -394,6 +394,8 @@ export function homeBase(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovement'
  * burnGap (v1.21.4, live days only, never stored): with profile.exerciseTopUp, the kcal of exercise a day that would
  * let you eat the safe minimum and still hit the kept date. v1.22.3: the day's goal is the plan deficit itself (it
  * does not grow with exercise). Exercise still adds to the day's burn, so left to eat grows with every kcal burned.
+ * v1.22.4: the Home burn line follows the live balance (see burnGuide); it no longer shows the static topUp once
+ * today's eaten food has already passed the safe minimum.
  */
 export type DayBalance = { bmr: number; movement: number; baseBurn?: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean; burnGap?: number }
 
@@ -403,8 +405,26 @@ export const burnGapOf = (p: Profile): number => (p.exerciseTopUp === true ? dai
 export const onTrackGoal = (p: Profile): number => p.dailyGoal
 /** v1.21.4: exercise that adds to what you can eat: all of it, or with a gap only the part past it. */
 export const creditedBurn = (burned: number, gap: number): number => Math.max(0, burned - gap)
-/** v1.21.4: kcal still to burn today to close the gap, or null when the day has no gap. */
+/** v1.21.4: kcal still to burn today to close the gap, or null when the day has no gap. Static topUp minus exercise; prefer burnGuide for the live line. */
 export const burnLeft = (d: Pick<DayBalance, 'burned' | 'burnGap'>): number | null => (d.burnGap ? Math.max(0, Math.round(d.burnGap - d.burned)) : null)
+
+export type BurnGuide = { mode: 'floor' | 'track' | 'done'; left: number }
+
+/**
+ * v1.22.4: live burn guidance for a kept unsafe date (`burnGap` set).
+ * Before eaten passes the safe minimum, the line is the remaining exercise that would let you eat at the floor
+ * and still hit the date (`topUp - exercise`). Once eaten exceeds the floor, that framing no longer applies:
+ * the number is the live burn needed to be on track, `max(0, goal - balance)`, the same amount the gauge uses.
+ * Returns null when there is no gap, or when the day is already on track after eating past the floor (the gauge is enough).
+ */
+export function burnGuide(d: Pick<DayBalance, 'balance' | 'goal' | 'burned' | 'eaten' | 'burnGap'>): BurnGuide | null {
+  if (!d.burnGap) return null
+  const toTrack = Math.max(0, Math.round(d.goal - d.balance))
+  const floor = Math.round(d.balance - d.burned + d.eaten - d.goal + d.burnGap)
+  if (d.eaten > floor) return toTrack > 0 ? { mode: 'track', left: toTrack } : null
+  const floorLeft = Math.max(0, Math.round(d.burnGap - d.burned))
+  return floorLeft > 0 ? { mode: 'floor', left: floorLeft } : { mode: 'done', left: 0 }
+}
 
 /** Burn before exercise for a day: the base burn when set, else BMR + movement. */
 export const dayBase = (d: Pick<DayBalance, 'bmr' | 'movement' | 'baseBurn'>) => d.baseBurn ?? d.bmr + d.movement
@@ -422,7 +442,8 @@ export function liveDay(state: Pick<State, 'entries' | 'exercises'>, profile: Pr
   const movement = movementKcal(profile)
   const base = homeBase(profile)
   // v1.22.3: a kept date uses the plan deficit as the goal from the start. Exercise adds to balance (and so to left
-  // to eat) immediately. burnGap is only for the "burn more to eat at the safe minimum" guidance line.
+  // to eat) immediately. burnGap feeds burnGuide (safe-minimum guidance, or live burn-to-be-on-track once eaten
+  // has passed the floor).
   const gap = burnGapOf(profile)
   return {
     bmr: profile.bmr, movement, burned, eaten: m.kcal, protein: m.protein,

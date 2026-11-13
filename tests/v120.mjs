@@ -3,7 +3,7 @@
 // estimate). "Log this" opens the AI result sheet ("Suggested by Gemini", Edit comes back to the ideas) and logs to the
 // meal the sheet opened with, even after the clock moves, with the + menu's toast and Undo. Chips re-ask; "Show other
 // ideas" gives 3 new ones up to 5 a day (calorie-app:ideas). No key / offline / error: picks from the user's foods.
-// Over the goal: "Still hungry? Light ideas", "You're over today's goal", ideas under 150 kcal. Protein hit: "Target hit".
+// Over the goal: "Lighter ideas for later", "You're over today's goal", ideas under 150 kcal. Protein hit: "Target hit".
 // 44 px taps, 16 px inputs, fits at 375. Schema stays v3; :v2 :v1 :ai :foods byte-identical. Mocked Gemini.
 // WebKit at 390x844 and 375x667. Screenshots: screenshots/v120-*.png.
 // Usage: npm run build && npx vite preview --port 4174 & node tests/v120.mjs
@@ -456,10 +456,10 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     // dailyGoal is re-derived from the goal-date plan on load, so read the real one (not the seeded 500)
     const GO = await p.evaluate(() => JSON.parse(localStorage.getItem('calorie-app:v3')).profile.dailyGoal)
     const f = (n) => n.toLocaleString('en-US')
-    await step(`${tag} over the goal (Deficit, orange): "✦ Still hungry? Light ideas"; sheet "You're over today's goal", "120 kcal over your G goal · Deficit G-120", I'm done for today, light ideas under 150`, async () => {
+    await step(`${tag} over the goal (Deficit, orange): "✦ Lighter ideas for later"; sheet "You're over today's goal", "120 kcal over your G goal · Deficit G-120", I'm done for today, light ideas under 150`, async () => {
       await setDay(`s.entries.push(${JSON.stringify(q('big', 'Nasi padang', L + 120, 30))})`)
       assert.equal(await p.getByTestId('ring').getAttribute('data-message'), 'Burn 120 kcal to be on track.')
-      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Lighter ideas for later')
       await shot('home-over', p)
       g.reply = LIGHT
       await openIdeas(p); await waitIdeas(p)
@@ -480,7 +480,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     })
     await step(`${tag} over the goal (Surplus, red): header "· Surplus 80" in red`, async () => {
       await setDay(`s.entries.find((e) => e.id === 'big').kcal = ${L + GO + 80}`)
-      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Lighter ideas for later')
       await openIdeas(p); await waitIdeas(p)
       assert.equal(await d.getByTestId('ideas-head').innerText(), `${f(GO + 80)} kcal over your ${f(GO)} goal · Surplus 80`)
       assert.match(await d.getByTestId('ideas-term').getAttribute('class'), /text-deep-ink/)
@@ -503,7 +503,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
       assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'What should I eat?')
       await setDay(`s.entries.find((e) => e.id === 'k').kcal = ${K + 300}`)
       assert.match(await p.getByTestId('ring').getAttribute('data-message'), /over break even/)
-      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
+      assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Lighter ideas for later')
       await setDay(`s.entries = s.entries.filter((e) => e.id !== 'k'); s.profile.goal = 'gain'; s.profile.goalWeightKg = 96`)
       const G2 = await leftNow(p)
       await setDay(`s.entries.push(${JSON.stringify(q('g', 'Nasi', G2 + 500, 5))})`)

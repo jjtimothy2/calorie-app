@@ -18,7 +18,7 @@ import { DaySwitcher, PastDayNote } from '../components/PastDay'
 import { COUNT_MS, CountHold, Ticker, countsHeldFor, reducedMotion, useInView, useNewRows } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
 import { Button, Card } from '../components/ui'
-import { burnLeft, dayName, dayView, keyDate, entryTotals, fmt, gaugeRead, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
+import { burnGuide, dayName, dayView, keyDate, entryTotals, fmt, gaugeRead, goalMessage, macroTargets, streak, sumEntries, verdict } from '../lib/calc'
 import { FOOD_BY_ID } from '../data/foods'
 import { aiAmount, formatAmount } from '../lib/amount'
 import { newId, useStore, type Landing } from '../lib/store'
@@ -36,6 +36,7 @@ export default function Home() {
   const exercises = state.exercises.filter((e) => e.date === date).sort((a, b) => a.createdAt - b.createdAt)
   const totals = sumEntries(entries)
   const day = dayView(state, date)
+  const guide = burnGuide(day)
   const closed = !!day.closed
   const locked = closed && !past
   const profile = state.profile!
@@ -171,12 +172,15 @@ export default function Home() {
           <BalanceGauge balance={day.balance} burned={burned} eaten={day.eaten} goal={day.goal} closed={closed} />
           <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} zone={gaugeRead(day.balance, day.goal, closed).zone} />
-          {/* v1.22.3: a kept date keeps the plan deficit as the gauge goal. This line is guidance: how much more
-              exercise would let you eat the safe minimum and still hit that goal. Open days only. */}
-          {!closed && burnLeft(day) != null && (burnLeft(day)! > 0 ? (
-            <p className="mt-2 text-center text-[14px] text-mute" data-testid="burn-line" data-left={burnLeft(day)!}>Burn <b className="num text-ink-soft"><Ticker value={burnLeft(day)!} format={(n) => fmt(Math.round(n))} id="burn-left" /></b> more to eat the safe minimum and stay on track</p>
+          {/* v1.22.4: kept-date guidance follows the live balance. Before eaten passes the floor: remaining
+              exercise to eat at the safe minimum and stay on track. After that: the same burn-to-be-on-track
+              figure the gauge uses. Open days only. */}
+          {!closed && guide && (guide.mode === 'track' ? (
+            <p className="mt-2 text-center text-[14px] text-mute" data-testid="burn-line" data-left={guide.left} data-mode="track">Burn <b className="num text-ink-soft"><Ticker value={guide.left} format={(n) => fmt(Math.round(n))} id="burn-left" /></b> kcal to be on track</p>
+          ) : guide.mode === 'floor' ? (
+            <p className="mt-2 text-center text-[14px] text-mute" data-testid="burn-line" data-left={guide.left} data-mode="floor">Burn <b className="num text-ink-soft"><Ticker value={guide.left} format={(n) => fmt(Math.round(n))} id="burn-left" /></b> more to eat the safe minimum and stay on track</p>
           ) : (
-            <p className="mt-2 text-center text-[14px] font-bold text-g-ink" data-testid="burn-line" data-left={0} data-done="true">Safe minimum covered</p>
+            <p className="mt-2 text-center text-[14px] font-bold text-g-ink" data-testid="burn-line" data-left={0} data-done="true" data-mode="done">Safe minimum covered</p>
           ))}
           {/* v1.20.1 (Reed's option 1): the goal sentence repeated the gauge, so an open day shows one quiet row under the
               divider instead: "✦ What should I eat?" on the left and › on the right, like the Protein card's View ›. The
@@ -185,7 +189,7 @@ export default function Home() {
               the one place it says more than the gauge. */}
           {!past && !closed ? (
             <button type="button" onClick={() => setIdeas(true)} className="tap -mb-3.5 mt-2.5 flex min-h-11 w-full items-center justify-between gap-2 border-t border-line text-left text-[15px] font-bold text-g-ink" data-testid="ideas-link">
-              <span className="flex min-w-0 items-center gap-1.5" data-testid="ideas-label"><SparkleIcon className="h-4 w-4 shrink-0" /><span data-testid="ideas-text">{ideasView(day.balance, day.goal, day.eaten).over ? 'Still hungry? Light ideas' : 'What should I eat?'}</span></span>
+              <span className="flex min-w-0 items-center gap-1.5" data-testid="ideas-label"><SparkleIcon className="h-4 w-4 shrink-0" /><span data-testid="ideas-text">{ideasView(day.balance, day.goal, day.eaten).over ? 'Lighter ideas for later' : 'What should I eat?'}</span></span>
               <span aria-hidden="true" data-testid="ideas-chev">›</span>
             </button>
           ) : closed ? (

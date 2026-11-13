@@ -13,7 +13,7 @@ for (const f of readdirSync(out).filter((f) => f.endsWith('.js'))) {
   writeFileSync(`${out}/${f.replace(/\.js$/, '.mjs')}`, src)
 }
 const load = (m) => import(new URL(`../${out}/${m}.mjs`, import.meta.url))
-const { dailyPlan: planOf, paceCheck: checkOf, dailyGap, kgToGo, planDays, goalReached, expectedKg, weighInStatus, addMonths, daysBetween, addDays, MIN_PLAN_DAYS, homeBase, liveDay, dayView, summarise, dayBase, goalMessage, macroPlan, macroSplit, macroTargets, pctOf, targetFloor, splitMacros, overBy, movementKcal, balanceScale, proteinScale, calcBmr, dateKey, deficitOf, burnGapOf, onTrackGoal } = await load('calc')
+const { dailyPlan: planOf, paceCheck: checkOf, dailyGap, kgToGo, planDays, goalReached, expectedKg, weighInStatus, addMonths, daysBetween, addDays, MIN_PLAN_DAYS, homeBase, liveDay, dayView, summarise, dayBase, goalMessage, macroPlan, macroSplit, macroTargets, pctOf, targetFloor, splitMacros, overBy, movementKcal, balanceScale, proteinScale, calcBmr, dateKey, deficitOf, burnGapOf, onTrackGoal, burnGuide, burnLeft } = await load('calc')
 const { migrateState, normaliseProfile, legacyGoal, LEGACY_PLAN_DAYS } = await load('migrate')
 globalThis.localStorage = { length: 0, key: () => null, getItem: () => null, setItem() {} }
 const { parseBackup, BACKUP_SCHEMA, STATE_KEY, V2_STATE_KEY, LEGACY_STATE_KEY, isStateKey } = await load('backup')
@@ -723,4 +723,45 @@ t('v1.22.3 kept unsafe date: dailyPlan keeps the true eat target and full defici
   assert.equal(plan2.dailyGoal, plan2.planBase)
   assert.equal(plan2.topUp, 0)
 })
+
+t('v1.22.4 burnGuide follows the live balance, not the static topUp', () => {
+  // Owner's live case: female, BMR 1,198, movement off, eat target 629 (under the 1,200 floor), goal 569,
+  // exercise 0, eaten 2,366 → surplus 1,168, 1,737 over the goal. topUp is 571.
+  const day = { bmr: 1198, movement: 0, burned: 0, eaten: 2366, balance: 1198 - 2366, goal: 569, protein: 0, logged: true, burnGap: 571 }
+  assert.equal(day.balance, -1168)
+  assert.equal(burnLeft(day), 571, 'the old line ignored food and would have shown 571')
+  assert.deepEqual(burnGuide(day), { mode: 'track', left: 1737 })
+  assert.equal(goalMessage(day.balance, day.goal, false), '1,737 kcal over your 569 goal.')
+  assert.equal(Math.max(0, day.goal - day.balance), 1737)
+
+  // Start of day / still under the floor: safe-minimum framing, remaining topUp minus exercise.
+  const rest = { ...day, eaten: 0, burned: 0, balance: 1198 }
+  assert.deepEqual(burnGuide(rest), { mode: 'floor', left: 571 })
+  const mid = { ...day, eaten: 800, burned: 0, balance: 1198 - 800 }
+  assert.ok(mid.eaten < 1200)
+  assert.deepEqual(burnGuide(mid), { mode: 'floor', left: 571 }, 'under the floor, remaining is still topUp minus exercise')
+  const midEx = { ...day, eaten: 800, burned: 200, balance: 1198 + 200 - 800 }
+  assert.deepEqual(burnGuide(midEx), { mode: 'floor', left: 371 })
+
+  // Exactly at the floor: both framings agree (571). Stay on the floor line.
+  const atFloor = { ...day, eaten: 1200, burned: 0, balance: 1198 - 1200 }
+  assert.deepEqual(burnGuide(atFloor), { mode: 'floor', left: 571 })
+  assert.equal(atFloor.goal - atFloor.balance, 571)
+
+  // One kcal past the floor: switch to live burn-to-be-on-track (572, not 571).
+  const pastFloor = { ...day, eaten: 1201, burned: 0, balance: 1198 - 1201 }
+  assert.deepEqual(burnGuide(pastFloor), { mode: 'track', left: 572 })
+
+  // Already on track after eating past the floor: hide the line (gauge is enough).
+  const recovered = { ...day, eaten: 2366, burned: 1737, balance: 1198 + 1737 - 2366 }
+  assert.equal(recovered.balance, 569)
+  assert.equal(burnGuide(recovered), null)
+
+  // Safe minimum covered by exercise, still under the floor.
+  const covered = { ...day, eaten: 0, burned: 571, balance: 1198 + 571 }
+  assert.deepEqual(burnGuide(covered), { mode: 'done', left: 0 })
+
+  assert.equal(burnGuide({ ...day, burnGap: undefined }), null)
+})
+
 console.log(results.join('\n'))
