@@ -270,13 +270,13 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   await step(`${tag} After this reads like Home's goal line, with edit math day total - old + new`, async () => {
     await home()
     const goalLine = (await page.getByTestId('ring').getAttribute('data-message')).replace(/\.( Nice work\.)?$/, '')
-    // v1.16: the gauge's words, "N kcal left to eat" before the goal line and "N kcal over your G goal" past it.
-    const m = goalLine.match(/^([\d,]+) kcal (left to eat|over your [\d,]+ goal)$/)
+    // v1.16 / v1.22.3: "N kcal left to eat" before the goal, "Burn N kcal to be on track" once past it but still a deficit, "N kcal over your G goal" only in surplus.
+    const m = goalLine.match(/^(?:([\d,]+) kcal (left to eat|over your [\d,]+ goal)|Burn ([\d,]+) kcal to be on track)$/)
     assert.ok(m, `goal line: ${goalLine}`)
     const num = (x) => Number(x.replace(/,/g, ''))
     const goal = num((await page.getByTestId('ring-goal').textContent()).match(/goal ([\d,]+)$/)[1])
-    const bal = m[2] === 'left to eat' ? goal + num(m[1]) : goal - num(m[1])
-    const say = (b) => b === goal ? `Right on your ${goal.toLocaleString('en-US')} goal` : b > goal ? `${(b - goal).toLocaleString('en-US')} kcal left to eat` : `${(goal - b).toLocaleString('en-US')} kcal over your ${goal.toLocaleString('en-US')} goal`
+    const bal = m[2] === 'left to eat' ? goal + num(m[1]) : goal - num(m[1] || m[3])
+    const say = (b) => b === goal ? `Right on your ${goal.toLocaleString('en-US')} goal` : b > goal ? `${(b - goal).toLocaleString('en-US')} kcal left to eat` : b > 0 ? `Burn ${(goal - b).toLocaleString('en-US')} kcal to be on track` : `${(goal - b).toLocaleString('en-US')} kcal over your ${goal.toLocaleString('en-US')} goal`
     const after = () => dialog.getByTestId('after-this').innerText()
     // Quick add edit, unchanged: the same as Home's line (old out, same value back in).
     await page.getByRole('button', { name: /^Edit Kopi susu/ }).click(); await dialog.waitFor()
@@ -286,7 +286,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     // 140 -> 840: the day goes under its goal.
     await dialog.locator('input[name=kcal]').fill('840')
     assert.equal(await after(), say(bal - 700))
-    assert.match(await after(), /kcal over your/)
+    assert.match(await after(), /to be on track|kcal over your/)
     await shot('after-this-under')
     await dialog.locator('input[name=kcal]').fill('100')
     assert.equal(await after(), say(bal + 40))

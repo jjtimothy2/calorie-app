@@ -13,7 +13,7 @@ for (const f of readdirSync(out).filter((f) => f.endsWith('.js'))) {
   writeFileSync(`${out}/${f.replace(/\.js$/, '.mjs')}`, src)
 }
 const load = (m) => import(new URL(`../${out}/${m}.mjs`, import.meta.url))
-const { dailyPlan: planOf, paceCheck: checkOf, dailyGap, kgToGo, planDays, goalReached, expectedKg, weighInStatus, addMonths, daysBetween, addDays, MIN_PLAN_DAYS, homeBase, liveDay, dayView, summarise, dayBase, goalMessage, macroPlan, macroSplit, macroTargets, pctOf, targetFloor, splitMacros, overBy, movementKcal, balanceScale, proteinScale, calcBmr, dateKey } = await load('calc')
+const { dailyPlan: planOf, paceCheck: checkOf, dailyGap, kgToGo, planDays, goalReached, expectedKg, weighInStatus, addMonths, daysBetween, addDays, MIN_PLAN_DAYS, homeBase, liveDay, dayView, summarise, dayBase, goalMessage, macroPlan, macroSplit, macroTargets, pctOf, targetFloor, splitMacros, overBy, movementKcal, balanceScale, proteinScale, calcBmr, dateKey, deficitOf, burnGapOf, onTrackGoal } = await load('calc')
 const { migrateState, normaliseProfile, legacyGoal, LEGACY_PLAN_DAYS } = await load('migrate')
 globalThis.localStorage = { length: 0, key: () => null, getItem: () => null, setItem() {} }
 const { parseBackup, BACKUP_SCHEMA, STATE_KEY, V2_STATE_KEY, LEGACY_STATE_KEY, isStateKey } = await load('backup')
@@ -667,5 +667,60 @@ t('overage', () => {
   assert.equal(overBy(29, 29), 0)
   assert.equal(overBy(10, 0), 0)
   assert.equal(movementKcal({ bmr: 1400, activity: 'light', includeMovement: true }), 525)
+})
+
+t('v1.22.3 kept unsafe date: dailyPlan keeps the true eat target and full deficit; Home measures against the goal, not the floor', () => {
+  // Sari-like: eat is under the 1,200 floor but still positive.
+  const date = addMonths(T0, 1)
+  const p0 = normaliseProfile({
+    age: 30, sex: 'female', heightCm: 164, weightKg: 78, activity: 'sedentary', goal: 'lose',
+    includeMovement: true, goalWeightKg: 72, goalDate: date, planFrom: { date: T0, kg: 78 }, exerciseTopUp: true,
+  }, T0)
+  const plan = planOf(p0)
+  const wantDef = deficitOf(plan.planBase, plan.gap)
+  const wantEat = plan.planBase - wantDef
+  assert.ok(wantEat < 1200 && wantEat > 0, String(wantEat))
+  assert.equal(plan.target, wantEat)
+  assert.equal(plan.dailyGoal, wantDef)
+  assert.equal(plan.topUp, 1200 - wantEat)
+  assert.equal(p0.target, wantEat)
+  assert.equal(p0.dailyGoal, wantDef)
+  assert.equal(onTrackGoal(p0), wantDef)
+  assert.equal(burnGapOf(p0), plan.topUp)
+  const day0 = liveDay({ entries: [], exercises: [] }, p0, T0)
+  assert.equal(day0.goal, wantDef)
+  assert.equal(day0.balance - day0.goal, wantEat, 'left to eat is the plan eat, not the floor')
+  assert.equal(goalMessage(day0.balance, day0.goal, false), `${wantEat.toLocaleString('en-US')} kcal left to eat.`)
+  assert.notEqual(goalMessage(day0.balance, day0.goal, false), '1,200 kcal left to eat.')
+  const dayBurn = liveDay({ entries: [], exercises: [{ id: 'x', date: T0, activityId: null, name: 'Watch', minutes: 0, intensity: 'moderate', kcal: 300, createdAt: 1 }] }, p0, T0)
+  assert.equal(dayBurn.goal, wantDef, 'goal does not grow with exercise')
+  assert.equal(dayBurn.balance - dayBurn.goal, wantEat + 300, 'every kcal burned adds to left to eat')
+
+  // Jordy-like: the deficit is larger than rest-day burn, so the true eat target is negative.
+  const p1 = normaliseProfile({
+    age: 32, sex: 'male', heightCm: 175, weightKg: 92, activity: 'light', goal: 'lose', bmr: 1859, bmrCustom: true,
+    includeMovement: false, goalWeightKg: 79, goalDate: date, planFrom: { date: T0, kg: 92 }, exerciseTopUp: true,
+  }, T0)
+  const plan1 = planOf(p1)
+  const def1 = deficitOf(plan1.planBase, plan1.gap)
+  assert.ok(def1 > plan1.planBase, `full deficit ${def1} vs base ${plan1.planBase}`)
+  assert.equal(plan1.target, plan1.planBase - def1)
+  assert.ok(plan1.target < 0)
+  assert.equal(plan1.dailyGoal, def1)
+  assert.equal(plan1.topUp, 1500 - plan1.target)
+  const dayJ = liveDay({ entries: [], exercises: [] }, p1, T0)
+  assert.equal(dayJ.goal, def1)
+  assert.ok(dayJ.balance - dayJ.goal < 0, 'already short of the goal until enough exercise is logged')
+  const short = def1 - dayJ.balance
+  assert.equal(goalMessage(dayJ.balance, dayJ.goal, false), `Burn ${short.toLocaleString('en-US')} kcal to be on track.`)
+  assert.equal(goalMessage(dayJ.balance, dayJ.goal, true), `Finished. Needed to burn ${short.toLocaleString('en-US')} kcal to be on track.`)
+
+  // Without the flag, a low eat target is still floored at 0 (not raised to 1,500).
+  const p2 = { ...p1, exerciseTopUp: undefined }
+  delete p2.exerciseTopUp
+  const plan2 = planOf(p2)
+  assert.equal(plan2.target, 0)
+  assert.equal(plan2.dailyGoal, plan2.planBase)
+  assert.equal(plan2.topUp, 0)
 })
 console.log(results.join('\n'))

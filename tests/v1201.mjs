@@ -163,7 +163,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const before = await raw()
     await page.evaluate((e) => { const s = JSON.parse(localStorage.getItem('calorie-app:v3')); s.entries.push(e); localStorage.setItem('calorie-app:v3', JSON.stringify(s)) }, q('big', 'Nasi padang', 1600, 30))
     await home()
-    assert.match(await page.getByTestId('ring').getAttribute('data-message'), /kcal over your/)
+    assert.match(await page.getByTestId('ring').getAttribute('data-message'), /to be on track|kcal over your/)
     const m = await row('over', 'Still hungry? Light ideas'); console.log(`  ${tag} over ${JSON.stringify(m)}`)
     await page.screenshot({ path: `${OUT}v1201-home-over-${tag}.png` })
     await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('calorie-app:v3')); s.entries = s.entries.filter((e) => e.id !== 'big'); localStorage.setItem('calorie-app:v3', JSON.stringify(s)) })

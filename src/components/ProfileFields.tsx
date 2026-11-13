@@ -98,8 +98,8 @@ export function targetSum(goal: Goal, plan: PlanSum, includeMovement: boolean) {
   if (includeMovement) s += ` + ${fmt(plan.movement)} movement`
   if (goal === 'lose' && plan.planDeficit > 0) s += ` − ${fmt(plan.planDeficit)} deficit`
   if (goal === 'gain' && plan.planDeficit < 0) s += ` + ${fmt(-plan.planDeficit)} surplus`
-  // v1.21.3: a kept plan under the safe minimum eats the minimum and burns the rest in exercise.
-  if (plan.topUp) s += ` + ${fmt(plan.topUp)} exercise`
+  // v1.22.3: the sum is the goal eat target (the deficit is already in the line). Exercise needed to eat at the
+  // safe minimum is guidance, not added into this number.
   return s
 }
 

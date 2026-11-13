@@ -191,7 +191,8 @@ export const goalReached = (p: GoalInput) =>
  * Daily target (goal-date plan).
  * Plan base: BMR + movement when Movement is on, plain BMR when it is off (v1.3.1).
  * Gap: |plan start weight - goal weight| x 7,700 / days from the plan start to the goal date (see dailyGap).
- * Lose: base - gap. Gain: base + gap. Keep (or a reached goal): the base. No floor: a low target only warns (paceCheck).
+ * Lose: base - gap. Gain: base + gap. Keep (or a reached goal): the base. No floor: a low target only warns (paceCheck),
+ * except a kept unsafe date (exerciseTopUp) keeps the true eat target (which may be negative) and the full deficit.
  * planDeficit is what the plan takes off its base (negative for a surplus); dailyGoal = planDeficit, the balance goal
  * against what Home counts as the burn (homeBase).
  * Macros (v1.3.2) come from maintenance = the plan base, at the current weight, and don't follow the target.
@@ -202,18 +203,18 @@ export function dailyPlan(p: PlanInput) {
   const planBase = Math.round(p.includeMovement ? base : p.bmr)
   const gap = dailyGap(p)
   let target = planBase
-  // Never under 0 (a goal date days away can ask for more than the whole burn); the warning says why.
-  if (p.goal === 'lose') target = Math.max(0, Math.round(planBase - gap))
+  if (p.goal === 'lose') target = Math.round(planBase - gap)
   if (p.goal === 'gain') target = Math.round(planBase + gap)
+  // Without a kept unsafe date, never show a negative eat target (a date that asks for more than the day's burn).
+  // v1.22.3: a kept date (exerciseTopUp) keeps the true (possibly negative) eat target and the full plan deficit, so
+  // Home measures against the goal, not the safe minimum. topUp is guidance only: exercise that would let you eat at
+  // the floor and still hit the date. It is not added into target or dailyGoal.
+  if (!(p.goal === 'lose' && p.exerciseTopUp === true)) target = Math.max(0, target)
   const planDeficit = planBase - target
-  // v1.21.3: a kept Lose plan under the safe minimum (exerciseTopUp) holds the food target at the minimum, so Home never
-  // shows less than it to eat. dailyGoal (what Home measures) follows the food target as always (base - target).
-  // planDeficit stays the plan's; topUp is the kcal a day of exercise (not eaten back) the goal date needs on top.
   const topUp = p.goal === 'lose' && p.exerciseTopUp === true ? Math.max(0, targetFloor(p.sex) - target) : 0
-  target += topUp
   const m = macroPlan(planBase, p.weightKg, p.macros)
   return {
-    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, target, dailyGoal: planBase - target, topUp,
+    bmr: p.bmr, movement, base, planBase, maintenance: planBase, planDeficit, target, dailyGoal: planDeficit, topUp,
     gap, days: planDays(p), kgToGo: kgToGo(p), weeklyKg: (gap * 7) / KCAL_PER_KG,
     protein: m.protein, carbs: m.carbs, fat: m.fat, macroKcal: m.kcal, adjusted: m.adjusted,
   }
@@ -390,16 +391,16 @@ export function homeBase(p: Pick<Profile, 'bmr' | 'activity' | 'includeMovement'
  * their balance. Those closed days keep the numbers they were closed with. v1.3.1 never sets it (Movement off = BMR).
  */
 /**
- * burnGap (v1.21.4, live days only, never stored): with profile.exerciseTopUp, the kcal of exercise a day the kept date
- * needs on top of eating the safe minimum. The day's goal is dailyGoal plus the burn so far, up to burnGap, so that
- * exercise closes the gap first and only what is past it adds to "left to eat".
+ * burnGap (v1.21.4, live days only, never stored): with profile.exerciseTopUp, the kcal of exercise a day that would
+ * let you eat the safe minimum and still hit the kept date. v1.22.3: the day's goal is the plan deficit itself (it
+ * does not grow with exercise). Exercise still adds to the day's burn, so left to eat grows with every kcal burned.
  */
 export type DayBalance = { bmr: number; movement: number; baseBurn?: number; burned: number; eaten: number; balance: number; goal: number; protein: number; logged: boolean; burnGap?: number }
 
-/** v1.21.4: the exercise gap of a profile with exerciseTopUp (safe minimum - uncapped food target), else 0. */
+/** v1.21.4: the exercise gap of a profile with exerciseTopUp (safe minimum - plan food target), else 0. */
 export const burnGapOf = (p: Profile): number => (p.exerciseTopUp === true ? dailyPlan(p).topUp : 0)
-/** v1.21.4: the deficit a kept-date day is on track at once the gap is burned (dailyGoal + gap). Equals dailyGoal without the flag. */
-export const onTrackGoal = (p: Profile): number => p.dailyGoal + burnGapOf(p)
+/** The deficit Home and History measure against. v1.22.3: already the full plan deficit when a date was kept. */
+export const onTrackGoal = (p: Profile): number => p.dailyGoal
 /** v1.21.4: exercise that adds to what you can eat: all of it, or with a gap only the part past it. */
 export const creditedBurn = (burned: number, gap: number): number => Math.max(0, burned - gap)
 /** v1.21.4: kcal still to burn today to close the gap, or null when the day has no gap. */
@@ -420,12 +421,12 @@ export function liveDay(state: Pick<State, 'entries' | 'exercises'>, profile: Pr
   const burned = sumExercise(ex)
   const movement = movementKcal(profile)
   const base = homeBase(profile)
-  // v1.21.4: a kept date under the safe minimum: exercise first closes the gap (it raises the day's deficit goal toward
-  // the plan's), so left to eat (balance - goal) only grows with burn past the gap.
+  // v1.22.3: a kept date uses the plan deficit as the goal from the start. Exercise adds to balance (and so to left
+  // to eat) immediately. burnGap is only for the "burn more to eat at the safe minimum" guidance line.
   const gap = burnGapOf(profile)
   return {
     bmr: profile.bmr, movement, burned, eaten: m.kcal, protein: m.protein,
-    balance: base + burned - m.kcal, goal: profile.dailyGoal + Math.min(burned, gap),
+    balance: base + burned - m.kcal, goal: profile.dailyGoal,
     logged: entries.length + ex.length > 0,
     ...(gap > 0 ? { burnGap: gap } : {}),
   }
@@ -495,7 +496,11 @@ export function gaugeRead(balance: number, goal: number, done = false): GaugeRea
     const sub = `${so} · goal ${fmt(g)}`
     if (l >= 0) return { plan: 'lose', state: 'on', zone: 'green', big: l, label: 'kcal left to eat', sub, message: l === 0 ? `Right on your ${fmt(g)} goal.${nice}` : left(l) }
     const surplus = net > 0
-    return { plan: 'lose', state: surplus ? 'surplus' : 'past', zone: surplus ? 'red' : 'light', big: -l, label: 'kcal over your goal', sub, message: over(-l, `your ${fmt(g)} goal`, done && !surplus ? ' Still a good day.' : '') }
+    // v1.22.3: behind the goal but not a surplus is "burn to be on track", not "over your goal".
+    // Red / "over your goal" is only for an actual surplus (net > 0). Zone colours stay the same: light until then.
+    if (surplus) return { plan: 'lose', state: 'surplus', zone: 'red', big: -l, label: 'kcal over your goal', sub, message: over(-l, `your ${fmt(g)} goal`) }
+    const need = -l
+    return { plan: 'lose', state: 'past', zone: 'light', big: need, label: 'kcal to be on track', sub, message: done ? `Finished. Needed to burn ${fmt(need)} kcal to be on track.` : `Burn ${fmt(need)} kcal to be on track.` }
   }
   if (g < 0) {
     const s = -g

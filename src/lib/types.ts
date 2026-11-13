@@ -54,8 +54,9 @@ export type Profile = {
   goalAssumedV?: 2
   /**
    * v1.21.3 (optional, v3): set when onboarding's or Me's "Keep my date, I'll add exercise" was tapped on a Lose plan that would
-   * leave less than the safe minimum to eat. dailyPlan then holds the food target at the minimum (1,500 men, 1,200
-   * women), and dailyGoal follows it (base - target). The rest of the plan's deficit is exercise. Cleared when the goal, goal weight or date changes.
+   * leave less than the safe minimum to eat. v1.22.3: dailyPlan keeps the true food target and the full plan deficit
+   * (Home measures against the goal). topUp is the exercise that would let you eat at the safe minimum and still hit
+   * the date; it is not folded into target or dailyGoal. Cleared when the goal, goal weight or date changes.
    * Missing in older data, which loads unchanged.
    */
   exerciseTopUp?: true

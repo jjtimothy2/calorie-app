@@ -241,7 +241,10 @@ await t('v1.20 ideasView: Lose under goal, Lose past (orange), Lose surplus (red
   // Lose goal 606, balance 1204 = 598 left.
   assert.deepEqual(ideas.ideasView(1204, 606), { over: false, cap: 598, head: '598 kcal left', term: null })
   const past = ideas.ideasView(486, 606)
-  assert.deepEqual([past.over, past.cap, past.head, past.term.text, past.term.ink], [true, 150, '120 kcal over your 606 goal', 'Deficit 486', 'text-over-ink'])
+  assert.deepEqual([past.over, past.cap, past.head, past.term.text, past.term.ink], [true, 150, 'Burn 120 kcal to be on track', 'Deficit 486', 'text-over-ink'])
+  // v1.22.3: nothing eaten yet, already short of an aggressive goal — not "Still hungry?".
+  const start = ideas.ideasView(1859, 3337, 0)
+  assert.deepEqual([start.over, start.cap, start.head, start.term], [false, 150, 'Burn 1,478 kcal to be on track', null])
   const sur = ideas.ideasView(-80, 606)
   assert.deepEqual([sur.over, sur.term.text, sur.term.ink], [true, 'Surplus 80', 'text-deep-ink'])
   const even = ideas.ideasView(0, 606)

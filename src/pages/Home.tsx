@@ -171,13 +171,12 @@ export default function Home() {
           <BalanceGauge balance={day.balance} burned={burned} eaten={day.eaten} goal={day.goal} closed={closed} />
           <Card className="px-3.5 py-3.5">
           <Equation bmr={day.bmr} baseBurn={day.baseBurn} movement={day.baseBurn == null && (day.closed ? day.movement > 0 : profile.includeMovement) ? day.movement : null} burned={burned} eaten={day.eaten} balance={day.balance} zone={gaugeRead(day.balance, day.goal, closed).zone} />
-          {/* v1.21.4 (Reed): a kept date under the safe minimum. Exercise closes the day's gap first (the gauge's goal
-              grows with it), so this line counts the gap down, then turns green. Open days only; a closed day's goal
-              is frozen with the gap already applied. */}
+          {/* v1.22.3: a kept date keeps the plan deficit as the gauge goal. This line is guidance: how much more
+              exercise would let you eat the safe minimum and still hit that goal. Open days only. */}
           {!closed && burnLeft(day) != null && (burnLeft(day)! > 0 ? (
-            <p className="mt-2 text-center text-[14px] text-mute" data-testid="burn-line" data-left={burnLeft(day)!}>Burn <b className="num text-ink-soft"><Ticker value={burnLeft(day)!} format={(n) => fmt(Math.round(n))} id="burn-left" /></b> more to stay on track</p>
+            <p className="mt-2 text-center text-[14px] text-mute" data-testid="burn-line" data-left={burnLeft(day)!}>Burn <b className="num text-ink-soft"><Ticker value={burnLeft(day)!} format={(n) => fmt(Math.round(n))} id="burn-left" /></b> more to eat the safe minimum and stay on track</p>
           ) : (
-            <p className="mt-2 text-center text-[14px] font-bold text-g-ink" data-testid="burn-line" data-left={0} data-done="true">Burn goal done</p>
+            <p className="mt-2 text-center text-[14px] font-bold text-g-ink" data-testid="burn-line" data-left={0} data-done="true">Safe minimum covered</p>
           ))}
           {/* v1.20.1 (Reed's option 1): the goal sentence repeated the gauge, so an open day shows one quiet row under the
               divider instead: "✦ What should I eat?" on the left and › on the right, like the Protein card's View ›. The
@@ -186,7 +185,7 @@ export default function Home() {
               the one place it says more than the gauge. */}
           {!past && !closed ? (
             <button type="button" onClick={() => setIdeas(true)} className="tap -mb-3.5 mt-2.5 flex min-h-11 w-full items-center justify-between gap-2 border-t border-line text-left text-[15px] font-bold text-g-ink" data-testid="ideas-link">
-              <span className="flex min-w-0 items-center gap-1.5" data-testid="ideas-label"><SparkleIcon className="h-4 w-4 shrink-0" /><span data-testid="ideas-text">{ideasView(day.balance, day.goal).over ? 'Still hungry? Light ideas' : 'What should I eat?'}</span></span>
+              <span className="flex min-w-0 items-center gap-1.5" data-testid="ideas-label"><SparkleIcon className="h-4 w-4 shrink-0" /><span data-testid="ideas-text">{ideasView(day.balance, day.goal, day.eaten).over ? 'Still hungry? Light ideas' : 'What should I eat?'}</span></span>
               <span aria-hidden="true" data-testid="ideas-chev">›</span>
             </button>
           ) : closed ? (

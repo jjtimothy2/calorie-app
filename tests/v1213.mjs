@@ -170,7 +170,7 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   })
 }
 
-await step('4+5 keep (keyboard): onboarding finishes with the entered date, the food target held at 1,200 (exerciseTopUp), Home shows 1,200 left to eat and the safe limit card', async () => {
+await step('4+5 keep (keyboard): onboarding finishes with the entered date, exerciseTopUp set, Home shows the plan eat target (not the 1,200 floor) and the safe-limit card', async () => {
   const { ctx, page } = await open(390, 844)
   await onboard(page, SARI)
   const date = byDate('1m'), ask = plan(S_BASE, 6, between(TODAY, date))
@@ -182,35 +182,36 @@ await step('4+5 keep (keyboard): onboarding finishes with the entered date, the 
   const p = (await stored(page)).profile
   assert.deepEqual([p.goal, p.goalWeightKg, p.goalDate, p.weightKg, p.planFrom], ['lose', 72, date, 78, { date: TODAY, kg: 78 }])
   assert.equal(p.exerciseTopUp, true, 'flag set on the low-intake keep')
-  assert.equal(p.target, 1200, 'food target held at the safe minimum')
-  assert.equal(p.dailyGoal, S_BASE - 1200, 'Home measures against the held target (base - 1,200)')
-  assert.ok(p.dailyGoal < ask.deficit)
+  assert.equal(p.target, ask.eat, 'food target is the plan eat, not the floor')
+  assert.equal(p.dailyGoal, ask.deficit, 'Home measures against the plan deficit')
   await untouched(page, ['exerciseTopUp'])
   const cap = page.getByTestId('cap-card')
   await cap.waitFor()
   assert.match(await cap.innerText(), /^You kept your date\./) // v1.21.4: the kept-date copy
   assert.match(await page.getByTestId('cap-use').innerText(), /^Use safer date \(\d+ \w+ \d{4}\)$/)
-  assert.equal(await page.getByTestId('ring').getAttribute('data-message'), '1,200 kcal left to eat.', 'Home: never under the minimum to eat')
+  assert.equal(await page.getByTestId('ring').getAttribute('data-message'), `${fmt(ask.eat)} kcal left to eat.`, 'Home shows the goal eat, not the floor')
   await shot(page, 'home-cap', '390x844')
   // A reload keeps the kept plan and the hold.
   await page.reload(); await page.getByTestId('balance').waitFor()
   const r = (await stored(page)).profile
-  assert.deepEqual([r.goalDate, r.target, r.dailyGoal, r.exerciseTopUp], [date, 1200, S_BASE - 1200, true])
-  // Me shows the sum with the exercise part.
+  assert.deepEqual([r.goalDate, r.target, r.dailyGoal, r.exerciseTopUp], [date, ask.eat, ask.deficit, true])
+  // Me shows the goal eat target (the deficit is in the sum; exercise is not folded in).
   await page.goto(BASE + '/settings'); await page.getByTestId('weight-card').waitFor()
-  assert.equal(await num(page.getByTestId('settings-target')), 1200)
-  assert.match(await page.getByTestId('target-sum').innerText(), new RegExp(`− ${fmt(ask.deficit)} deficit \\+ ${fmt(1200 - ask.eat)} exercise$`))
-  // A weigh-in re-plans (date kept): still held at 1,200, flag still there.
+  assert.equal(await num(page.getByTestId('settings-target')), ask.eat)
+  assert.match(await page.getByTestId('target-sum').innerText(), new RegExp(`− ${fmt(ask.deficit)} deficit$`))
+  // A weigh-in re-plans (date kept): flag still there, target follows the new plan (not held at 1,200).
   await page.getByTestId('log-weight').click()
   await page.getByTestId('weigh-kg').fill('77.5')
   await page.getByTestId('weigh-save').click()
   await page.getByTestId('weigh-result').waitFor()
   const wi = (await stored(page)).profile
-  assert.deepEqual([wi.planFrom.kg, wi.goalDate, wi.target, wi.exerciseTopUp], [77.5, date, 1200, true])
-  assert.equal(wi.target + wi.dailyGoal, bmrOf('female', 77.5, 164, 30) + Math.round(bmrOf('female', 77.5, 164, 30) * 0.2), 'base - 1,200 at the new weight')
+  assert.deepEqual([wi.planFrom.kg, wi.goalDate, wi.exerciseTopUp], [77.5, date, true])
+  const newBase = bmrOf('female', 77.5, 164, 30) + Math.round(bmrOf('female', 77.5, 164, 30) * 0.2)
+  assert.equal(wi.target + wi.dailyGoal, newBase, 'target + dailyGoal is still the plan base')
+  assert.ok(wi.target < 1200, 're-planned eat is still the goal, not the floor')
   await page.getByTestId('weigh-done').click()
   await page.reload(); await page.getByTestId('weight-card').waitFor()
-  assert.deepEqual([(await stored(page)).profile.target, (await stored(page)).profile.exerciseTopUp], [1200, true])
+  assert.equal((await stored(page)).profile.exerciseTopUp, true)
   await untouched(page, ['exerciseTopUp'])
   await ctx.close()
 })
@@ -241,7 +242,8 @@ await step('4 Use safer date clears the hold (back to the plain v3 profile), Und
   await b.page.waitForURL(BASE + '/'); await b.page.getByTestId('cap-use').click()
   await b.page.getByTestId('cap-undo').click()
   const u = (await stored(b.page)).profile
-  assert.deepEqual([u.goalDate, u.target, u.exerciseTopUp], [date, 1200, true])
+  const kept = plan(S_BASE, 6, between(TODAY, date))
+  assert.deepEqual([u.goalDate, u.target, u.exerciseTopUp], [date, kept.eat, true])
   await b.ctx.close()
 })
 

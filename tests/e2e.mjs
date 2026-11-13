@@ -311,7 +311,7 @@ try {
     assert.equal(await num(page.getByTestId('verdict-number')), 500)
     assert.equal(await page.getByTestId('verdict-text').innerText(), 'kcal deficit')
     assert.equal(await color(page.getByTestId('verdict-number')), GREEN)
-    assert.match(await page.getByTestId('verdict-message').innerText(), /Finished 50 kcal over your 550 goal/) // v1.8 goal: 2200 - 1650 (no cap)
+    assert.match(await page.getByTestId('verdict-message').innerText(), /Finished\. Needed to burn 50 kcal to be on track/) // v1.8 goal: 2200 - 1650 (no cap); v1.22.3 burn framing when still a deficit
     await page.screenshot({ path: OUT + 'v1-mobile-verdict.png' })
     await page.getByRole('button', { name: 'Done' }).click()
     await page.waitForURL(BASE + '/')

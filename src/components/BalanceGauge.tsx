@@ -5,8 +5,9 @@ import { COUNT_MS, CountHold, Ticker, useCountUp } from './motion'
 /**
  * v1.16 Home speedometer (Reed's spec). Net = eaten - burn, where burn = the day's base (BMR + movement, or BMR alone
  * when movement is off) plus exercise. The arc is painted with fixed zones and only the rider moves. Eating 0 puts the
- * rider exactly on the left end (minus the burn), so it never goes further left. Exercise pushes the left end further
- * out and the arc rescales, so the goal line moves and "left to eat" grows by the same amount. The right end sits 500
+ * rider on the day's burn (the left end on a typical day). v1.22.3: if the goal is a larger deficit than today's burn,
+ * the scale extends left so the goal tick and its label always fit; the rider then sits inward of the left end.
+ * Exercise pushes the day's burn further out and the arc rescales, so "left to eat" grows by the same amount. The right end sits 500
  * kcal past the goal (or at +500 when the goal is a deficit or even). Past it the rider pins at the end and the end
  * label turns red with a chevron, while the big number keeps the real figure.
  *
@@ -40,8 +41,12 @@ export function BalanceGauge({ balance, burned, eaten, goal, closed = false }: {
   const read = gaugeRead(balance, goal, closed)
   const { plan } = read
   const goalNet = -Math.round(goal)
-  const lo = -burn
+  const burnNet = -burn
   const hi = Math.max(END_PAST_GOAL, goalNet + END_PAST_GOAL)
+  // v1.22.3: always include the goal on the scale. A little room past it keeps the Goal label off the end cap.
+  const needLeft = Math.min(burnNet, goalNet)
+  const leftPad = goalNet < burnNet ? Math.max(250, Math.round((hi - needLeft) * 0.1)) : 0
+  const lo = needLeft - leftPad
   const f = (v: number) => (hi === lo ? 0 : Math.max(0, Math.min(1, (v - lo) / (hi - lo))))
   const fv = f(net), fg = f(goalNet), f0 = f(0)
   const pinned = net > hi
@@ -51,15 +56,28 @@ export function BalanceGauge({ balance, burned, eaten, goal, closed = false }: {
       : plan === 'gain' ? [[lo, goalNet, C.track], [goalNet, goalNet + GAIN_BAND, C.green], [goalNet + GAIN_BAND, hi, C.deep]]
         : [[lo, goalNet, C.green], [goalNet, 0, C.light], [0, hi, C.deep]]
 
-  // Labels outside the arc.
+  // Labels outside the arc. Goal text is kept inside the viewBox so a large deficit (e.g. Goal −3,337) is never clipped.
   const lr = R + SW / 2 + 12
-  const anchor = (fr: number) => (fr < 0.42 ? 'end' : fr > 0.58 ? 'start' : 'middle')
+  const anchor = (fr: number): 'end' | 'start' | 'middle' => (fr < 0.42 ? 'end' : fr > 0.58 ? 'start' : 'middle')
   const [gx1, gy1] = pt(fg, R - SW / 2 - 4), [gx2, gy2] = pt(fg, R + SW / 2 + 5)
-  const [glx, gly] = pt(fg, lr)
+  const [glx0, gly0] = pt(fg, lr)
   const [zlx, zly] = pt(f0, lr - 3)
   const goalText = plan === 'keep' ? 'Goal even' : `Goal ${signed(goalNet)}`
+  const gw = Math.max(48, goalText.length * 7.2)
+  const sideOf = (x: number, a: string) => {
+    const left = a === 'end' ? x - gw : a === 'start' ? x : x - gw / 2
+    return { left, right: left + gw }
+  }
+  let glx = glx0, gly = gly0, gAnchor: 'end' | 'start' | 'middle' = anchor(fg)
+  const inset = 8
+  let box = sideOf(glx, gAnchor)
+  if (box.left < inset) { glx += inset - box.left; box = sideOf(glx, gAnchor) }
+  if (box.right > W - inset) { glx -= box.right - (W - inset) }
+  if (gly < 14) gly = 14
   const showZero = plan !== 'keep' && Math.abs(f0 - fg) > 0.06
   const [d1x, d1y] = pt(f0, R - SW / 2), [d2x, d2y] = pt(f0, R + SW / 2)
+  // The "burn" end label stays on the day's burn, which may no longer be the geometric left end.
+  const burnX = pt(f(burnNet))[0]
 
   // Rider: a group rotated about the centre with the dot at the top, so it travels along the arc when it moves.
   // v1.21: the rider is driven by the same count as the big number (same 600 ms, easing, start and hold), so it sweeps
@@ -78,10 +96,10 @@ export function BalanceGauge({ balance, burned, eaten, goal, closed = false }: {
         {zones.map(([a, b, col], i) => (f(b) > f(a) ? <path key={i} d={arc(f(a), f(b))} fill="none" stroke={col} strokeWidth={SW} data-zone-color={col} /> : null))}
         {showZero && <line x1={d1x} y1={d1y} x2={d2x} y2={d2y} stroke="var(--color-bg)" strokeWidth={2} />}
         <line x1={gx1} y1={gy1} x2={gx2} y2={gy2} stroke="var(--color-ink)" strokeWidth={3} strokeLinecap="round" />
-        <text x={glx} y={gly} textAnchor={anchor(fg)} className="num" fontSize={13} fill="var(--color-ink)" data-testid="gauge-goal">{goalText}</text>
+        <text x={glx} y={gly} textAnchor={gAnchor} className="num" fontSize={13} fill="var(--color-ink)" data-testid="gauge-goal">{goalText}</text>
         {showZero && <text x={zlx} y={zly} textAnchor={anchor(f0)} fontSize={12} fill="var(--color-mute)" data-testid="gauge-zero">0</text>}
-        <text x={CX - R} y={END_Y} textAnchor="middle" className="num" fontSize={17} fill="var(--color-ink)" data-testid="gauge-burn">{signed(lo)}</text>
-        <text x={CX - R} y={END_Y + 16} textAnchor="middle" fontSize={12} fill="var(--color-mute)" data-testid="gauge-burn-label">{burned > 0 ? 'burn + exercise' : 'burn'}</text>
+        <text x={burnX} y={END_Y} textAnchor="middle" className="num" fontSize={17} fill="var(--color-ink)" data-testid="gauge-burn">{signed(burnNet)}</text>
+        <text x={burnX} y={END_Y + 16} textAnchor="middle" fontSize={12} fill="var(--color-mute)" data-testid="gauge-burn-label">{burned > 0 ? 'burn + exercise' : 'burn'}</text>
         <text x={CX + R} y={END_Y} textAnchor="middle" className="num" fontSize={17} fontWeight={pinned ? 800 : 600} fill={pinned ? C.deep : 'var(--color-mute)'} data-testid="gauge-end">{pinned ? `${fmt(hi)}+` : signed(hi)}</text>
         {pinned && <path d={`M ${CX + R + SW / 2 + 5} ${CY - 7} l 7 7 l -7 7`} fill="none" stroke={C.deep} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" data-testid="gauge-overflow" />}
         <text x={CX + R} y={END_Y + 16} textAnchor="middle" fontSize={12} fill={pinned ? C.deep : 'var(--color-mute)'} data-testid="gauge-end-label">{pinned ? 'off the scale' : 'surplus'}</text>

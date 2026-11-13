@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Screen, TabBar, Title } from '../components/Layout'
 import { Card, Chip, Illustrative } from '../components/ui'
 import { formatAmount } from '../lib/amount'
-import { creditedBurn, entryTotals, fmt, lastNDays, dailyPlan, macroSplit, overBy, pctOf, sumEntries, sumExercise } from '../lib/calc'
+import { entryTotals, fmt, lastNDays, dailyPlan, macroSplit, overBy, pctOf, sumEntries, sumExercise } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { Ticker, useRingFrom } from '../components/motion'
 import { foodEmoji } from '../data/foodEmoji'
@@ -93,7 +93,7 @@ function Bar({ label, value, target, tone, id }: { label: string; value: number;
 /** B1: calories eaten against the daily food target. Neutral grey, info only; past the target it stays grey (orange is for a surplus). */
 function CaloriesCard({ eaten, target, exercise, week }: { eaten: number; target: number; exercise: number; week: boolean }) {
   const e = Math.round(eaten)
-  const over = target > 0 && e > target ? e - target : 0
+  const over = e > target ? e - target : 0
   const pct = pctOf(e, target)
   const scale = over ? e : target
   const base = scale ? (Math.min(e, target) / scale) * 100 : 0
@@ -104,7 +104,7 @@ function CaloriesCard({ eaten, target, exercise, week }: { eaten: number; target
           {/* inline-block pieces keep the text one sentence for screen readers ("Eaten 1,601 of 1,760 kcal, 91%") */}
           <p className="tabular-nums text-[15px] text-mute" data-testid="cal-text">
             <span className="eyebrow inline-block w-full">Eaten</span>{' '}
-            <b className="num text-[34px] leading-tight text-ink"><Ticker value={e} format={(n) => fmt(Math.round(n))} id="kcal-eaten" /></b> <span>of {fmt(target)} kcal, <span data-testid="cal-pct">{pct}%</span></span>
+            <b className="num text-[34px] leading-tight text-ink"><Ticker value={e} format={(n) => fmt(Math.round(n))} id="kcal-eaten" /></b> <span>of {fmt(Math.max(0, target))} kcal, <span data-testid="cal-pct">{pct}%</span></span>
             {over > 0 && <>{' '}<b className="ml-1 text-ink-soft" data-testid="cal-over">+{fmt(over)} kcal over</b></>}
           </p>
           <MiniRing pct={pct} />
@@ -206,9 +206,9 @@ export default function Nutrition() {
   const left = t.protein - p
   const pOver = overBy(p, t.protein)
   const sources = topSources(entries)
-  // Same food target Today works to: the plan target plus exercise logged that day (Today's "left" = target + burned - eaten).
-  // v1.21.4: with a kept-date exercise gap, only burn past each day's gap adds to the target (as Today's left to eat).
-  const burned = days.reduce((s, d) => s + creditedBurn(sumExercise(state.exercises.filter((x) => x.date === d)), t.topUp), 0) / (range === 'today' ? 1 : loggedDays)
+  // Same food target Today works to: the plan (goal) target plus all exercise logged that day.
+  // v1.22.3: a kept date no longer withholds the first topUp kcal of burn from the eat budget.
+  const burned = days.reduce((s, d) => s + sumExercise(state.exercises.filter((x) => x.date === d)), 0) / (range === 'today' ? 1 : loggedDays)
   const pctP = pctOf(p, t.protein)
 
   return (

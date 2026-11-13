@@ -27,14 +27,20 @@ export type IdeasView = {
 }
 
 /**
- * Over today's goal = Lose past its goal (orange or red) or Keep in surplus. Keep inside its band and Gain at or above
- * its goal get the normal link (Gain above goal: assumption c). For band days the cap is the room left in the band,
- * at least 150; Gain past its band gets 150.
+ * Over today's goal = Lose past its goal after eating (orange or red) or Keep in surplus. v1.22.3: if nothing has been
+ * eaten yet, a Lose day already short of an aggressive goal is not "over" — Home keeps the normal "What should I eat?"
+ * link. Pass eaten so that can be told apart from a day that has already gone past the goal. Keep inside its band and
+ * Gain at or above its goal get the normal link (Gain above goal: assumption c). For band days the cap is the room left
+ * in the band, at least 150; Gain past its band gets 150.
  */
-export function ideasView(balance: number, goal: number): IdeasView {
+export function ideasView(balance: number, goal: number, eaten?: number): IdeasView {
   const r = gaugeRead(balance, goal, false)
   const net = -Math.round(balance)
   const strip = (m: string) => m.replace(/\.$/, '')
+  // Behind the goal with nothing eaten yet: normal framing, not "Still hungry?".
+  if (r.plan === 'lose' && r.state === 'past' && eaten === 0) {
+    return { over: false, cap: LIGHT_KCAL, head: strip(r.message), term: null }
+  }
   if ((r.plan === 'lose' && (r.state === 'past' || r.state === 'surplus')) || (r.plan === 'keep' && r.state === 'surplus')) {
     const b = Math.round(balance)
     const word = b === 0 ? 'Even' : b < 0 ? 'Surplus' : 'Deficit'

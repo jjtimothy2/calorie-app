@@ -458,13 +458,13 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     const f = (n) => n.toLocaleString('en-US')
     await step(`${tag} over the goal (Deficit, orange): "✦ Still hungry? Light ideas"; sheet "You're over today's goal", "120 kcal over your G goal · Deficit G-120", I'm done for today, light ideas under 150`, async () => {
       await setDay(`s.entries.push(${JSON.stringify(q('big', 'Nasi padang', L + 120, 30))})`)
-      assert.equal(await p.getByTestId('ring').getAttribute('data-message'), `120 kcal over your ${f(GO)} goal.`)
+      assert.equal(await p.getByTestId('ring').getAttribute('data-message'), 'Burn 120 kcal to be on track.')
       assert.equal((await p.getByTestId('ideas-text').innerText()).trim(), 'Still hungry? Light ideas')
       await shot('home-over', p)
       g.reply = LIGHT
       await openIdeas(p); await waitIdeas(p)
       assert.equal(await d.getByTestId('ideas-title').innerText(), "You're over today's goal")
-      assert.equal(await d.getByTestId('ideas-head').innerText(), `120 kcal over your ${f(GO)} goal · Deficit ${f(GO - 120)}`)
+      assert.equal(await d.getByTestId('ideas-head').innerText(), `Burn 120 kcal to be on track · Deficit ${f(GO - 120)}`)
       assert.match(await d.getByTestId('ideas-term').getAttribute('class'), /text-over-ink/)
       assert.equal(await d.getByRole('button').first().innerText(), "I'm done for today")
       assert.match(await d.innerText(), /Light ideas under 150 kcal/)

@@ -53,7 +53,7 @@ export function MealIdeas({ onClose }: { onClose: () => void }) {
   const { meal, date, ai } = opened
   const label = ai ? PROVIDER_LABEL[ai.provider] : 'AI'
   const day = dayView(state, date)
-  const view = ideasView(day.balance, day.goal)
+  const view = ideasView(day.balance, day.goal, day.eaten)
   const entries = state.entries.filter((e) => e.date === date)
   const proteinTarget = state.profile ? macroTargets(state.profile).protein : 0
   const toGo = Math.max(0, proteinTarget - Math.round(sumEntries(entries).protein))

@@ -1,5 +1,8 @@
-// v1.21.4 (Reed's two points, Jordy's go). 1. A kept date under the safe minimum (profile.exerciseTopUp): exercise
-// closes the day's gap first (safe minimum - plan food, dailyPlan's topUp). The day's goal grows with the burn up to the
+// v1.21.4 / v1.22.3 (Reed's card copy, then Jordy: the dashboard goal is the plan, not the safe intake).
+// 1. A kept date under the safe minimum (profile.exerciseTopUp): Home's goal is the plan deficit from the start;
+//    exercise adds to left to eat immediately. The burn line is guidance (exercise that would let you eat the floor
+//    and still hit the date). The day's goal does not grow with the burn. dailyPlan's topUp is that guidance gap.
+// was: The day's goal grows with the burn up to the
 // gap, so left to eat stays at 1,200 - eaten until the gap is burned, then burn past it adds as usual. Under the
 // equation: "Burn {n} more to stay on track", then "Burn goal done" in green. Closed days freeze that goal; Nutrition
 // and Me agree. 2. The Home card: "You kept your date. Eat at least 1,200 a day and burn about {gap} kcal a day with
@@ -81,13 +84,13 @@ const shot = async (page, name, tag) => { await page.waitForTimeout(250); await 
 const isPrimary = async (loc) => /bg-ink|bg-g\b|bg-g-ink/.test(await loc.getAttribute('class'))
 
 
-// Sari: female 30, 164 cm, 78 -> 72 kg, sedentary, 1 month. Plan food is under 1,200, so a kept date holds food at 1,200
-// (exerciseTopUp) and the rest is the exercise gap.
+// Sari: female 30, 164 cm, 78 -> 72 kg, sedentary, 1 month. Plan food is under 1,200. A kept date (exerciseTopUp)
+// keeps that plan eat/deficit on Home; topUp is the exercise that would raise eat to 1,200.
 const S_BMR = bmrOf('female', 78, 164, 30), S_BASE = S_BMR + Math.round(S_BMR * 0.2)
 const DATE = addMonthsKey(TODAY, 1), ASK = plan(S_BASE, 6, between(TODAY, DATE))
 const GAP = 1200 - ASK.eat, GOAL = S_BASE - 1200
 const YDAY = addDaysKey(TODAY, -1)
-const profileOf = (flag) => ({ sex: 'female', age: 30, heightCm: 164, weightKg: 78, activity: 'sedentary', goal: 'lose', bmr: S_BMR, bmrCustom: false, includeMovement: true, goalWeightKg: 72, goalDate: DATE, planFrom: { date: TODAY, kg: 78 }, macros: { protein: null, carbs: null, fat: null }, ...(flag ? { target: 1200, dailyGoal: GOAL, exerciseTopUp: true } : { target: ASK.eat, dailyGoal: ASK.deficit }) })
+const profileOf = (flag) => ({ sex: 'female', age: 30, heightCm: 164, weightKg: 78, activity: 'sedentary', goal: 'lose', bmr: S_BMR, bmrCustom: false, includeMovement: true, goalWeightKg: 72, goalDate: DATE, planFrom: { date: TODAY, kg: 78 }, macros: { protein: null, carbs: null, fat: null }, ...(flag ? { target: ASK.eat, dailyGoal: ASK.deficit, exerciseTopUp: true } : { target: ASK.eat, dailyGoal: ASK.deficit }) })
 const ex = (id, date, kcal) => ({ id, date, activityId: null, name: 'Watch workout', minutes: 0, intensity: 'moderate', kcal, createdAt: 1 })
 const food = (id, date, kcal) => ({ id, date, meal: 'lunch', foodId: null, name: 'Test ' + id, servingLabel: '1 serving', servingMult: 1, qty: 1, kcal, protein: 10, carbs: 10, fat: 5, createdAt: 1 })
 const seed = (flag, entries = [], exercises = []) => JSON.stringify({ version: 3, profile: profileOf(flag), entries, exercises, closedDays: {}, favourites: [], weights: [{ date: YDAY, kg: 78 }] })
@@ -125,34 +128,34 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
     await tall(page.getByTestId('cap-use'), 'cap-use')
     cleanCopy(await card.innerText(), 'card')
     await card.scrollIntoViewIfNeeded(); await shot(page, 'card', tag)
-    // 0 burned: the whole gap left, 1,200 to eat, goal is dailyGoal
-    assert.equal(await message(page), '1,200 kcal left to eat.')
-    assert.equal(await burnText(page), `Burn ${fmt(GAP)} more to stay on track`)
+    // 0 burned: left to eat is the plan eat (not 1,200); goal is the plan deficit from the start
+    assert.equal(await message(page), `${fmt(ASK.eat)} kcal left to eat.`)
+    assert.equal(await burnText(page), `Burn ${fmt(GAP)} more to eat the safe minimum and stay on track`)
     assert.equal(Number(await page.getByTestId('burn-line').getAttribute('data-left')), GAP)
     assert.match(await page.getByTestId('burn-line').getAttribute('class'), /text-mute/)
     let e = await equation(page)
-    assert.deepEqual([e.bmr + e.movement, e.burned, e.eaten, e.deficit, e.goal], [S_BASE, 0, 0, S_BASE, GOAL])
+    assert.deepEqual([e.bmr + e.movement, e.burned, e.eaten, e.deficit, e.goal], [S_BASE, 0, 0, S_BASE, ASK.deficit])
     await page.getByTestId('burn-line').scrollIntoViewIfNeeded(); await shot(page, 'gap', tag)
-    // partial: 300 closes part of the gap, left to eat stays 1,200, the goal grows by 300
+    // partial: 300 adds to left to eat; the goal stays the plan deficit
     await addBurn(page, 300)
-    assert.equal(await message(page), '1,200 kcal left to eat.')
-    assert.equal(await burnText(page), `Burn ${fmt(GAP - 300)} more to stay on track`)
+    assert.equal(await message(page), `${fmt(ASK.eat + 300)} kcal left to eat.`)
+    assert.equal(await burnText(page), `Burn ${fmt(GAP - 300)} more to eat the safe minimum and stay on track`)
     e = await equation(page)
-    assert.deepEqual([e.burned, e.deficit, e.goal], [300, S_BASE + 300, GOAL + 300])
-    assert.equal(e.deficit - e.goal, 1200, 'left to eat = deficit - goal')
-    // exact: the rest of the gap, Burn goal done in green, still 1,200
+    assert.deepEqual([e.burned, e.deficit, e.goal], [300, S_BASE + 300, ASK.deficit])
+    assert.equal(e.deficit - e.goal, ASK.eat + 300, 'left to eat = deficit - goal')
+    // exact: the rest of the guidance gap, Safe minimum covered in green, left to eat is now 1,200
     await addBurn(page, GAP - 300)
     assert.equal(await message(page), '1,200 kcal left to eat.')
-    assert.equal(await burnText(page), 'Burn goal done')
+    assert.equal(await burnText(page), 'Safe minimum covered')
     assert.equal(await page.getByTestId('burn-line').getAttribute('data-done'), 'true')
     assert.match(await page.getByTestId('burn-line').getAttribute('class'), /text-g-ink/)
     e = await equation(page)
-    assert.deepEqual([e.burned, e.goal], [GAP, ASK.deficit], 'goal reaches the full plan deficit')
+    assert.deepEqual([e.burned, e.goal], [GAP, ASK.deficit], 'goal was the full plan deficit all along')
     await page.getByTestId('burn-line').scrollIntoViewIfNeeded(); await shot(page, 'done', tag)
-    // over: burn past the gap adds to left to eat as usual
+    // over: more burn keeps adding to left to eat
     await addBurn(page, 250)
     assert.equal(await message(page), '1,450 kcal left to eat.')
-    assert.equal(await burnText(page), 'Burn goal done')
+    assert.equal(await burnText(page), 'Safe minimum covered')
     e = await equation(page)
     assert.deepEqual([e.burned, e.goal, e.deficit - e.goal], [GAP + 250, ASK.deficit, 1450])
     cleanCopy(await page.locator('main').innerText(), 'home')
@@ -162,19 +165,19 @@ for (const [w, h] of [[390, 844], [375, 667]]) {
   })
 }
 
-await step('food and burn together: left to eat = 1,200 + burn past the gap - eaten (Log and Nutrition agree)', async () => {
+await step('food and burn together: left to eat = plan eat + all burn - eaten (Log and Nutrition agree)', async () => {
   const { ctx, page } = await open(390, 844, seed(true, [food('f1', TODAY, 500)], [ex('x1', TODAY, 400)]))
   await home(page)
-  assert.equal(await message(page), '700 kcal left to eat.')
-  assert.equal(await burnText(page), `Burn ${fmt(GAP - 400)} more to stay on track`)
+  assert.equal(await message(page), `${fmt(ASK.eat + 400 - 500)} kcal left to eat.`)
+  assert.equal(await burnText(page), `Burn ${fmt(GAP - 400)} more to eat the safe minimum and stay on track`)
   await ctx.close()
   const b = await open(390, 844, seed(true, [food('f1', TODAY, 500)], [ex('x1', TODAY, GAP + 100)]))
   await home(b.page)
-  assert.equal(await message(b.page), '800 kcal left to eat.')
-  // Nutrition's target counts only burn past the gap, like Home: 1,200 + 100
+  assert.equal(await message(b.page), `${fmt(ASK.eat + GAP + 100 - 500)} kcal left to eat.`)
+  // Nutrition's target is the plan eat plus all exercise, like Home: ASK.eat + GAP + 100 = 1,300
   await b.page.goto(BASE + '/nutrition'); await b.page.getByTestId('cal-card').waitFor()
   assert.match(await b.page.getByTestId('cal-text').innerText(), /of 1,300 kcal/)
-  assert.match(await b.page.getByTestId('cal-note').innerText(), /Target includes 100 kcal of exercise/)
+  assert.match(await b.page.getByTestId('cal-note').innerText(), new RegExp(`Target includes ${fmt(GAP + 100)} kcal of exercise`))
   await untouched(b.page, ['exerciseTopUp'])
   await b.ctx.close()
 })
@@ -186,21 +189,23 @@ await step('a past day closes with the gap applied to its goal (no new summary f
   const c = s.closedDays[YDAY]
   assert.ok(c, 'yesterday closed on load')
   assert.deepEqual(Object.keys(c).sort(), ['auto', 'balance', 'bmr', 'burned', 'closedAt', 'eaten', 'goal', 'movement', 'protein'])
-  assert.equal(c.goal, GOAL + 300, 'frozen goal: dailyGoal + burn toward the gap')
-  assert.equal(c.balance - c.goal, 1200 - 900, 'left to eat on that day: 300')
+  assert.equal(c.goal, ASK.deficit, 'frozen goal is the plan deficit (does not grow with burn)')
+  assert.equal(c.balance - c.goal, ASK.eat + 300 - 900, 'left to eat on that day: plan eat + burn - eaten')
   await page.goto(BASE + `/day/${YDAY}`); await page.getByTestId('verdict-message').waitFor()
-  assert.match(await page.getByTestId('verdict-message').innerText(), /300/)
+  const left = ASK.eat + 300 - 900
+  assert.match(await page.getByTestId('verdict-message').innerText(), new RegExp(fmt(left)))
   await untouched(page, ['exerciseTopUp'])
   await ctx.close()
 })
 
-await step('Me: the target line still reads 1,200 with the exercise part, and the info explains the gap', async () => {
+await step('Me: the target line is the plan eat (not 1,200), and the info explains the safe-minimum exercise', async () => {
   const { ctx, page } = await open(390, 844, seed(true))
   await page.goto(BASE + '/settings'); await page.getByTestId('weight-card').waitFor()
-  assert.equal(await num(page.getByTestId('settings-target')), 1200)
-  assert.match(await page.getByTestId('target-sum').innerText(), new RegExp(`\\+ ${fmt(GAP)} exercise$`))
+  assert.equal(await num(page.getByTestId('settings-target')), ASK.eat)
+  assert.doesNotMatch(await page.getByTestId('target-sum').innerText(), /exercise$/)
+  assert.match(await page.getByTestId('target-sum').innerText(), new RegExp(`− ${fmt(ASK.deficit)} deficit$`))
   await page.getByRole('button', { name: 'About daily target' }).click()
-  assert.match(await page.getByTestId('budget-line').innerText(), new RegExp(`= 1,200 kcal, the safe minimum\\. You kept your date, so burn about ${fmt(GAP)} kcal a day in exercise\\. The first ${fmt(GAP)} kcal you burn each day goes to that\\. Only exercise past it adds to what you can eat\\.$`))
+  assert.match(await page.getByTestId('budget-line').innerText(), new RegExp(`= ${fmt(ASK.eat)} kcal to hit your date\. Eat at least 1,200 kcal only if you also burn about ${fmt(GAP)} kcal a day in exercise\.$`))
   cleanCopy(await page.getByTestId('budget-line').innerText(), 'budget line')
   await ctx.close()
 })
