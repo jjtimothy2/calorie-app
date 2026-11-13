@@ -139,3 +139,30 @@ export function UnsafeCard({ s, weeklyKg, safer, goalKg, className = '', title =
     </div>
   )
 }
+
+/** v1.21.3: the real label of the Log button that opens the "Quick add exercise" sheet. */
+export const QUICK_BURN = 'Quick add burn'
+
+/** v1.21.3: under the food minimum, the date can still be kept by adding exercise. Over 1% a week only, it is just kept. */
+export const keepLabel = (s: SafeDeficit) => (s.low ? "Keep my date, I'll add exercise" : 'Keep my date')
+
+/**
+ * v1.21.3 (Reed's spec), shared in v1.22.2: the card for a Lose date over the safe cap. Too little food: says how much
+ * exercise a day closes the gap while eating at least the minimum. Over 1% a week only: says the pace is fast, no
+ * exercise line. Used by onboarding and the Me goal sheet. The buttons sit outside it.
+ */
+export function UnsafeGoalCard({ s, weeklyKg, goalKg, date, className = '' }: { s: SafeDeficit; weeklyKg: number; goalKg: number; date: string | null; className?: string }) {
+  const by = date ? ` by ${longDay(date)}` : ''
+  return (
+    <div role="note" className={`flex flex-col gap-1.5 rounded-[18px] bg-carbs-soft px-4 py-3 text-left text-[15px] leading-snug text-carbs-ink ${className}`} data-testid="unsafe-card" data-reason={s.low ? 'low' : 'fast'}>
+      {s.low ? (
+        <p>
+          <b>Not safe on food alone.</b> {s.eat > 0 ? `You'd eat about ${fmt(s.eat)} kcal a day, under the safe minimum of ${fmt(s.floor)}.` : `It would leave nothing to eat. The safe minimum is ${fmt(s.floor)} kcal a day.`}{' '}
+          <span data-testid="unsafe-exercise">To reach {goalKg} kg{by}, keep eating at least {fmt(s.floor)} and burn about {fmt(s.floor - s.eat)} kcal a day in exercise. Log it with {QUICK_BURN}.</span>
+        </p>
+      ) : (
+        <p><b>This pace is fast.</b> About {kgWeek(weeklyKg)} kg a week is more than 1% of your weight. You'd still eat about {fmt(s.eat)} kcal a day.</p>
+      )}
+    </div>
+  )
+}

@@ -238,7 +238,7 @@ function apply(state: State, a: Action): State {
   switch (a.type) {
     case 'setProfile': {
       // v1.21.3: exerciseTopUp belongs to the goal it was kept on. A new goal, goal weight or date (Use safer date, Push,
-      // a goal edit, Keep my weight) drops it. keepTopUp: onboarding and Undo, which set the goal they mean.
+      // a goal edit, Keep my weight) drops it. keepTopUp: onboarding, the Me goal sheet's Keep my date, and Undo, which set the goal they mean.
       const prev = state.profile
       let pin = a.profile
       if (pin.exerciseTopUp && prev && !a.keepTopUp && (pin.goal !== prev.goal || pin.goalDate !== prev.goalDate || pin.goalWeightKg !== prev.goalWeightKg)) {

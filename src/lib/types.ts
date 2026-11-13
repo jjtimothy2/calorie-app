@@ -53,7 +53,7 @@ export type Profile = {
   /** 2: the assumed goal was derived from the old pace with no floor (v1.13.1). Missing on a v1.13 assumed goal, which gets re-derived once. */
   goalAssumedV?: 2
   /**
-   * v1.21.3 (optional, v3): set when onboarding's "Keep my date, I'll add exercise" was tapped on a Lose plan that would
+   * v1.21.3 (optional, v3): set when onboarding's or Me's "Keep my date, I'll add exercise" was tapped on a Lose plan that would
    * leave less than the safe minimum to eat. dailyPlan then holds the food target at the minimum (1,500 men, 1,200
    * women), and dailyGoal follows it (base - target). The rest of the plan's deficit is exercise. Cleared when the goal, goal weight or date changes.
    * Missing in older data, which loads unchanged.

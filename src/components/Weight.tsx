@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom'
 import { Sheet } from './Sheet'
 import { Button, Card, Chip } from './ui'
 import { GOAL_LABEL } from './ProfileFields'
-import { ByWhenPicker, goalWeightError, goalWeightOk, noSaferLine, PaceWarning, UnsafeCard, unsafeWhy, type ByWhen } from './GoalPlan'
+import { ByWhenPicker, goalWeightError, goalWeightOk, noSaferLine, PaceWarning, UnsafeGoalCard, keepLabel, unsafeWhy, type ByWhen } from './GoalPlan'
 
 const readDismissed = (): string | null => {
   try { return (JSON.parse(localStorage.getItem(WEIGH_KEY) ?? 'null') as { dismissedAt?: string } | null)?.dismissedAt ?? null } catch { return null }
@@ -341,12 +341,19 @@ export function GoalSheet({ onClose, fresh }: { onClose: () => void; fresh?: boo
     : { ...p, goal, goalWeightKg: Number.isNaN(g) ? p.weightKg : round1(g), goalDate: date ?? addDays(today, 182), planFrom: { date: today, kg: p.weightKg }, goalAssumed: undefined }
   const plan = dailyPlan(draft)
   const check = ok ? paceCheck(draft, plan) : null
-  // v1.15: a Lose date over the safe deficit cap can't be saved. The card offers the earliest safe date instead.
+  // v1.15: a Lose date over the safe deficit cap was blocked here (Save disabled, only Use safer date).
+  // v1.22.2: same warning and Keep my date path as onboarding, including exerciseTopUp when the eat target is under the floor.
   const cap = goal === 'lose' ? safeDeficit(draft, plan) : null
   const unsafe = ok && !!cap?.unsafe
   const safer = unsafe ? saferPlan(draft, cap!) : null
   const unsafeOn = goal === 'lose' && goalWeightOk(goal, p.weightKg, g) ? (d: string) => safeDeficit({ ...draft, goalDate: d }).unsafe : undefined
   const save = () => { if (ok && !unsafe) { dispatch({ type: 'setProfile', profile: draft }); onClose() } }
+  // v1.22.2: Keep my date (testid goal-keep-date; goal-keep is the Keep-weight chip). Same rule as onboarding: hold the food target at the minimum when low.
+  const keep = () => {
+    if (!ok || !cap) return
+    dispatch({ type: 'setProfile', profile: cap.low ? { ...draft, exerciseTopUp: true } : draft, keepTopUp: true })
+    onClose()
+  }
   return (
     <Sheet label="Your goal" onClose={onClose}>
       <div className="flex flex-col gap-4" data-testid="goal-sheet">
@@ -378,8 +385,9 @@ export function GoalSheet({ onClose, fresh }: { onClose: () => void; fresh?: boo
                 {!unsafe && <p className="-mt-1 text-[15px] text-mute" data-testid="goal-preview-eat">You'd eat about {fmt(cap.eat)} kcal a day</p>}
                 {unsafe && (
                   <>
-                    <UnsafeCard s={cap} weeklyKg={plan.weeklyKg} safer={safer} goalKg={draft.goalWeightKg} />
+                    <UnsafeGoalCard s={cap} weeklyKg={plan.weeklyKg} goalKg={draft.goalWeightKg} date={draft.goalDate} />
                     {safer && <button type="button" onClick={() => { setBy('custom'); setDate(safer.date) }} className="tap min-h-11 self-start rounded-full bg-ink px-4 text-[15px] font-bold text-bg" data-testid="goal-safer">Use safer date ({longDay(safer.date)})</button>}
+                    <button type="button" onClick={keep} className={safer ? 'tap min-h-11 self-start rounded-full px-4 text-[15px] font-bold text-g-ink' : 'tap min-h-11 self-start rounded-full bg-ink px-4 text-[15px] font-bold text-bg'} data-testid="goal-keep-date">{keepLabel(cap)}</button>
                   </>
                 )}
               </>
